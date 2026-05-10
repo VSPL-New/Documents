@@ -40,3 +40,6 @@ if __name__ == "__main__":
     connect_with_iam()
 
     # I'm Apurvika!!
+    # I'm testing the connection to the RDS database using IAM authentication.
+    # If the connection is successful, it will print the current user and database.
+    # If there is an error, it will print the error message.
