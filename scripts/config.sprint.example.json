@@ -1,0 +1,143 @@
+{
+  "_comment": "Example config for Sprint-plan.md import",
+  "github_token": "ghp_YOUR_PERSONAL_ACCESS_TOKEN_HERE",
+  "repo_owner": "your-github-username-or-org",
+  "repo_name": "ValueX-Code",
+  "user_stories_file": "../Documents/Sprint-plan.md",
+
+  "default_labels": [
+    "user-story",
+    "sprint-planning"
+  ],
+
+  "milestone_number": null,
+
+  "default_assignees": [],
+
+  "_comment_sprint_labels": "Sprint and repository labels are auto-generated from Sprint-plan.md",
+  "_comment_examples": [
+    "sprint-0-foundation-architecture",
+    "sprint-1-identity-user-management",
+    "repo:backend",
+    "repo:mobile",
+    "repo:web",
+    "repo:infra",
+    "sprint-setup (for S0-XXX stories)"
+  ],
+
+  "label_mapping": {
+    "authentication": {
+      "start": 1,
+      "end": 3,
+      "description": "User Management & Authentication"
+    },
+    "listing": {
+      "start": 4,
+      "end": 10,
+      "description": "Seller - Listing Management"
+    },
+    "search": {
+      "start": 11,
+      "end": 12,
+      "description": "Buyer - Discovery & Search"
+    },
+    "communication": {
+      "start": 13,
+      "end": 16,
+      "description": "Communication"
+    },
+    "negotiation": {
+      "start": 17,
+      "end": 20,
+      "description": "Negotiation & Cart"
+    },
+    "payment": {
+      "start": 21,
+      "end": 25,
+      "description": "Orders & Payments"
+    },
+    "shipping": {
+      "start": 26,
+      "end": 32,
+      "description": "Shipping & Logistics"
+    },
+    "returns": {
+      "start": 33,
+      "end": 35,
+      "description": "Returns"
+    },
+    "ratings": {
+      "start": 36,
+      "end": 37,
+      "description": "Ratings & Reviews"
+    },
+    "premium": {
+      "start": 38,
+      "end": 42,
+      "description": "Premium Features"
+    },
+    "support": {
+      "start": 43,
+      "end": 47,
+      "description": "Support & Assistance"
+    },
+    "trust-safety": {
+      "start": 48,
+      "end": 52,
+      "description": "Trust & Safety"
+    },
+    "admin": {
+      "start": 53,
+      "end": 59,
+      "description": "Admin & Moderation"
+    },
+    "new-features": {
+      "start": 68,
+      "end": 87,
+      "description": "New Features - PRD v1.3"
+    },
+    "lifecycle": {
+      "start": 88,
+      "end": 96,
+      "description": "Lifecycle State Machines"
+    },
+    "compliance": {
+      "start": 97,
+      "end": 100,
+      "description": "Compliance & Accessibility"
+    }
+  },
+
+  "priority_mapping": {
+    "priority: critical": {
+      "start": 1,
+      "end": 57,
+      "description": "MVP Core Features"
+    },
+    "priority: high": {
+      "start": 58,
+      "end": 59,
+      "description": "Critical Additions"
+    },
+    "priority: high": {
+      "start": 68,
+      "end": 78,
+      "description": "Essential New Features"
+    },
+    "priority: medium": {
+      "start": 79,
+      "end": 96,
+      "description": "Important Features"
+    },
+    "priority: low": {
+      "start": 60,
+      "end": 67,
+      "description": "Enhancement Backlog"
+    },
+    "priority: medium": {
+      "start": 97,
+      "end": 100,
+      "description": "Compliance Features"
+    }
+  }
+}

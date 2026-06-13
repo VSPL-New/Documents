@@ -1,8 +1,8 @@
 # ValueX User Stories
 
-**Version:** 1.0  
-**Based on:** PRD_ValueX_v1.1.md, ValueX_User_Flow_diagram_ver0.2.png  
-**Date:** 2026-05-14
+**Version:** 2.0  
+**Based on:** PRD_ValueX_v1.3.docx  
+**Date:** 2026-06-04
 
 ---
 
@@ -20,6 +20,9 @@
 11. [Support & Assistance](#support--assistance)
 12. [Trust & Safety](#trust--safety)
 13. [Admin & Moderation](#admin--moderation)
+14. [New Features - PRD v1.3 Alignment](#new-features---prd-v13-alignment)
+15. [Lifecycle State Machines](#lifecycle-state-machines)
+16. [Compliance & Accessibility](#compliance--accessibility)
 
 ---
 
@@ -2527,28 +2530,1452 @@
 
 ---
 
+## New Features - PRD v1.3 Alignment
+
+### US-068: Direct Buy Now Flow
+**As a** buyer  
+**I want to** purchase an item immediately at listed price  
+**So that** I can skip negotiation for items I want to buy quickly
+
+**Acceptance Criteria:**
+- Given I am viewing a listing with "Buy Now" option enabled
+- When I tap "Buy Now"
+- Then I skip negotiation step
+- And item is added to cart at listed price
+- And I proceed directly to checkout
+- When seller has disabled "Buy Now"
+- Then only "Make Offer" button is available
+- And buyer must negotiate
+
+**Edge Cases:**
+- Item sold to another buyer while current buyer is checking out
+- Seller changes price during checkout
+- Buyer wants to negotiate after using Buy Now
+- Multiple buyers click Buy Now simultaneously
+
+**Validation Rules:**
+- Buy Now price is the listed price (no negotiation)
+- Seller can enable/disable Buy Now per listing
+- Buy Now items follow same escrow flow
+- Item reserved for 15 minutes during checkout
+
+**Error Scenarios:**
+- `ERROR_ITEM_SOLD`: "This item is no longer available"
+- `ERROR_PRICE_CHANGED`: "Price has changed. Please review"
+- `ERROR_BUY_NOW_DISABLED`: "Seller requires price negotiation for this item"
+
+---
+
+### US-069: Buyer Initiates Contact from Listing
+**As a** buyer  
+**I want to** easily contact seller from listing page  
+**So that** I can inquire about item details
+
+**Acceptance Criteria:**
+- Given I am viewing a listing
+- When I see communication options (Chat, Call, Video Call)
+- Then I can tap any option to initiate contact
+- When I tap "Chat"
+- Then chat window opens with listing context pre-loaded
+- When I tap "Call"
+- Then masked voice call initiates
+- When I tap "Video Call"
+- Then video call request is sent to seller
+- And I see "Waiting for seller to accept" message
+
+**Edge Cases:**
+- Seller is offline/unavailable
+- Buyer hasn't verified account
+- Seller has blocked buyer
+- Multiple contact attempts in short time (spam prevention)
+
+**Validation Rules:**
+- Contact options visible only to logged-in users
+- Listing context (title, price) auto-included in first chat message
+- Call/video call requires both parties to be online
+- System logs all contact attempts
+
+**Error Scenarios:**
+- `ERROR_LOGIN_REQUIRED`: "Please login to contact seller"
+- `ERROR_SELLER_UNAVAILABLE`: "Seller is currently unavailable"
+- `ERROR_BLOCKED`: "You cannot contact this seller"
+- `WARNING_RATE_LIMIT`: "Too many contact attempts. Try again later"
+
+---
+
+### US-070: View Order History
+**As a** user  
+**I want to** view all my past and active orders  
+**So that** I can track purchases and reference previous transactions
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I navigate to "My Orders"
+- Then I see list of all orders with:
+  - Order ID, date
+  - Item image and title
+  - Seller/buyer name
+  - Order status
+  - Total amount
+- When I filter by status (Active/Completed/Cancelled/Returned)
+- Then only matching orders are displayed
+- When I tap on an order
+- Then I see complete order details page
+- And I can access order actions (track, contact, return, dispute)
+
+**Edge Cases:**
+- User has hundreds of orders (pagination)
+- Order deleted by admin
+- Seller account suspended after order
+- Multi-item orders display
+
+**Validation Rules:**
+- Orders sorted by date (newest first)
+- Pagination: 20 orders per page
+- Order history retained for 2 years
+- Deleted orders marked but not removed from history
+
+**Error Scenarios:**
+- `ERROR_LOADING_ORDERS`: "Unable to load orders. Refresh"
+- `NO_ORDERS_FOUND`: "You haven't placed any orders yet"
+
+---
+
+### US-071: View Payment and Transaction History
+**As a** user  
+**I want to** view my payment and transaction history  
+**So that** I can track my spending and earnings
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I navigate to "Transactions" or "Wallet"
+- Then I see list of all financial transactions:
+  - Date and time
+  - Transaction type (Payment/Refund/Payout/Fee)
+  - Amount (debit/credit)
+  - Status (Success/Pending/Failed)
+  - Order reference
+  - Balance after transaction
+- When I filter by date range or type
+- Then results update accordingly
+- When I tap on a transaction
+- Then I see detailed breakdown including fees, taxes
+- When I tap "Download Statement"
+- Then PDF/CSV is generated
+
+**Edge Cases:**
+- Failed payment attempts
+- Partial refunds
+- Platform fee deductions
+- Seller payout pending
+- Very old transactions (2+ years)
+
+**Validation Rules:**
+- Transaction history retained for 7 years (compliance)
+- All amounts in INR with 2 decimal places
+- Running balance shown
+- Export limited to last 2 years
+
+**Error Scenarios:**
+- `ERROR_LOADING_TRANSACTIONS`: "Unable to load transaction history"
+- `ERROR_EXPORT_FAILED`: "Failed to generate statement. Try again"
+
+---
+
+### US-072: Seller Payout Bank/UPI Management
+**As a** seller  
+**I want to** manage my payout bank account or UPI details  
+**So that** I receive payments from completed sales
+
+**Acceptance Criteria:**
+- Given I am logged in as seller
+- When I navigate to "Payout Settings"
+- Then I see options to add:
+  - Bank account (Account number, IFSC, name)
+  - UPI ID
+- When I add bank account
+- Then system validates account details
+- And sends test deposit for verification
+- When I verify test amount
+- Then account is activated for payouts
+- When I add UPI ID
+- Then system validates UPI format
+- And marks as primary payout method
+- When I have multiple payout methods
+- Then I can set one as primary
+- And change primary method anytime
+
+**Edge Cases:**
+- Invalid bank account details
+- UPI ID not found
+- Seller tries to change payout method with pending payout
+- Bank account belongs to different person than Aadhaar name
+
+**Validation Rules:**
+- Bank account name must match Aadhaar name
+- IFSC code must be valid Indian bank
+- UPI ID format: username@bankname
+- Minimum one payout method required before first sale
+- Payout method changes take effect after 24 hours
+
+**Error Scenarios:**
+- `ERROR_INVALID_ACCOUNT`: "Bank account details are invalid"
+- `ERROR_NAME_MISMATCH`: "Account name must match your registered name"
+- `ERROR_INVALID_UPI`: "UPI ID not found or invalid"
+- `ERROR_PENDING_PAYOUT`: "Cannot change payout method with pending payouts"
+
+---
+
+### US-073: Save and Bookmark Listings
+**As a** buyer  
+**I want to** save listings I'm interested in  
+**So that** I can review them later
+
+**Acceptance Criteria:**
+- Given I am viewing a listing
+- When I tap "Save" or heart icon
+- Then listing is added to my saved items
+- And icon changes to "Saved" state
+- When I navigate to "Saved Items"
+- Then I see all bookmarked listings
+- And I can view, remove, or purchase saved items
+- When a saved listing is sold or removed
+- Then I receive notification
+- And item is marked as "No longer available" in saved list
+
+**Edge Cases:**
+- User saves hundreds of items
+- Saved item price changes
+- Saved item seller suspends account
+- Saved item expires
+
+**Validation Rules:**
+- Maximum 200 saved items per user
+- Saved items retained for 90 days
+- Notifications for price drops on saved items (future enhancement)
+- Can save from search results or listing page
+
+**Error Scenarios:**
+- `ERROR_MAX_SAVED`: "Maximum 200 saved items reached. Remove some to add more"
+- `ERROR_ITEM_UNAVAILABLE`: "This listing is no longer available"
+
+---
+
+### US-074: Track Support Ticket Status
+**As a** user  
+**I want to** track status of my support tickets  
+**So that** I know when my issues are resolved
+
+**Acceptance Criteria:**
+- Given I have raised support tickets
+- When I navigate to "Support" or "Help"
+- Then I see list of all my tickets with:
+  - Ticket ID
+  - Subject
+  - Status (Open/In Progress/Waiting for You/Resolved/Closed)
+  - Created date
+  - Last updated date
+- When I tap on a ticket
+- Then I see complete conversation history
+- And I can add new messages
+- When ticket status changes
+- Then I receive notification
+- When agent responds
+- Then I receive notification and can reply
+
+**Edge Cases:**
+- Ticket auto-closed after 7 days of inactivity
+- User reopens closed ticket
+- Multiple tickets for same issue
+- Ticket escalated to senior support
+
+**Validation Rules:**
+- Ticket conversation history retained for 1 year
+- User can reopen ticket within 30 days of closure
+- Tickets auto-close after 7 days with no user response
+- Priority tickets (payment, dispute) marked separately
+
+**Error Scenarios:**
+- `ERROR_LOADING_TICKETS`: "Unable to load support tickets"
+- `ERROR_TICKET_CLOSED`: "This ticket is closed. Create new ticket for new issues"
+
+---
+
+### US-075: Retry Failed Payments
+**As a** buyer  
+**I want to** retry failed payments  
+**So that** I can complete my purchase without creating new order
+
+**Acceptance Criteria:**
+- Given my payment failed during checkout
+- When I see payment failed message
+- Then I see "Retry Payment" button
+- When I tap "Retry Payment"
+- Then payment gateway reopens
+- And I can try different payment method
+- When payment succeeds on retry
+- Then order is created normally
+- And cart is cleared
+- When I abandon retry
+- Then order remains in "Payment Pending" state for 15 minutes
+- And auto-cancels after timeout
+
+**Edge Cases:**
+- Multiple retry attempts fail
+- Payment method temporarily blocked
+- Item sold during retry window
+- Network interruption during retry
+
+**Validation Rules:**
+- Maximum 3 retry attempts per order
+- 15-minute window for retry after initial failure
+- Retry must use same order details (price locked)
+- After timeout, user must create new order
+
+**Error Scenarios:**
+- `ERROR_PAYMENT_FAILED`: "Payment failed. Please try different method"
+- `ERROR_MAX_RETRIES`: "Maximum retry attempts reached. Please try again later"
+- `ERROR_ITEM_UNAVAILABLE`: "Item no longer available. Order cancelled"
+- `ERROR_RETRY_EXPIRED`: "Retry window expired. Please create new order"
+
+---
+
+### US-076: Seller Negotiation Management
+**As a** seller  
+**I want to** manage buyer offers efficiently  
+**So that** I can accept, reject, or counter offers quickly
+
+**Acceptance Criteria:**
+- Given I have received buyer offers
+- When I navigate to "Offers" or receive notification
+- Then I see list of pending offers with:
+  - Buyer name and rating
+  - Item details
+  - Offered price vs listed price
+  - Offer timestamp
+- When I tap on an offer
+- Then I see three options: Accept, Reject, Counter
+- When I tap "Accept"
+- Then buyer is notified immediately
+- And price is locked for 24 hours
+- And buyer can proceed to checkout
+- When I tap "Reject"
+- Then buyer is notified
+- And negotiation ends
+- When I tap "Counter"
+- Then I enter my counter offer
+- And buyer receives notification to review
+
+**Edge Cases:**
+- Multiple buyers making offers simultaneously
+- Seller accepts one offer while others pending
+- Offer expires while seller is reviewing
+- Buyer cancels offer before seller responds
+
+**Validation Rules:**
+- Offers expire after 48 hours if no seller response
+- Accepting one offer auto-rejects others for same item
+- Counter offer must be between buyer offer and listed price
+- Maximum 5 back-and-forth per buyer-seller pair
+- Seller must respond within 48 hours or offer auto-expires
+
+**Error Scenarios:**
+- `ERROR_OFFER_EXPIRED`: "This offer has expired"
+- `ERROR_ALREADY_ACCEPTED`: "You've already accepted another offer for this item"
+- `ERROR_INVALID_COUNTER`: "Counter offer must be between ₹X and ₹Y"
+- `WARNING_MAX_NEGOTIATIONS`: "Maximum negotiation rounds reached"
+
+---
+
+### US-077: Critical Event Notifications
+**As a** user  
+**I want to** receive notifications for critical events  
+**So that** I stay informed about important account and transaction activities
+
+**Acceptance Criteria:**
+- Given I am a registered user
+- When critical events occur, I receive notifications via:
+  - In-app notifications
+  - Push notifications
+  - Email
+  - SMS (for high-priority events)
+- Critical events include:
+  - Account created
+  - Password changed
+  - New login from unknown device
+  - Item added/removed from cart
+  - Order placed
+  - Payment success/failure
+  - Order status changes
+  - Messages received
+  - Offers received/accepted
+  - Dispute raised/resolved
+  - Account suspended/banned
+- When I tap notification
+- Then I am taken to relevant page in app
+- When I navigate to "Notifications"
+- Then I see history of all notifications
+
+**Edge Cases:**
+- Multiple notifications in short time (grouped)
+- User has notifications disabled
+- Network unavailable (queued for later)
+- Email bounces or SMS fails
+
+**Validation Rules:**
+- High-priority events: SMS + Push + Email + In-app
+- Medium-priority: Push + In-app
+- Low-priority: In-app only
+- Notification history retained for 90 days
+- User can configure notification preferences
+- Unread count shown on notifications icon
+
+**Error Scenarios:**
+- `ERROR_NOTIFICATION_FAILED`: Logged but user not aware
+- Retry mechanism for failed notifications
+
+---
+
+### US-078: Listing Plan Features and Pricing
+**As a** seller  
+**I want to** understand differences between listing plans  
+**So that** I can choose the right plan for my item
+
+**Acceptance Criteria:**
+- Given I am creating a listing
+- When I reach plan selection step
+- Then I see three plan options with clear comparison:
+  
+**Basic Plan (₹49 after discount, originally ₹99):**
+  - Listed in chronological order
+  - 7 days validity
+  - AI + Email support only
+  
+**Boosted Plan (₹149 after discount, originally ₹399):**
+  - Listed on top when searched
+  - 7 days validity
+  - AI + Email + Human Chat support
+  
+**Priority Plan (₹249 after discount, originally ₹699):**
+  - Boosted placement + Featured on landing page
+  - "Featured" badge on listing
+  - 1 month validity
+  - AI + Email + Chat + On-call support
+
+- When I select a plan
+- Then I see payment breakdown before confirming
+- When payment succeeds
+- Then selected plan features activate immediately
+
+**Edge Cases:**
+- User wants to upgrade mid-validity (handled in US-064)
+- Plan expires before item sells
+- User wants refund for unused plan period
+- Multiple items with different plans
+
+**Validation Rules:**
+- Validity starts from successful payment
+- Plan features non-transferable
+- Featured items shown max 20 on landing page (rotation basis)
+- Support level determines response time SLA
+
+**Error Scenarios:**
+- `ERROR_PAYMENT_REQUIRED`: "Complete payment to activate plan"
+- `PLAN_EXPIRED`: "Your listing plan has expired. Renew to continue visibility"
+
+---
+
+### US-079: Buyer Premium Plan Features
+**As a** buyer  
+**I want to** understand premium plan options  
+**So that** I can choose the right subscription
+
+**Acceptance Criteria:**
+- Given I am a free user or want to upgrade
+- When I view premium plans
+- Then I see three tiers with features:
+
+**Basic Plan (Free):**
+  - 3 photo searches per day
+  - Chat with sellers
+  - AI + Email support
+  - Unlimited validity
+
+**Smart Plan (₹49/month after discount, originally ₹99):**
+  - 10 photo searches per day
+  - Chat + Voice calls with sellers
+  - AI + Email + Human Chat support
+  - 7-day validity
+
+**Vision Plan (₹149/month after discount, originally ₹499):**
+  - Unlimited photo searches
+  - Chat + Voice + Video calls with sellers
+  - AI + Email + Chat + On-call support
+  - 1-month validity
+
+- When I select a plan
+- Then I see pricing and features summary
+- When I complete payment
+- Then plan activates immediately
+- And I can use premium features
+
+**Edge Cases:**
+- User downgrades mid-subscription
+- User exhausts daily photo search limit
+- Plan expires mid-search
+- User wants refund
+
+**Validation Rules:**
+- Daily limits reset at midnight IST
+- Plan validity starts from payment date
+- Auto-renewal unless cancelled
+- Downgrade takes effect at next billing cycle
+- No pro-rated refunds
+
+**Error Scenarios:**
+- `ERROR_DAILY_LIMIT_REACHED`: "Daily photo search limit reached. Upgrade for more"
+- `ERROR_PREMIUM_REQUIRED`: "Upgrade to Smart or Vision plan to make voice calls"
+- `SUBSCRIPTION_EXPIRED`: "Your subscription expired. Renew to continue"
+
+---
+
+### US-080: Auto-Expire Inactive Negotiations
+**As a** platform  
+**I want to** auto-expire inactive negotiations  
+**So that** stale offers don't block transactions
+
+**Acceptance Criteria:**
+- Given a negotiation is in progress
+- When 48 hours pass with no activity from either party
+- Then negotiation status changes to "EXPIRED"
+- And both parties receive notification
+- And seller's item becomes available for other buyers
+- And buyer can make new offer if interested
+- When negotiation expires
+- Then no party can accept/counter the last offer
+- And negotiation history is retained for reference
+
+**Edge Cases:**
+- Buyer replies just before expiry
+- Seller was on vacation/unavailable
+- Multiple negotiations expire simultaneously
+- User wants to restart expired negotiation
+
+**Validation Rules:**
+- Timeout: 48 hours from last message
+- 24-hour warning notification sent before expiry
+- Expired negotiations retained in history
+- Users can create new negotiation after expiry
+- No automatic price acceptance on expiry
+
+**Error Scenarios:**
+- `ERROR_NEGOTIATION_EXPIRED`: "This negotiation has expired. Start a new offer"
+- `WARNING_EXPIRING_SOON`: "Negotiation will expire in 24 hours. Please respond"
+
+---
+
+### US-081: Block Transactions for Users Under Investigation
+**As a** platform  
+**I want to** block high-risk actions for flagged users  
+**So that** fraud is prevented during investigation
+
+**Acceptance Criteria:**
+- Given a user is flagged for fraud investigation
+- When user account status is "UNDER_REVIEW" or "RESTRICTED"
+- Then the following actions are blocked:
+  - Creating new listings
+  - Making payments
+  - Withdrawing funds
+  - Accepting offers
+  - Bulk actions
+- When user attempts blocked action
+- Then they see message: "Your account is under security review. Contact support"
+- When investigation completes
+- Then restrictions are lifted or account is banned
+- And user is notified of outcome
+
+**Edge Cases:**
+- User has active orders during investigation
+- User receives payment while under review
+- False positive flagging
+- User tries to create new account
+
+**Validation Rules:**
+- Active orders can complete but no new transactions
+- Funds held in escrow remain safe
+- Investigation SLA: 48-72 hours
+- User can view account but cannot transact
+- Support ticket automatically created
+
+**Error Scenarios:**
+- `ACCOUNT_UNDER_REVIEW`: "Your account is under security review. You'll be notified within 72 hours"
+- `ACTION_BLOCKED`: "This action is temporarily blocked. Contact support for details"
+- `ACCOUNT_RESTRICTED`: "Your account has limited access. Contact support"
+
+---
+
+### US-082: Image Watermark Detection
+**As a** platform  
+**I want to** detect images with watermarks from other platforms  
+**So that** sellers use original photos
+
+**Acceptance Criteria:**
+- Given a seller uploads listing images
+- When system analyzes images
+- Then AI detects watermarks from known platforms (OLX, Quikr, Facebook Marketplace, etc.)
+- When watermark is detected
+- Then upload is rejected
+- And seller sees error: "Remove watermarks and upload original photos"
+- When seller uploads edited image to bypass detection
+- Then perceptual hashing still detects manipulation
+- And image is flagged for manual review
+
+**Edge Cases:**
+- Seller's own watermark/logo
+- Very faint or partially cropped watermark
+- Multiple images in batch upload
+- Seller claims watermark is legitimate
+
+**Validation Rules:**
+- Check against database of known platform watermarks
+- Perceptual hashing to detect edited images
+- Allow user watermark if disclosed
+- Manual review for borderline cases
+- Flagged images cannot be published until cleared
+
+**Error Scenarios:**
+- `ERROR_WATERMARK_DETECTED`: "Image contains watermark from another platform. Upload original photos"
+- `ERROR_IMAGE_MANIPULATION_DETECTED`: "Image appears edited. Upload unmodified photos"
+- `WARNING_UNDER_REVIEW`: "Image flagged for review. You'll be notified within 24 hours"
+
+---
+
+### US-083: System Audit Trail
+**As a** platform administrator  
+**I want** comprehensive audit logs of critical actions  
+**So that** I can investigate issues and ensure compliance
+
+**Acceptance Criteria:**
+- Given system is operational
+- When users perform critical actions, system logs:
+  - User ID, timestamp, IP address, device info
+  - Action type (login, payment, order, listing, dispute)
+  - Before/after state for data changes
+  - Result (success/failure) and error codes
+- Critical actions include:
+  - User registration/login/logout
+  - Password changes
+  - Payment transactions
+  - Order creation/cancellation
+  - Listing creation/edit/delete
+  - Dispute raised/resolved
+  - Admin actions (ban, suspend, override)
+  - Payout method changes
+  - Account deletion requests
+- When admin views audit logs
+- Then logs are searchable by user, date, action type
+- And logs are tamper-proof (write-only)
+- When compliance audit occurs
+- Then logs can be exported securely
+
+**Edge Cases:**
+- High-volume logging (millions of events/day)
+- Log storage limits
+- Sensitive data in logs (PII redaction)
+- Log retention beyond 7 years
+
+**Validation Rules:**
+- Logs retained for 7 years minimum (compliance)
+- Logs encrypted at rest
+- PII redacted in exports
+- Immutable once written
+- Admin access logged separately
+
+**Error Scenarios:**
+- `ERROR_LOG_WRITE_FAILED`: Alerts sent to ops team
+- Backup logging mechanism activated
+
+---
+
+### US-084: Pre-Publication Trust & Safety Review
+**As a** platform  
+**I want** all listings reviewed before publication  
+**So that** prohibited items and fraud are prevented
+
+**Acceptance Criteria:**
+- Given a seller completes listing creation
+- When seller submits for publication
+- Then listing enters "TRUST_SAFETY_REVIEW" state
+- And AI performs automated checks:
+  - Restricted item detection (weapons, drugs, etc.)
+  - Image analysis (inappropriate content)
+  - Text analysis (banned keywords)
+  - Price reasonableness
+  - Seller reputation score
+- When AI fraud score < 70
+- Then listing auto-approves and publishes
+- When AI fraud score > 70
+- Then listing queued for manual review
+- And admin reviews within 24 hours
+- When admin approves
+- Then listing publishes
+- When admin rejects
+- Then seller is notified with reason
+- And can revise and resubmit
+
+**Edge Cases:**
+- AI false positive on legitimate item
+- Borderline prohibited item (toy weapon)
+- Seller tries to bypass with coded language
+- High volume causes review backlog
+- Seller disputes rejection
+
+**Validation Rules:**
+- All listings must pass review before publication
+- Auto-approval for trusted sellers (rating > 4.5, 50+ sales)
+- Manual review SLA: 24 hours
+- Rejection reason must be specific
+- Seller can appeal rejection
+- Appeals reviewed by senior moderator
+
+**Error Scenarios:**
+- `LISTING_UNDER_REVIEW`: "Your listing is under review. You'll be notified within 24 hours"
+- `LISTING_REJECTED`: "Listing rejected: [specific reason]. Revise and resubmit"
+- `APPEAL_SUBMITTED`: "Appeal submitted. Senior team will review within 48 hours"
+
+---
+
+### US-085: Seller Payment Release Notification
+**As a** seller  
+**I want** to be notified when payment is released  
+**So that** I know funds are available
+
+**Acceptance Criteria:**
+- Given buyer has confirmed item receipt
+- When escrow releases payment to seller
+- Then seller receives notifications via:
+  - Push notification
+  - In-app notification
+  - Email
+  - SMS (for amounts > ₹5000)
+- Notification includes:
+  - Order ID
+  - Item name
+  - Gross amount
+  - Platform fee deducted
+  - Net amount received
+  - Expected payout date (2-3 business days)
+- When seller taps notification
+- Then app opens to transaction details page
+- When payout completes to bank/UPI
+- Then seller receives confirmation notification
+
+**Edge Cases:**
+- Notification delivery fails
+- Multiple payouts on same day
+- Payout delayed due to bank issues
+- Seller has no payout method set up
+
+**Validation Rules:**
+- Notification sent within 5 minutes of release
+- Transaction details page shows complete breakdown
+- Payout timeline: 2-3 business days to bank
+- Seller can view pending payouts in wallet
+
+**Error Scenarios:**
+- `ERROR_NOTIFICATION_FAILED`: System retries, seller can check in-app
+- `PAYOUT_DELAYED`: "Payout delayed. Expected by [date]"
+- `ERROR_NO_PAYOUT_METHOD`: "Add payout method to receive funds"
+
+---
+
+### US-086: WhatsApp Notifications
+**As a** user  
+**I want** to receive important updates via WhatsApp  
+**So that** I don't miss critical information
+
+**Acceptance Criteria:**
+- Given I have opted in for WhatsApp notifications
+- When critical events occur, I receive WhatsApp messages:
+  - Order placed/shipped/delivered
+  - Payment received
+  - Offers received
+  - Disputes raised
+  - Account alerts
+- When I receive WhatsApp notification
+- Then message includes:
+  - Event summary
+  - Order/transaction reference
+  - Quick action button (Track Order, View Details)
+- When I tap action button
+- Then WhatsApp opens app deep link to relevant page
+- When I don't have app installed
+- Then web link opens
+
+**Edge Cases:**
+- User hasn't opted in for WhatsApp
+- WhatsApp number different from registered mobile
+- WhatsApp business account API rate limits
+- User blocks WhatsApp notifications
+
+**Validation Rules:**
+- Opt-in required for WhatsApp notifications
+- WhatsApp number must be verified
+- Rate limit: Max 10 messages per day per user
+- High-priority events always sent (order status)
+- Low-priority batched into daily digest
+
+**Error Scenarios:**
+- `ERROR_WHATSAPP_NOT_ENABLED`: User doesn't see WhatsApp option
+- `ERROR_DELIVERY_FAILED`: Falls back to SMS/Email
+- `RATE_LIMIT_REACHED`: Next message queued for tomorrow
+
+---
+
+### US-087: Notification Preferences Management
+**As a** user  
+**I want to** manage my notification preferences  
+**So that** I only receive notifications I care about
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I navigate to "Settings > Notifications"
+- Then I see notification categories:
+  - Order Updates (placed, shipped, delivered)
+  - Messages & Offers
+  - Payment & Transactions
+  - Account & Security
+  - Marketing & Promotions
+- For each category, I can toggle channels:
+  - Push notifications
+  - Email
+  - SMS
+  - WhatsApp
+- When I disable a channel for a category
+- Then I stop receiving those notifications
+- Exception: Critical security notifications always sent
+- When I tap "Test Notifications"
+- Then I receive sample notification on enabled channels
+
+**Edge Cases:**
+- User disables all notifications
+- Critical security event occurs (override user preference)
+- User changes phone number (re-verify channels)
+- User wants to temporarily mute all for vacation
+
+**Validation Rules:**
+- Security notifications cannot be fully disabled
+- Changes take effect immediately
+- User can set quiet hours (no notifications 10 PM - 8 AM)
+- "Mute All" option available with expiry time
+
+**Error Scenarios:**
+- `WARNING_SECURITY_NOTIFICATIONS`: "Security notifications cannot be disabled"
+- `SUCCESS_PREFERENCES_SAVED`: "Notification preferences updated"
+
+---
+
+## Lifecycle State Machines
+
+### US-088: Lifecycle State - User Account
+**As a** platform  
+**I want** to track user account lifecycle states  
+**So that** account status determines access permissions
+
+**Acceptance Criteria:**
+- Given a user interacts with platform
+- Then account must be in one of these states:
+  - NEW: Registration started, not completed
+  - OTP_PENDING: Awaiting mobile verification
+  - IDENTITY_VERIFICATION_PENDING: Aadhaar verification in progress
+  - ACTIVE: Fully verified, can transact
+  - UNDER_REVIEW: Flagged for investigation
+  - RESTRICTED: Limited access during review
+  - SUSPENDED: Temporarily banned (7 days)
+  - BANNED: Permanently banned
+  - CLOSED: User-requested account deletion
+- State transitions:
+  - NEW → OTP_PENDING → IDENTITY_VERIFICATION_PENDING → ACTIVE
+  - ACTIVE → UNDER_REVIEW → RESTRICTED → SUSPENDED → BANNED
+  - ACTIVE → CLOSED
+- Business rules:
+  - Only ACTIVE users can transact
+  - UNDER_REVIEW users can view but not create/pay
+  - SUSPENDED users cannot login
+  - BANNED users' Aadhaar is blacklisted
+  - CLOSED accounts retained for 7 years (compliance) but inaccessible
+
+**Edge Cases:**
+- User tries to register while SUSPENDED
+- Account auto-moves from SUSPENDED to ACTIVE after 7 days
+- User appeals BANNED status
+- CLOSED account has active orders
+
+**Validation Rules:**
+- State changes logged in audit trail
+- User notified of all state changes
+- Active orders must complete before account closure
+- Appeals allowed for SUSPENDED/BANNED within 30 days
+
+**Error Scenarios:**
+- `ACCOUNT_SUSPENDED`: "Your account is suspended until [date]"
+- `ACCOUNT_BANNED`: "Your account has been permanently banned"
+- `ACCOUNT_UNDER_REVIEW`: "Account under review. Contact support"
+
+---
+
+### US-089: Lifecycle State - Listing
+**As a** platform  
+**I want** to track listing lifecycle states  
+**So that** listing status determines visibility and actions
+
+**Acceptance Criteria:**
+- Given a seller creates a listing
+- Then listing progresses through states:
+  - DRAFT: Being created
+  - PLAN_SELECTION_PENDING: Seller choosing plan
+  - PLAN_PAYMENT_PENDING: Payment in progress
+  - PLAN_PAYMENT_FAILED: Payment unsuccessful
+  - PLAN_PAYMENT_SUCCESS: Payment successful
+  - MEDIA_UPLOAD_PENDING: Photos being uploaded
+  - AI_DETAILS_GENERATED: AI suggested metadata
+  - PRICE_PENDING: Seller setting final price
+  - TRUST_SAFETY_REVIEW: Under moderation
+  - APPROVED: Cleared for publication
+  - PUBLISHED: Live and visible
+  - BUYER_INQUIRY_PENDING: Buyer viewing
+  - NEGOTIATION_IN_PROGRESS: Price negotiation active
+  - OFFER_ACCEPTED: Price agreed
+  - ORDER_CREATED: Buyer ordered
+  - SOLD: Transaction complete
+  - EXPIRED: Listing plan validity ended
+  - DEACTIVATED_BY_SELLER: Seller removed
+  - REMOVED_BY_ADMIN: Moderation action
+  - REJECTED: Failed trust & safety
+  - REVISION_REQUIRED: Seller must fix issues
+
+**Business Rules:**
+- Cannot publish without successful plan payment
+- Must pass TRUST_SAFETY_REVIEW before PUBLISHED
+- PUBLISHED listings visible in search
+- SOLD listings archived
+- EXPIRED listings can be renewed
+
+**Validation Rules:**
+- State transitions logged
+- Seller notified at key states
+- Visibility controlled by state
+- Expired listings auto-renewed not allowed (manual only)
+
+---
+
+### US-090: Lifecycle State - Order
+**As a** platform  
+**I want** to track order lifecycle states  
+**So that** order status determines actions and payments
+
+**Acceptance Criteria:**
+- Given an order is created
+- Then order progresses through states:
+  - ORDER_INITIATED: Buyer started checkout
+  - SELLER_PRICE_ACCEPTED: Negotiation complete
+  - CHECKOUT_STARTED: Buyer at payment page
+  - PAYMENT_PENDING: Payment processing
+  - PAYMENT_FAILED: Payment unsuccessful
+  - PAYMENT_SUCCESS: Payment received
+  - ESCROW_HELD: Funds held securely
+  - SHIPPING_MODE_SELECTED: Delivery/self-pickup chosen
+  - SELLER_PACKING_PENDING: Seller preparing item
+  - SELLER_PROOF_UPLOADED: Package photos uploaded
+  - PICKUP_SCHEDULED: Logistics assigned
+  - PICKED_UP: Item collected
+  - IN_TRANSIT: Being shipped
+  - OUT_FOR_DELIVERY: Final delivery attempt
+  - DELIVERED: Buyer received
+  - BUYER_PROOF_PENDING: Awaiting buyer photos
+  - BUYER_CONFIRMATION_PENDING: Awaiting buyer confirmation
+  - COMPLETED: Payment released, transaction done
+  - RETURN_REQUESTED: Buyer wants return
+  - DISPUTE_RAISED: Issue reported
+  - SHIPMENT_LOST: Item lost in transit
+  - DELIVERY_FAILED: Could not deliver
+  - RETURN_TO_SELLER: Item being returned
+  - CANCELLED: Order cancelled
+
+**Business Rules:**
+- Escrow held until COMPLETED or DISPUTE_RAISED
+- Auto-complete after 7 days if no buyer action
+- CANCELLED triggers refund
+- SHIPMENT_LOST triggers investigation
+
+**Validation Rules:**
+- State transitions sequential
+- Cannot skip states (except exceptions like CANCELLED)
+- Both parties notified at key states
+- Timestamps recorded for SLA tracking
+
+---
+
+### US-091: Lifecycle State - Payment & Escrow
+**As a** platform  
+**I want** to track payment and escrow lifecycle  
+**So that** funds are released correctly
+
+**Acceptance Criteria:**
+- Given a payment is initiated
+- Then payment/escrow progresses through states:
+  - PAYMENT_INITIATED: Buyer started payment
+  - PAYMENT_PENDING: Gateway processing
+  - PAYMENT_SUCCESS: Payment received
+  - PAYMENT_FAILED: Payment unsuccessful
+  - ESCROW_CREATED: Escrow account created
+  - ESCROW_HELD: Funds locked
+  - RELEASE_PENDING: Awaiting buyer confirmation
+  - RELEASED_TO_SELLER: Payment released
+  - REFUND_REVIEW: Refund request under review
+  - REFUND_APPROVED: Refund authorized
+  - REFUND_REJECTED: Refund denied
+  - REFUND_PROCESSED: Money returned to buyer
+  - PARTIAL_RELEASE: Split payment (partial refund scenario)
+  - ADMIN_HOLD: Manual hold during dispute
+
+**Business Rules:**
+- ESCROW_HELD is default state after payment
+- RELEASED_TO_SELLER only after buyer confirmation or 7-day auto-release
+- ADMIN_HOLD during active disputes
+- PARTIAL_RELEASE requires admin approval
+
+**Validation Rules:**
+- All state changes logged immutably
+- Financial transactions auditable
+- Refund timeline: 5-7 business days
+- Seller payout timeline: 2-3 business days after release
+
+---
+
+### US-092: Lifecycle State - Shipping
+**As a** platform  
+**I want** to track shipping lifecycle states  
+**So that** delivery is monitored end-to-end
+
+**Acceptance Criteria:**
+- Given an order requires shipping
+- Then shipping progresses through states:
+  - SHIPPING_NOT_REQUIRED: Self-pickup order
+  - SHIPPING_REQUIRED: Delivery order
+  - SHIPPING_PARTNER_SELECTION: Logistics being assigned
+  - PICKUP_SLOT_SELECTED: Seller chose time
+  - PICKUP_SCHEDULED: Logistics confirmed
+  - PICKUP_ASSIGNED: Driver assigned
+  - PICKED_UP: Item collected from seller
+  - IN_TRANSIT: In logistics network
+  - OUT_FOR_DELIVERY: Final mile delivery
+  - DELIVERED: Handed to buyer
+  - PICKUP_FAILED: Seller unavailable
+  - PICKUP_RESCHEDULED: New pickup time set
+  - DELIVERY_FAILED: Buyer unavailable
+  - DELIVERY_RESCHEDULED: New delivery attempt
+  - RETURN_TO_SELLER: Max attempts exceeded
+  - SHIPMENT_DELAYED: Logistics delay
+  - SHIPMENT_LOST: Cannot locate package
+  - INVESTIGATION_OPENED: Lost shipment under review
+
+**Business Rules:**
+- Max 3 delivery attempts before RETURN_TO_SELLER
+- SHIPMENT_LOST triggers refund process
+- PICKUP_FAILED allows 2 reschedules
+- Tracking updated at each checkpoint
+
+**Validation Rules:**
+- State transitions trigger notifications
+- GPS tracking for IN_TRANSIT (future)
+- ETA calculated dynamically
+- Delivery proof (photo/signature) required
+
+---
+
+### US-093: Lifecycle State - Return
+**As a** platform  
+**I want** to track return lifecycle states  
+**So that** returns are processed correctly
+
+**Acceptance Criteria:**
+- Given a buyer requests return
+- Then return progresses through states:
+  - RETURN_REQUESTED: Buyer initiated
+  - RETURN_ELIGIBILITY_CHECK: System validates (within 7 days, item condition)
+  - RETURN_APPROVED: Seller/admin approved
+  - RETURN_REJECTED: Return denied
+  - RETURN_SHIPPING_PENDING: Buyer to ship back
+  - RETURN_IN_TRANSIT: Item being returned
+  - RETURN_DELIVERED_TO_SELLER: Seller received
+  - SELLER_RETURN_INSPECTION: Seller checking condition
+  - RETURN_ACCEPTED: Item as described
+  - RETURN_DISPUTED: Item damaged/wrong item returned
+  - TRUST_SAFETY_REVIEW: Admin reviewing dispute
+  - REFUND_INITIATED: Refund processing
+  - REFUND_PROCESSED: Money returned
+  - RETURN_CLOSED: Process complete
+
+**Business Rules:**
+- Returns allowed within 7 days of delivery
+- Buyer pays return shipping
+- RETURN_DISPUTED escalates to admin
+- REFUND_PROCESSED includes item price + original shipping
+
+**Validation Rules:**
+- Seller must inspect within 48 hours
+- Auto-accept if seller doesn't respond in 72 hours
+- Admin resolves disputes within 48 hours
+- Refund timeline: 5-7 business days
+
+---
+
+### US-094: Lifecycle State - Dispute
+**As a** platform  
+**I want** to track dispute lifecycle states  
+**So that** disputes are resolved fairly
+
+**Acceptance Criteria:**
+- Given a dispute is raised
+- Then dispute progresses through states:
+  - DISPUTE_CREATED: User raised issue
+  - EVIDENCE_PENDING: Awaiting evidence from parties
+  - EVIDENCE_SUBMITTED: Both parties submitted proof
+  - TRUST_SAFETY_REVIEW: Admin reviewing
+  - MORE_INFO_REQUIRED: Admin needs more details
+  - DECISION_PENDING: Admin finalizing decision
+  - RESOLVED_BUYER_REFUND: Full refund to buyer
+  - RESOLVED_SELLER_RELEASE: Payment to seller
+  - RESOLVED_PARTIAL_REFUND: Split resolution
+  - DISPUTE_CLOSED: Case closed
+
+**Business Rules:**
+- Escrow locked during dispute (ADMIN_HOLD)
+- Evidence deadline: 48 hours
+- Admin reviews within 48-72 hours
+- Decision is final (one appeal allowed)
+- Both parties notified at each state
+
+**Validation Rules:**
+- Evidence must include: images, chat logs, shipment proof
+- Admin decision requires written justification
+- Appeal window: 7 days from decision
+- Senior admin handles appeals
+
+---
+
+### US-095: Lifecycle State - Support Ticket
+**As a** platform  
+**I want** to track support ticket lifecycle  
+**So that** customer issues are resolved efficiently
+
+**Acceptance Criteria:**
+- Given a user raises a ticket
+- Then ticket progresses through states:
+  - TICKET_CREATED: User submitted issue
+  - ASSIGNED: Agent assigned
+  - IN_PROGRESS: Agent working on it
+  - WAITING_FOR_USER: Agent needs user input
+  - WAITING_FOR_INTERNAL_REVIEW: Escalated internally
+  - RESOLVED: Issue fixed
+  - CLOSED: Ticket closed
+  - REOPENED: User reopened after closure
+
+**Business Rules:**
+- Auto-assign based on ticket type and agent availability
+- WAITING_FOR_USER for >3 days → auto-close
+- User can reopen within 30 days of CLOSED
+- Priority tickets (payment, dispute) have faster SLA
+
+**Validation Rules:**
+- SLA tracking per ticket type
+- Agent response time monitored
+- User satisfaction survey after RESOLVED
+- Ticket history retained for 1 year
+
+---
+
+### US-096: Lifecycle State - Premium Subscription
+**As a** platform  
+**I want** to track buyer premium subscription lifecycle  
+**So that** feature access is controlled correctly
+
+**Acceptance Criteria:**
+- Given a buyer interacts with premium features
+- Then subscription progresses through states:
+  - PLAN_NOT_ACTIVE: Free user
+  - UPGRADE_PROMPT_SHOWN: Paywall displayed
+  - PLAN_SELECTED: User chose Smart/Vision plan
+  - PAYMENT_PENDING: Payment processing
+  - PAYMENT_SUCCESS: Payment received
+  - PLAN_ACTIVE: Subscription active
+  - PLAN_EXPIRED: Subscription ended
+  - RENEWAL_PENDING: Auto-renewal due
+
+**Business Rules:**
+- PLAN_ACTIVE users access premium features per plan limits
+- PLAN_EXPIRED reverts to free tier
+- RENEWAL_PENDING triggers 3 days before expiry
+- Failed renewal → 3-day grace period → PLAN_EXPIRED
+
+**Validation Rules:**
+- Daily photo search limits enforced
+- Communication privileges per plan
+- Support level based on plan
+- Auto-renewal unless user cancels
+
+---
+
+## Compliance & Accessibility
+
+### US-097: Data Export Request (GDPR Compliance)
+**As a** user  
+**I want** to export all my personal data  
+**So that** I have a copy of my information
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I navigate to "Privacy Settings > Download My Data"
+- Then I see "Request Data Export" button
+- When I tap "Request Data Export"
+- Then system queues export job
+- And I see message: "Export will be ready in 24-48 hours. We'll email you"
+- When export is ready
+- Then I receive email with secure download link
+- And link expires in 7 days
+- When I download export
+- Then I receive ZIP file containing:
+  - Profile information (JSON)
+  - Listing history (CSV)
+  - Order history (CSV)
+  - Transaction history (CSV)
+  - Messages (JSON)
+  - Ratings and reviews (JSON)
+
+**Edge Cases:**
+- Multiple export requests in short time
+- Very large data (>100 MB)
+- Export generation fails
+- User requests export then deletes account
+
+**Validation Rules:**
+- One export request per 30 days
+- Data includes last 2 years only
+- Email link valid for 7 days
+- Download link single-use for security
+- Data anonymizes other users' PII
+
+**Error Scenarios:**
+- `ERROR_RECENT_EXPORT`: "You requested an export recently. Try again after [date]"
+- `ERROR_EXPORT_FAILED`: "Export failed. Please try again or contact support"
+- `LINK_EXPIRED`: "Download link expired. Request new export"
+
+---
+
+### US-098: Data Deletion Request (Right to be Forgotten)
+**As a** user  
+**I want** to delete my account and all personal data  
+**So that** my information is removed from the platform
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I navigate to "Privacy Settings > Delete Account"
+- Then I see warning: "This action is permanent. All data will be deleted"
+- When I confirm deletion
+- Then system checks for:
+  - Active orders: Cannot delete
+  - Pending disputes: Cannot delete
+  - Outstanding payments: Cannot delete
+- When no blockers exist
+- Then account scheduled for deletion
+- And I receive email: "Account will be deleted in 30 days. Login to cancel"
+- When 30 days pass
+- Then account and data permanently deleted:
+  - Profile deleted
+  - Listings removed
+  - Messages deleted
+  - Images deleted
+  - Personal data anonymized in transaction records (7-year retention for compliance)
+- When I try to login after deletion
+- Then I see: "Account does not exist"
+
+**Edge Cases:**
+- User has active orders (must complete first)
+- User has pending payouts (must be processed first)
+- User requests deletion then tries to cancel on day 29
+- User creates new account after deletion
+
+**Validation Rules:**
+- Cannot delete with active orders
+- Cannot delete with pending payouts/refunds
+- Cannot delete with open disputes
+- 30-day grace period (can cancel deletion)
+- Transaction records anonymized but retained for 7 years (tax compliance)
+- Aadhaar mapping removed after 30 days
+
+**Error Scenarios:**
+- `ERROR_ACTIVE_ORDERS`: "Complete active orders before deleting account"
+- `ERROR_PENDING_PAYMENTS`: "Resolve pending payments before deletion"
+- `ERROR_OPEN_DISPUTES`: "Resolve disputes before deleting account"
+- `DELETION_SCHEDULED`: "Account will be deleted on [date]. Login to cancel"
+
+---
+
+### US-099: Screen Reader and Accessibility Support
+**As a** visually impaired user  
+**I want** the app to be accessible via screen reader  
+**So that** I can use the platform independently
+
+**Acceptance Criteria:**
+- Given I have a screen reader enabled (TalkBack, VoiceOver)
+- When I navigate the app
+- Then all UI elements are announced correctly:
+  - Buttons announce action ("Add to cart button")
+  - Images have descriptive alt text ("Red bicycle, good condition")
+  - Form fields announce label and current value
+  - Error messages announced immediately
+  - Navigation structure clear (headings, landmarks)
+- When I perform actions
+- Then feedback is announced ("Item added to cart")
+- When viewing listings
+- Then essential info announced: title, price, condition, location
+- When in checkout flow
+- Then each step announced clearly
+- All interactive elements keyboard/gesture navigable
+
+**Edge Cases:**
+- Complex forms with multiple fields
+- Image galleries (swipeable)
+- Real-time chat messages
+- Video call interface
+- Dynamic content updates
+
+**Validation Rules:**
+- WCAG 2.1 AA compliance minimum
+- All interactive elements have accessible labels
+- Focus order logical
+- Color contrast ratios meet standards (4.5:1 for text)
+- Touch targets minimum 44x44 pixels
+- Text resizable up to 200% without loss of functionality
+
+**Error Scenarios:**
+- `N/A`: Accessibility is always-on, no error states
+- Graceful degradation if screen reader not detected
+
+---
+
+### US-100: Admin Analytics Dashboard
+**As an** admin  
+**I want** a comprehensive analytics dashboard  
+**So that** I can monitor platform health and business metrics
+
+**Acceptance Criteria:**
+- Given I am logged in as admin
+- When I view analytics dashboard
+- Then I see key metrics:
+
+**Business Metrics:**
+  - GMV (Gross Merchandise Value) - daily/weekly/monthly
+  - Conversion rate (visitors → buyers)
+  - Listing success rate (published → sold)
+  - Average order value
+  - Revenue (platform fees)
+  - Active users (DAU/MAU)
+  - User growth rate
+
+**Operational Metrics:**
+  - Delivery success rate
+  - Average delivery time
+  - Failed delivery rate
+  - Return rate
+  - Dispute rate and resolution time
+
+**Trust & Safety Metrics:**
+  - Fraud detection accuracy
+  - Fraudulent listing blocked
+  - User accounts banned
+  - Average fraud investigation time
+
+**Support Metrics:**
+  - Support ticket volume
+  - Average resolution time
+  - Support SLA compliance
+  - Customer satisfaction score
+
+**Premium Features:**
+  - Photo search usage rate
+  - Conversion rate (free → paid users)
+  - Premium revenue
+  - Average photo searches per user
+
+- When I select date range or filters
+- Then data updates accordingly
+- When I tap on a metric
+- Then I see detailed breakdown and trend chart
+- When I tap "Export Report"
+- Then CSV/PDF is generated
+
+**Edge Cases:**
+- Data unavailable for certain periods
+- Real-time vs batch processed metrics
+- Very large date ranges (performance)
+
+**Validation Rules:**
+- Data refreshed every 15 minutes
+- Historical data: last 24 months
+- Role-based access (admin, analyst)
+- Export includes metadata (date range, filters)
+
+**Error Scenarios:**
+- `ERROR_DATA_UNAVAILABLE`: "Unable to load metrics. Try again"
+- `ERROR_EXPORT_FAILED`: "Export failed. Try again or contact support"
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 67 (57 MVP + 2 Critical + 8 Enhancement)  
-**Coverage:** All functional requirements + identified gaps  
-**Version:** 1.1 (Updated 2026-05-21)
+**Total User Stories:** 100  
+**Coverage:** Full PRD_ValueX_v1.3 alignment  
+**Version:** 2.0 (Updated 2026-06-04)
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
 2. Technical team to estimate story points
 3. Design team to create UI/UX flows
 4. QA team to derive test cases from acceptance criteria
+5. Review lifecycle state machine stories for implementation sequence
 
 ---
 
 **Story Categories:**
-- **MVP (US-001 to US-057):** 57 stories - Core product functionality
+- **MVP Core (US-001 to US-057):** 57 stories - Original core product functionality
 - **Critical Additions (US-058 to US-059):** 2 stories - Order cancellation flows
 - **Enhancement Backlog (US-060 to US-067):** 8 stories - Future improvements
+- **PRD v1.3 New Features (US-068 to US-087):** 20 stories - Missing functional requirements
+  - Direct buy flow, notifications, history views, preferences
+  - Premium plan details with pricing
+  - Admin features and monitoring
+- **Lifecycle State Machines (US-088 to US-096):** 9 stories - State management
+  - User, Listing, Order, Payment, Shipping, Return, Dispute, Ticket, Subscription
+- **Compliance & Accessibility (US-097 to US-100):** 4 stories - GDPR, accessibility, analytics
+
+---
+
+**PRD v1.3 Coverage Summary:**
+- ✅ All 59 Functional Requirements (FR-1 to FR-59) now have corresponding user stories
+- ✅ All Lifecycle State Machines from Section 18 covered
+- ✅ Premium Plans pricing and features from Section 17 detailed
+- ✅ Admin Analytics from Section 15 addressed
+- ✅ WhatsApp notifications from Section 13 included
+- ✅ Non-functional requirements (accessibility, compliance) covered
 
 **Notes:**
-- Premium feature plan details (bundled features, pricing) are TBD - stories written generically
+- Premium plan pricing: Basic (Free), Smart (₹49/mo), Vision (₹149/mo) - discounted rates
+- Listing plan pricing: Basic (₹49), Boosted (₹149), Priority (₹249) - discounted rates
 - Third-party service integrations (Aadhaar, payment gateway, logistics) are provider-agnostic
-- Auto-release timeouts (7 days for payment, 1 month for video deletion) are configurable
-- All monetary values to be confirmed by finance team
+- Auto-release timeouts: 7 days for payment, 30 days for video deletion, 48 hours for negotiations
+- All monetary values aligned with PRD v1.3
+- State machine transitions require careful implementation to maintain data consistency
+- Lifecycle states should be implemented with audit logging for compliance
 - API endpoint specifications to be detailed in technical design docs
