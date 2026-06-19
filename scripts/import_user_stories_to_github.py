@@ -2,8 +2,8 @@
 """
 Import User Stories from Markdown to GitHub Issues
 
-This script parses user-stories.md or Sprint-plan.md and creates GitHub issues.
-Configuration is loaded from config.json.
+This script combines data from user-stories.md (full details) and Sprint-plan.md
+(sprint info, story points, dependencies) to create comprehensive GitHub issues.
 
 Requirements:
     pip install requests
@@ -18,91 +18,128 @@ import requests
 
 
 class UserStoryParser:
-    """Parse user stories from markdown file."""
+    """Parse user stories from markdown files."""
 
-    def __init__(self, md_file_path: str):
-        self.md_file_path = Path(md_file_path)
-        if not self.md_file_path.exists():
-            raise FileNotFoundError(f"User stories file not found: {md_file_path}")
+    def __init__(self, user_stories_path: str, sprint_plan_path: str):
+        self.user_stories_path = Path(user_stories_path)
+        self.sprint_plan_path = Path(sprint_plan_path)
+
+        if not self.user_stories_path.exists():
+            raise FileNotFoundError(f"User stories file not found: {user_stories_path}")
+        if not self.sprint_plan_path.exists():
+            raise FileNotFoundError(f"Sprint plan file not found: {sprint_plan_path}")
 
     def parse(self) -> List[Dict]:
-        """Parse all user stories from markdown file."""
-        with open(self.md_file_path, 'r', encoding='utf-8') as f:
+        """Parse all user stories combining data from both files."""
+        # Parse full details from user-stories.md
+        print("[*] Parsing detailed user stories from user-stories.md...")
+        detailed_stories = self._parse_user_stories_md()
+
+        # Parse sprint info from Sprint-plan.md
+        print("[*] Parsing sprint information from Sprint-plan.md...")
+        sprint_info = self._parse_sprint_plan_md()
+
+        # Merge the data
+        print("[*] Merging story details with sprint information...")
+        merged_stories = self._merge_story_data(detailed_stories, sprint_info)
+
+        return merged_stories
+
+    def _parse_user_stories_md(self) -> Dict[str, Dict]:
+        """Parse user-stories.md for full story details."""
+        with open(self.user_stories_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Check if this is a Sprint-plan.md file
-        if 'Sprint' in content and '## Stories' in content:
-            return self._parse_sprint_plan(content)
-        else:
-            return self._parse_user_stories(content)
-
-    def _parse_user_stories(self, content: str) -> List[Dict]:
-        """Parse traditional user-stories.md format."""
-        story_pattern = r'### (US-\d+): (.+?)\n(.*?)(?=\n### US-|\n## End of User Stories|\Z)'
+        # Pattern to match user stories
+        story_pattern = r'### (US-\d+|S\d+-\d+): (.+?)\n(.*?)(?=\n### (?:US-|S\d+-)|\n## End of User Stories|\Z)'
         matches = re.findall(story_pattern, content, re.DOTALL)
 
-        user_stories = []
+        stories_dict = {}
         for match in matches:
             story_id, title, body = match
             story = self._parse_story_body(story_id, title, body)
-            user_stories.append(story)
+            stories_dict[story_id] = story
 
-        return user_stories
+        print(f"   Found {len(stories_dict)} detailed user stories")
+        return stories_dict
 
-    def _parse_sprint_plan(self, content: str) -> List[Dict]:
-        """Parse Sprint-plan.md format with sprint organization."""
-        stories = []
+    def _parse_sprint_plan_md(self) -> Dict[str, Dict]:
+        """Parse Sprint-plan.md for sprint organization and metadata."""
+        with open(self.sprint_plan_path, 'r', encoding='utf-8') as f:
+            content = f.read()
 
-        sprint_pattern = r'# (Sprint \d+(?:\s*-[^#]+)?|MVP RELEASE)(.*?)(?=\n# (?:Sprint|MVP)|\Z)'
+        sprint_info = {}
+
+        # Pattern to match sprint sections
+        sprint_pattern = r'# (Sprint \d+|Sprint 0)(.*?)(?=\n# (?:Sprint|Summary|MVP)|\Z)'
         sprint_sections = re.findall(sprint_pattern, content, re.DOTALL)
 
         for sprint_header, sprint_content in sprint_sections:
             sprint_name = sprint_header.strip()
 
-            if 'MVP RELEASE' in sprint_name:
-                continue
-
+            # Extract sprint goal
             goal_match = re.search(r'## Goal\s*\n\s*(.+?)(?=\n\n|\n#)', sprint_content, re.DOTALL)
             sprint_goal = goal_match.group(1).strip() if goal_match else ''
 
-            # Match table rows - handle both 3-column and 5-column formats
-            # Format 1: | ID | Story | Repo | SP | Dependency |
-            # Format 2: | ID | User Story | Repo |
-            table_pattern = r'\|\s*(S\d+-\d+|US-\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|'
+            # Parse table rows for story metadata
+            # Format: | ID | Story | Repo | SP | Dependency |
+            table_pattern = r'\|\s*(S\d+-\d+|US-\d+)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(\d+)\s*\|\s*(.+?)\s*\|'
             story_rows = re.findall(table_pattern, sprint_content)
 
-            seen_ids = set()
-            for story_id, story_title, repos_and_more in story_rows:
+            for story_id, story_title, repos, sp, dependency in story_rows:
                 story_id = story_id.strip()
 
-                # Skip duplicate IDs (header rows or repeated stories)
-                if story_id in seen_ids:
+                # Skip header rows
+                if story_id in ['ID', 'Story']:
                     continue
-                seen_ids.add(story_id)
 
-                # Extract just the repo column (first item before | or end)
-                repos_col = repos_and_more.split('|')[0].strip()
-
-                story = {
-                    'id': story_id,
-                    'title': f"{story_id}: {story_title.strip()}",
+                sprint_info[story_id] = {
                     'sprint': sprint_name,
                     'sprint_goal': sprint_goal,
-                    'repos': [r.strip() for r in repos_col.split(',')],
-                    'as_a': '',
-                    'i_want_to': '',
-                    'so_that': '',
-                    'acceptance_criteria': [],
-                    'edge_cases': [],
-                    'validation_rules': [],
-                    'error_scenarios': []
+                    'story_title': story_title.strip(),
+                    'repos': [r.strip() for r in repos.split(',') if r.strip()],
+                    'story_points': int(sp),
+                    'dependency': dependency.strip()
                 }
-                stories.append(story)
 
-        return stories
+        print(f"   Found {len(sprint_info)} stories in sprint plan")
+        return sprint_info
+
+    def _merge_story_data(self, detailed_stories: Dict, sprint_info: Dict) -> List[Dict]:
+        """Merge detailed story data with sprint information."""
+        merged = []
+
+        for story_id, sprint_data in sprint_info.items():
+            # Get detailed story data if available
+            story_detail = detailed_stories.get(story_id, {})
+
+            # Merge the data
+            merged_story = {
+                'id': story_id,
+                'title': story_detail.get('title', f"{story_id}: {sprint_data['story_title']}"),
+                'sprint': sprint_data['sprint'],
+                'sprint_goal': sprint_data['sprint_goal'],
+                'repos': sprint_data['repos'],
+                'story_points': sprint_data['story_points'],
+                'dependency': sprint_data['dependency'],
+                'as_a': story_detail.get('as_a', ''),
+                'i_want_to': story_detail.get('i_want_to', ''),
+                'so_that': story_detail.get('so_that', ''),
+                'acceptance_criteria': story_detail.get('acceptance_criteria', []),
+                'edge_cases': story_detail.get('edge_cases', []),
+                'validation_rules': story_detail.get('validation_rules', []),
+                'error_scenarios': story_detail.get('error_scenarios', [])
+            }
+
+            merged.append(merged_story)
+
+        # Sort by sprint and story ID
+        merged.sort(key=lambda x: (x['sprint'], x['id']))
+
+        return merged
 
     def _parse_story_body(self, story_id: str, title: str, body: str) -> Dict:
-        """Parse individual user story body."""
+        """Parse individual user story body for all details."""
         story = {
             'id': story_id,
             'title': f"{story_id}: {title.strip()}",
@@ -116,15 +153,15 @@ class UserStoryParser:
         }
 
         # Extract "As a / I want to / So that"
-        as_a_match = re.search(r'\*\*As a\*\* (.+?)(?=\n)', body)
+        as_a_match = re.search(r'\*\*As (?:a|an)\*\* (.+?)(?=\n)', body, re.IGNORECASE)
         if as_a_match:
             story['as_a'] = as_a_match.group(1).strip()
 
-        i_want_match = re.search(r'\*\*I want to\*\* (.+?)(?=\n)', body)
+        i_want_match = re.search(r'\*\*I want(?:\s+to)?\*\* (.+?)(?=\n)', body, re.IGNORECASE)
         if i_want_match:
             story['i_want_to'] = i_want_match.group(1).strip()
 
-        so_that_match = re.search(r'\*\*So that\*\* (.+?)(?=\n)', body)
+        so_that_match = re.search(r'\*\*So that\*\* (.+?)(?=\n)', body, re.IGNORECASE)
         if so_that_match:
             story['so_that'] = so_that_match.group(1).strip()
 
@@ -137,17 +174,29 @@ class UserStoryParser:
         return story
 
     def _extract_section(self, body: str, section_name: str) -> List[str]:
-        """Extract bullet points from a section."""
-        pattern = rf'\*\*{section_name}:\*\*\n(.*?)(?=\n\*\*[A-Z]|\n---|\Z)'
+        """Extract bullet points and Given-When-Then from a section."""
+        pattern = rf'\*\*{section_name}:\*\*\n(.*?)(?=\n\*\*[A-Z]|\n---|\n##|\Z)'
         match = re.search(pattern, body, re.DOTALL)
 
         if not match:
             return []
 
         section_content = match.group(1).strip()
+        items = []
+
         # Extract bullet points
         bullets = re.findall(r'^- (.+)$', section_content, re.MULTILINE)
-        return [bullet.strip() for bullet in bullets]
+        items.extend([bullet.strip() for bullet in bullets])
+
+        # Extract Given-When-Then patterns
+        gwt_pattern = r'- (Given .+?)\n- (When .+?)\n- (Then .+?)(?=\n-|\n\*\*|\Z)'
+        gwt_matches = re.findall(gwt_pattern, section_content, re.DOTALL)
+        for given, when, then in gwt_matches:
+            gwt_text = f"{given.strip()} {when.strip()} {then.strip()}"
+            if gwt_text not in items:
+                items.append(gwt_text)
+
+        return items
 
 
 class GitHubIssueCreator:
@@ -195,8 +244,12 @@ class GitHubIssueCreator:
         if dry_run:
             print(f"\n{'='*60}")
             print(f"[DRY RUN] Would create issue: {story['title']}")
+            print(f"Sprint: {story.get('sprint', 'N/A')}")
+            print(f"Story Points: {story.get('story_points', 'N/A')}")
+            print(f"Repos: {', '.join(story.get('repos', []))}")
+            print(f"Dependency: {story.get('dependency', 'None')}")
             print(f"Labels: {', '.join(issue_data['labels'])}")
-            print(f"Body preview (first 200 chars):\n{issue_body[:200]}...")
+            print(f"Body preview (first 300 chars):\n{issue_body[:300]}...")
             print(f"{'='*60}")
             return {'number': 'DRY_RUN', 'html_url': 'DRY_RUN'}
 
@@ -216,22 +269,28 @@ class GitHubIssueCreator:
             return None
 
     def _format_issue_body(self, story: Dict) -> str:
-        """Format user story as GitHub issue body."""
+        """Format user story as comprehensive GitHub issue body."""
         body_parts = []
 
-        # Sprint information (if available)
-        if story.get('sprint'):
-            body_parts.append("## Sprint Information\n")
-            body_parts.append(f"**Sprint:** {story['sprint']}")
-            if story.get('sprint_goal'):
-                body_parts.append(f"**Sprint Goal:** {story['sprint_goal']}")
-            if story.get('repos'):
-                body_parts.append(f"**Repositories:** {', '.join(story['repos'])}")
-            body_parts.append("")
+        # Sprint and Metadata Information
+        body_parts.append("## 📋 Sprint Information\n")
+        body_parts.append(f"**Sprint:** {story.get('sprint', 'N/A')}")
+        if story.get('sprint_goal'):
+            body_parts.append(f"**Sprint Goal:** {story['sprint_goal']}")
+        body_parts.append(f"**Story Points:** {story.get('story_points', 'N/A')}")
 
-        # User Story (if traditional format)
+        if story.get('repos'):
+            repos_formatted = ', '.join([f'`{r}`' for r in story['repos']])
+            body_parts.append(f"**Repositories:** {repos_formatted}")
+
+        if story.get('dependency') and story['dependency'] not in ['None', 'none', 'N/A']:
+            body_parts.append(f"**Dependencies:** {story['dependency']}")
+
+        body_parts.append("")
+
+        # User Story (if available)
         if story.get('as_a') or story.get('i_want_to') or story.get('so_that'):
-            body_parts.append("## User Story\n")
+            body_parts.append("## 👤 User Story\n")
             if story.get('as_a'):
                 body_parts.append(f"**As a** {story['as_a']}")
             if story.get('i_want_to'):
@@ -242,48 +301,72 @@ class GitHubIssueCreator:
 
         # Acceptance Criteria
         if story['acceptance_criteria']:
-            body_parts.append("## Acceptance Criteria\n")
+            body_parts.append("## ✅ Acceptance Criteria\n")
             for criteria in story['acceptance_criteria']:
-                body_parts.append(f"- [ ] {criteria}")
+                # Clean up the criteria text
+                criteria_text = criteria.replace('Given ', '**Given** ') \
+                                       .replace('When ', '**When** ') \
+                                       .replace('Then ', '**Then** ') \
+                                       .replace('And ', '**And** ')
+                body_parts.append(f"- [ ] {criteria_text}")
             body_parts.append("")
 
         # Edge Cases
         if story['edge_cases']:
-            body_parts.append("## Edge Cases\n")
+            body_parts.append("## ⚠️ Edge Cases\n")
             for edge_case in story['edge_cases']:
                 body_parts.append(f"- {edge_case}")
             body_parts.append("")
 
         # Validation Rules
         if story['validation_rules']:
-            body_parts.append("## Validation Rules\n")
+            body_parts.append("## 🔒 Validation Rules\n")
             for rule in story['validation_rules']:
                 body_parts.append(f"- {rule}")
             body_parts.append("")
 
         # Error Scenarios
         if story['error_scenarios']:
-            body_parts.append("## Error Scenarios\n")
+            body_parts.append("## ❌ Error Scenarios\n")
             for error in story['error_scenarios']:
-                body_parts.append(f"- {error}")
+                # Highlight error codes
+                error_text = re.sub(r'`([A-Z_]+)`', r'**`\1`**', error)
+                body_parts.append(f"- {error_text}")
+            body_parts.append("")
+
+        # Technical Notes (if any)
+        if story.get('technical_notes'):
+            body_parts.append("## 🔧 Technical Notes\n")
+            body_parts.append(story['technical_notes'])
             body_parts.append("")
 
         # Footer
         body_parts.append("---")
-        source = "Sprint-plan.md" if story.get('sprint') else "user-stories.md"
-        body_parts.append(f"**Source:** {source}")
-        body_parts.append(f"**Story ID:** {story['id']}")
+        body_parts.append(f"📄 **Source:** user-stories.md + Sprint-plan.md")
+        body_parts.append(f"🔖 **Story ID:** `{story['id']}`")
+        if story.get('dependency') and story['dependency'] not in ['None', 'none', 'N/A']:
+            body_parts.append(f"🔗 **Blocked by:** {story['dependency']}")
 
         return "\n".join(body_parts)
 
     def _get_labels(self, story: Dict) -> List[str]:
-        """Determine labels for the issue based on story ID and config."""
+        """Determine comprehensive labels for the issue."""
         labels = list(self.config.get('default_labels', ['user-story']))
 
-        # Add sprint label if available
+        # Add sprint label
         if story.get('sprint'):
             sprint_slug = story['sprint'].lower().replace(' ', '-').replace('&', 'and')
             labels.append(sprint_slug)
+
+        # Add story points label
+        if story.get('story_points'):
+            sp = story['story_points']
+            if sp <= 3:
+                labels.append('size: small')
+            elif sp <= 8:
+                labels.append('size: medium')
+            else:
+                labels.append('size: large')
 
         # Add repository labels
         if story.get('repos'):
@@ -292,22 +375,30 @@ class GitHubIssueCreator:
                 if repo_clean and repo_clean != 'sp':
                     labels.append(f"repo:{repo_clean}")
 
-        # Extract numeric ID for range-based labels
+        # Add dependency label
+        if story.get('dependency') and story['dependency'] not in ['None', 'none', 'N/A']:
+            labels.append('has-dependency')
+
+        # Extract numeric ID for category-based labels
         story_id = story['id']
         if story_id.startswith('US-'):
             story_number = int(story_id.replace('US-', ''))
 
+            # Add category labels from config
             label_mapping = self.config.get('label_mapping', {})
             for label_name, range_config in label_mapping.items():
                 if range_config['start'] <= story_number <= range_config['end']:
                     labels.append(label_name)
 
+            # Add priority labels from config
             if 'priority_mapping' in self.config:
                 for priority, range_config in self.config['priority_mapping'].items():
                     if range_config['start'] <= story_number <= range_config['end']:
                         labels.append(priority)
+                        break  # Only add one priority
         elif story_id.startswith('S'):
             labels.append('sprint-setup')
+            labels.append('priority: critical')
 
         # Remove duplicates while preserving order
         seen = set()
@@ -361,7 +452,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='Import user stories from markdown to GitHub issues'
+        description='Import user stories from markdown to GitHub issues with full details'
     )
     parser.add_argument(
         '--config',
@@ -379,17 +470,12 @@ def main():
     )
     parser.add_argument(
         '--sprint',
-        help='Import only stories from specific sprint (e.g., "Sprint 1", "Sprint 0")'
+        help='Import only stories from specific sprint (e.g., "Sprint 1", "0")'
     )
     parser.add_argument(
         '--skip-existing',
         action='store_true',
         help='Skip stories that already exist as issues'
-    )
-    parser.add_argument(
-        '--source',
-        choices=['user-stories', 'sprint-plan'],
-        help='Source file type (auto-detected if not specified)'
     )
 
     args = parser.parse_args()
@@ -398,11 +484,24 @@ def main():
     print("[*] Loading configuration...")
     config = load_config(args.config)
 
-    # Parse user stories
-    print(f"[*] Parsing user stories from {config['user_stories_file']}...")
-    parser = UserStoryParser(config['user_stories_file'])
-    all_stories = parser.parse()
-    print(f"[+] Found {len(all_stories)} user stories")
+    # Set default paths if not in config
+    if 'user_stories_file' not in config:
+        config['user_stories_file'] = '../Documents/user-stories.md'
+    if 'sprint_plan_file' not in config:
+        config['sprint_plan_file'] = '../Documents/Sprint-plan.md'
+
+    # Parse user stories (combining both files)
+    print(f"\n[*] Parsing user stories...")
+    try:
+        parser = UserStoryParser(
+            config['user_stories_file'],
+            config['sprint_plan_file']
+        )
+        all_stories = parser.parse()
+        print(f"[+] Successfully merged {len(all_stories)} user stories\n")
+    except Exception as e:
+        print(f"[!] Error parsing user stories: {e}")
+        sys.exit(1)
 
     # Filter stories by range if specified
     if args.story_range:
@@ -445,7 +544,7 @@ def main():
         # Check if issue already exists
         if args.skip_existing and not args.dry_run:
             if github.issue_exists(story['id']):
-                print(f"[-]  Skipped {story['id']}: Already exists")
+                print(f"[-] Skipped {story['id']}: Already exists")
                 skipped_count += 1
                 continue
 
@@ -461,7 +560,7 @@ def main():
     print("[*] Summary:")
     print(f"   [+] Created: {created_count}")
     if skipped_count > 0:
-        print(f"   [-]  Skipped: {skipped_count}")
+        print(f"   [-] Skipped: {skipped_count}")
     if failed_count > 0:
         print(f"   [!] Failed: {failed_count}")
     print(f"{'='*60}")

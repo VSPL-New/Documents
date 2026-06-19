@@ -1,13 +1,16 @@
 # User Stories to GitHub Issues Importer
 
-This script imports user stories from `user-stories.md` or `Sprint-plan.md` to GitHub issues automatically.
+This script **combines data from both files** to create comprehensive GitHub issues:
+- `user-stories.md` - Full story details (acceptance criteria, edge cases, validation rules, error scenarios)
+- `Sprint-plan.md` - Sprint organization (sprint number, story points, dependencies, repo mapping)
 
 ## Features
 
-✅ **Parses Markdown** - Extracts all 100 user stories from user-stories.md or Sprint-plan.md  
-✅ **Sprint Planning** - Supports sprint-based organization with repository assignments  
-✅ **Structured Issues** - Creates well-formatted GitHub issues with sections  
-✅ **Smart Labels** - Auto-assigns labels based on story category, priority, sprint, and repo  
+✅ **Complete Story Details** - All acceptance criteria, edge cases, validation rules, error scenarios  
+✅ **Sprint Information** - Sprint number, goal, story points, dependencies from Sprint-plan.md  
+✅ **Smart Merging** - Automatically combines data from both markdown files  
+✅ **Comprehensive Labels** - Sprint, repo, size, category, priority, dependency tracking  
+✅ **Rich Formatting** - Emoji-enhanced sections, checkboxes, highlighted error codes  
 ✅ **Dry Run Mode** - Preview issues before creating them  
 ✅ **Range Selection** - Import specific story ranges (e.g., US-001 to US-010)  
 ✅ **Sprint Filter** - Import specific sprints (e.g., Sprint 0, Sprint 1)  
@@ -51,7 +54,7 @@ Create a GitHub Personal Access Token with `repo` permissions:
 ### 1. Copy Configuration Template
 
 ```bash
-cd scripts
+cd Documents/scripts
 cp config.example.json config.json
 ```
 
@@ -62,7 +65,8 @@ cp config.example.json config.json
   "github_token": "ghp_YOUR_TOKEN_HERE",
   "repo_owner": "your-username-or-org",
   "repo_name": "ValueX-Code",
-  "user_stories_file": "../Documents/user-stories.md",
+  "user_stories_file": "../user-stories.md",
+  "sprint_plan_file": "../Sprint-plan.md",
   ...
 }
 ```
@@ -72,7 +76,7 @@ cp config.example.json config.json
 ### 3. Add config.json to .gitignore
 
 ```bash
-echo "scripts/config.json" >> ../.gitignore
+echo "Documents/scripts/config.json" >> .gitignore
 ```
 
 ---
@@ -151,66 +155,92 @@ Each GitHub issue will be created with this structure:
 US-001: User Registration with Aadhaar Verification
 ```
 
-### Body (from user-stories.md)
+### Body (Combined from both files)
 
 ```markdown
-## User Story
+## 📋 Sprint Information
+
+**Sprint:** Sprint 1 - Identity & User Management
+**Sprint Goal:** Allow users to register, verify identity and manage profiles
+**Story Points:** 8
+**Repositories:** `backend`, `mobile`
+**Dependencies:** S0-001
+
+## 👤 User Story
 
 **As a** new user
 **I want to** register using my Aadhaar
 **So that** I can access the platform securely with verified identity
 
-## Acceptance Criteria
+## ✅ Acceptance Criteria
 
-- [ ] Given I am on the registration page
-- [ ] When I enter my mobile number
-- [ ] Then I receive an OTP for mobile verification
-...
+- [ ] **Given** I am on the registration page **When** I enter my mobile number **Then** I receive an OTP for mobile verification
+- [ ] **When** I complete Aadhaar verification **Then** my account is created successfully
+- [ ] **And** I am assigned a unique user ID
+- [ ] **And** my verified identity is stored securely
 
-## Edge Cases
+## ⚠️ Edge Cases
 
 - User already registered with same Aadhaar
-- Aadhaar verification fails
-...
+- Aadhaar verification fails (invalid, expired, or API timeout)
+- Mobile number already linked to another account
+- User cancels Aadhaar verification mid-flow
+- Network interruption during verification
 
-## Validation Rules
+## 🔒 Validation Rules
 
 - Mobile number must be 10 digits
+- Mobile number must be unique per account
 - Aadhaar must be valid 12-digit number
-...
+- One Aadhaar can link to only one account
+- User must accept terms & conditions
 
-## Error Scenarios
+## ❌ Error Scenarios
 
-- `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered"
-...
-
----
-**Source:** user-stories.md
-**Story ID:** US-001
-```
-
-### Body (from Sprint-plan.md)
-
-```markdown
-## Sprint Information
-
-**Sprint:** Sprint 1 - Identity & User Management
-**Sprint Goal:** Allow users to register, verify identity and manage profiles.
-**Repositories:** backend, mobile
+- **`ERROR_MOBILE_ALREADY_REGISTERED`**: "This mobile number is already registered"
+- **`ERROR_AADHAAR_ALREADY_USED`**: "This Aadhaar is already linked to an account"
+- **`ERROR_AADHAAR_VERIFICATION_FAILED`**: "Unable to verify Aadhaar. Please try again"
 
 ---
-**Source:** Sprint-plan.md
-**Story ID:** US-001
+📄 **Source:** user-stories.md + Sprint-plan.md
+🔖 **Story ID:** `US-001`
+🔗 **Blocked by:** S0-001
 ```
 
 ### Labels
 
-Issues are automatically tagged with:
-- **Category labels**: `authentication`, `listing`, `payment`, `shipping`, etc.
-- **Priority labels**: `priority: critical`, `priority: high`, `priority: medium`, `priority: low`
-- **Sprint labels** (from Sprint-plan.md): `sprint-0-foundation-architecture`, `sprint-1-identity-user-management`, etc.
-- **Repository labels** (from Sprint-plan.md): `repo:backend`, `repo:mobile`, `repo:web`, `repo:infra`
-- **Custom labels**: `user-story`, `PRD-v1.3`, `sprint-setup`
+Issues are automatically tagged with comprehensive labels:
+
+**Sprint Labels:**
+- `sprint-0`, `sprint-1`, `sprint-2`, etc.
+
+**Repository Labels:**
+- `repo:backend`, `repo:mobile`, `repo:web`, `repo:ai`, `repo:infra`
+
+**Size Labels** (based on story points):
+- `size: small` (1-3 SP)
+- `size: medium` (4-8 SP)  
+- `size: large` (9+ SP)
+
+**Category Labels:**
+- `authentication`, `listing`, `search`, `communication`
+- `negotiation`, `payment`, `shipping`, `returns`
+- `ratings`, `premium`, `support`, `trust-safety`
+- `admin`, `new-features`, `lifecycle`, `compliance`
+
+**Priority Labels:**
+- `priority: critical` - Core MVP features
+- `priority: high` - Essential features
+- `priority: medium` - Important features
+- `priority: low` - Enhancement backlog
+
+**Dependency Labels:**
+- `has-dependency` - Story depends on other stories
+- `sprint-setup` - Infrastructure setup (S0-xxx)
+
+**Custom Labels:**
+- `user-story` - All stories
+- `PRD-v1.3` - Aligned with PRD v1.3
 
 ---
 
