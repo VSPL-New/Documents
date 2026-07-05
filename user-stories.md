@@ -1,8 +1,8 @@
 # ValueX User Stories
 
-**Version:** 2.0  
-**Based on:** PRD_ValueX_v1.3.docx  
-**Date:** 2026-06-04
+**Version:** 3.0  
+**Based on:** PRD_ValueX_v1.3.docx + Flutter Plan Gap Analysis  
+**Date:** 2026-07-05
 
 ---
 
@@ -240,6 +240,11 @@
 - `ERROR_MAX_CATEGORIES`: "Maximum 4 categories allowed"
 - `WARNING_UNRELATED_CATEGORIES`: "Selected categories seem unrelated. This may affect visibility"
 
+**Flutter Implementation Notes:**
+- Multi-select category picker widget with hierarchical taxonomy
+- Primary category chip shown separately from additional tags
+- Tappable category tree with search/filter capability
+
 ---
 
 ### US-007: Restricted Items Prevention
@@ -396,6 +401,11 @@
 - `ERROR_PRICE_CHANGE_TOO_HIGH`: "Price change >20% requires admin approval"
 - `WARNING_BUYERS_WILL_BE_NOTIFIED`: "Active viewers will be notified of changes"
 
+**Flutter Implementation Notes:**
+- Edit launches pre-filled CreateListingScreen with existing data
+- Delete requires confirmation bottom sheet with warning
+- Swipe-to-delete with undo option in MyListingsScreen (within 2s)
+
 ---
 
 ## Buyer - Discovery & Search
@@ -549,6 +559,12 @@
 - `ERROR_CALL_FAILED`: "Unable to connect call. Please try again"
 - `ERROR_NO_ANSWER`: "Seller didn't answer. Try again later"
 
+**Flutter Implementation Notes:**
+- Requires VoIP SDK integration (Agora / WebRTC via flutter_webrtc)
+- `permission_handler` for microphone permission request
+- In-call UI overlay with mute, speaker, end-call controls
+- Call state managed via Riverpod CallNotifier
+
 ---
 
 ### US-015: Video Call with Recording
@@ -589,6 +605,12 @@
 - `ERROR_SELLER_DECLINED`: "Seller declined video call"
 - `ERROR_RECORDING_FAILED`: "Recording unavailable but call can proceed"
 - `WARNING_LOW_BANDWIDTH`: "Poor connection. Video quality may be affected"
+
+**Flutter Implementation Notes:**
+- Same VoIP SDK as US-014 (Agora preferred for recording support)
+- Consent dialog mandatory before initiating; cannot skip
+- Camera preview + remote video in PiP layout
+- Network quality indicator widget during call
 
 ---
 
@@ -701,6 +723,11 @@
 - `ERROR_ACCEPTANCE_EXPIRED`: "Price acceptance expired. Please re-negotiate"
 - `ERROR_UNAUTHORIZED_CHECKOUT`: "Cannot proceed without seller acceptance"
 
+**Flutter Implementation Notes:**
+- Checkout button disabled state tied to negotiation state in Riverpod
+- Status badge on each cart item (Pending / Accepted / Expired)
+- Real-time state update via polling or WebSocket when seller accepts
+
 ---
 
 ### US-019: Add to Cart (Multi-Item)
@@ -743,6 +770,11 @@
 - `ERROR_MAX_CART_ITEMS`: "Cart limit reached (20 items)"
 - `ERROR_CART_EXPIRED`: "Cart items expired. Please add again"
 
+**Flutter Implementation Notes:**
+- CartScreen groups items by seller using ListView with section headers
+- 24hr expiry countdown shown per item as a subtle timer chip
+- Cart persisted locally via `isar` / `drift`, synced to backend on open
+
 ---
 
 ### US-020: Choose Delivery or Self-Pickup
@@ -783,6 +815,11 @@
 - `ERROR_NO_DELIVERY_AVAILABLE`: "Seller doesn't offer delivery to your location"
 - `ERROR_NO_SELF_PICKUP`: "Self-pickup not available for this item"
 - `ERROR_INVALID_ADDRESS`: "Please enter complete delivery address"
+
+**Flutter Implementation Notes:**
+- Delivery option card with Google Maps address picker
+- Shipping cost calculated via backend API on address selection
+- Self-pickup shows seller location on embedded map widget
 
 ---
 
@@ -866,6 +903,11 @@
 **Error Scenarios:**
 - `ERROR_SELLER_DISABLED_PAY_AT_PICKUP`: "Seller requires advance payment"
 - `WARNING_NO_PLATFORM_PROTECTION`: "Pay at Pickup is not protected by escrow"
+
+**Flutter Implementation Notes:**
+- Warning banner prominently shown for "Pay at Pickup" option
+- "Pay at Pickup" option rendered only when seller has enabled it
+- Seller enable/disable toggle in listing settings
 
 ---
 
@@ -1237,6 +1279,11 @@
 - `ERROR_MAX_ATTEMPTS_REACHED`: "Item returned to seller. Refund initiated"
 - `ERROR_INVALID_RESCHEDULE_TIME`: "Selected time unavailable"
 - `WARNING_FINAL_ATTEMPT`: "This is your last delivery attempt"
+
+**Flutter Implementation Notes:**
+- Failed delivery triggers push notification with deep link to reschedule screen
+- Date/time slot picker scoped to next 7 days
+- Attempt counter displayed as progress indicator (e.g., "Attempt 2 of 3")
 
 ---
 
@@ -1630,6 +1677,11 @@
 - `ERROR_PAYMENT_METHOD_EXPIRED`: "Update payment method to continue subscription"
 - `WARNING_RENEWAL_FAILED`: "Payment failed. Update payment method within 3 days"
 
+**Flutter Implementation Notes:**
+- Subscription card in ProfileScreen with current plan details
+- Cancellation flow with "Access until [date]" confirmation
+- 3-day pre-renewal push notification via FCM
+
 ---
 
 ## Support & Assistance
@@ -1666,6 +1718,11 @@
 - `ERROR_BOT_UNAVAILABLE`: "AI assistant temporarily unavailable. Try again"
 - `ESCALATE_TO_HUMAN`: "Let me connect you with a support agent"
 
+**Flutter Implementation Notes:**
+- Floating help FAB visible on all main screens
+- Chat widget implemented as a modal bottom sheet with DraggableScrollableSheet
+- Calls `valuex-ai` internal API; never exposed publicly
+
 ---
 
 ### US-044: Multi-Language Support
@@ -1676,7 +1733,7 @@
 **Acceptance Criteria:**
 - Given I am in app settings
 - When I tap "Language"
-- Then I see list of supported languages (e.g., English, Hindi, Tamil, Telugu, Bengali, etc.)
+- Then I see list of supported languages (English, Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, Punjabi)
 - When I select a language
 - Then entire app UI changes to that language
 - And listings/messages remain in original language
@@ -1696,6 +1753,12 @@
 
 **Error Scenarios:**
 - `WARNING_PARTIAL_TRANSLATION`: "Some content not available in this language"
+
+**Flutter Implementation Notes:**
+- `flutter_localizations` + `intl` package with ARB files per language
+- Language selection persisted in `SharedPreferences`
+- App restarts locale without full rebuild via `Locale` state in Riverpod
+- LanguageScreen already scaffolded — needs localization wiring
 
 ---
 
@@ -1806,6 +1869,11 @@
 - `ERROR_DISPUTE_WINDOW_CLOSED`: "Dispute window expired"
 - `ERROR_INSUFFICIENT_EVIDENCE`: "Please provide more details"
 - `DISPUTE_UNDER_REVIEW`: "Dispute submitted. Expect response in 48 hours"
+
+**Flutter Implementation Notes:**
+- DisputeScreen already scaffolded — needs dispute type picker, evidence upload (images + text), and submission API call
+- Evidence images use same `image_picker` + upload flow as listing creation
+- Dispute ID displayed in confirmation screen with copy-to-clipboard
 
 ---
 
@@ -2219,6 +2287,11 @@
 - `ERROR_ALREADY_CANCELLED`: "This order is already cancelled"
 - `ERROR_PICKUP_IN_PROGRESS`: "Pickup in progress. Contact logistics partner"
 
+**Flutter Implementation Notes:**
+- "Cancel Order" button visible only when order state is `AWAITING_PICKUP`
+- Confirmation bottom sheet shows itemised refund breakdown
+- Optimistic UI update with rollback on API error
+
 ---
 
 ### US-059: Order Cancellation by Seller (With Penalty)
@@ -2263,6 +2336,11 @@
 - `WARNING_PENALTY_APPLIED`: "Order cancelled. Penalty of ₹X deducted"
 - `WARNING_ACCOUNT_AT_RISK`: "Multiple cancellations detected. Next violation may result in suspension"
 - `ACCOUNT_SUSPENDED`: "Too many cancellations. Account suspended for review"
+
+**Flutter Implementation Notes:**
+- Penalty amount calculated and shown in confirmation dialog before seller confirms
+- Cancellation count badge visible in seller dashboard header
+- Cooling-period timer shown on the affected listing in MyListingsScreen
 
 ---
 
@@ -2427,6 +2505,11 @@
 - `ERROR_PAYMENT_FAILED`: "Upgrade failed. Try again"
 - `ERROR_DOWNGRADE_NOT_ALLOWED`: "Downgrade not supported. Create new listing"
 
+**Flutter Implementation Notes:**
+- "Upgrade Plan" CTA shown in MyListingsScreen item detail
+- Price difference calculated and displayed before payment confirmation
+- Reuses ListingPlanScreen with current plan pre-selected and lower options disabled
+
 ---
 
 ### US-065: Bulk Listing Upload
@@ -2493,6 +2576,12 @@
 - `ERROR_MAX_SAVED_SEARCHES`: "Maximum 10 saved searches allowed"
 - `ERROR_INVALID_CRITERIA`: "Search criteria no longer valid"
 
+**Flutter Implementation Notes:**
+- Distinct from SavedItemsScreen (bookmarked listings); this is SavedSearchesScreen
+- Save Search button in HomeScreen/search results header
+- Toggle switch per saved search for alert on/off
+- FCM topic subscription per saved search criteria
+
 ---
 
 ### US-067: Seller Performance Analytics
@@ -2527,6 +2616,11 @@
 **Error Scenarios:**
 - `NO_DATA_AVAILABLE`: "No analytics data yet"
 - `ERROR_LOADING_ANALYTICS`: "Unable to load analytics. Refresh"
+
+**Flutter Implementation Notes:**
+- Analytics tab inside ProfileScreen or standalone SellerAnalyticsScreen
+- Charts via `fl_chart` package (bar chart for views, line for conversion trend)
+- Date range picker with 7d / 30d / 90d presets
 
 ---
 
@@ -2563,6 +2657,11 @@
 - `ERROR_ITEM_SOLD`: "This item is no longer available"
 - `ERROR_PRICE_CHANGED`: "Price has changed. Please review"
 - `ERROR_BUY_NOW_DISABLED`: "Seller requires price negotiation for this item"
+
+**Flutter Implementation Notes:**
+- ListingDetailScreen shows "Buy Now" and "Make Offer" as two distinct CTAs
+- 15-minute reservation timer shown in checkout header with countdown
+- "Buy Now" toggle in seller's listing creation/edit settings
 
 ---
 
@@ -2838,6 +2937,12 @@
 - `ERROR_ITEM_UNAVAILABLE`: "Item no longer available. Order cancelled"
 - `ERROR_RETRY_EXPIRED`: "Retry window expired. Please create new order"
 
+**Flutter Implementation Notes:**
+- Retry state tracked in PaymentNotifier (Riverpod)
+- 15-minute countdown timer displayed on retry screen
+- Attempt counter shown: "Attempt 2 of 3"
+- On max retries or timeout, redirect to HomeScreen with toast
+
 ---
 
 ### US-076: Seller Negotiation Management
@@ -2884,6 +2989,11 @@
 - `ERROR_ALREADY_ACCEPTED`: "You've already accepted another offer for this item"
 - `ERROR_INVALID_COUNTER`: "Counter offer must be between ₹X and ₹Y"
 - `WARNING_MAX_NEGOTIATIONS`: "Maximum negotiation rounds reached"
+
+**Flutter Implementation Notes:**
+- Offers tab in MessagesScreen or standalone OffersScreen accessible from ProfileScreen
+- Offer cards sorted by expiry (soonest first) with countdown chips
+- Counter offer uses a bottom sheet with price input slider between buyer offer and listed price
 
 ---
 
@@ -3330,6 +3440,11 @@
 - `ERROR_DELIVERY_FAILED`: Falls back to SMS/Email
 - `RATE_LIMIT_REACHED`: Next message queued for tomorrow
 
+**Flutter Implementation Notes:**
+- Opt-in toggle in NotificationsSettingsScreen (linked to US-087)
+- Deep link scheme: `valuex://order/{orderId}` handled via `go_router` deep link config
+- WhatsApp Business API integration is backend-side; mobile only manages opt-in preference
+
 ---
 
 ### US-087: Notification Preferences Management
@@ -3372,6 +3487,12 @@
 **Error Scenarios:**
 - `WARNING_SECURITY_NOTIFICATIONS`: "Security notifications cannot be disabled"
 - `SUCCESS_PREFERENCES_SAVED`: "Notification preferences updated"
+
+**Flutter Implementation Notes:**
+- NotificationsSettingsScreen accessible from ProfileScreen settings
+- Category/channel matrix rendered as grouped `SwitchListTile` widgets
+- Security category rows rendered non-interactive with a lock icon
+- Preferences stored in `flutter_secure_storage` and synced to backend
 
 ---
 
@@ -3936,8 +4057,8 @@
 ## End of User Stories Document
 
 **Total User Stories:** 100  
-**Coverage:** Full PRD_ValueX_v1.3 alignment  
-**Version:** 2.0 (Updated 2026-06-04)
+**Coverage:** Full PRD_ValueX_v1.3 alignment + Flutter Implementation Notes  
+**Version:** 3.0 (Updated 2026-07-05)
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
