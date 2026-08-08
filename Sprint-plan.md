@@ -33,6 +33,14 @@ Establish engineering foundation, repositories, CI/CD, environments, architectur
 | S0-007 | OpenAPI Framework         | backend | 5  | S0-001     |
 | S0-008 | Lifecycle State Framework | backend | 5  | S0-001     |
 
+## Deferred Follow-ups
+
+- **pgvector extension** — LLD §5.3 lists `CREATE EXTENSION vector` for visual
+  search, but stock `postgres:16-alpine` doesn't bundle pgvector. Deferred out
+  of S0-004 (not required for the "PostgreSQL accessible" exit criterion).
+  Needs a `pgvector/pgvector:pg16` base image (or a custom Dockerfile layer)
+  and should be scoped as its own story once a visual-search sprint is planned.
+
 ---
 
 # Sprint 1 - Identity & User Management
