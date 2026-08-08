@@ -75,10 +75,15 @@ Data Security
 ### Users
 
 ```text
-Mobile OTP
-+
-JWT
+Primary:
+  Mobile OTP → JWT
+
+Optional Convenience:
+  Google Sign-In → (mobile verify on first use) → JWT
+  Apple Sign-In  → (mobile verify on first use) → JWT
 ```
+
+All three methods produce the same JWT upon completion. Mobile number is always the account anchor — social login on first use must still collect and verify a mobile number via OTP.
 
 ---
 
@@ -125,9 +130,13 @@ Redis
   "userId": "uuid",
   "role": "BUYER",
   "status": "ACTIVE",
-  "subscription": "VISION"
+  "subscription": "VISION",
+  "aadhaarVerified": false,
+  "authProvider": "MOBILE_OTP"
 }
 ```
+
+`authProvider` values: `MOBILE_OTP`, `GOOGLE`, `APPLE`
 
 ---
 

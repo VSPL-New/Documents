@@ -39,23 +39,31 @@ Establish engineering foundation, repositories, CI/CD, environments, architectur
 
 ## Goal
 
-Allow users to register, verify identity and manage profiles.
+Allow users to register and login via multiple auth methods, verify identity, and manage profiles.
 
 ## Stories
 
 | ID     | Story                                       | Repo            | SP | Dependency |
 | ------ | ------------------------------------------- | --------------- | -- | ---------- |
-| US-001 | User Registration with Aadhaar Verification | backend, mobile | 8  | S0-001     |
+| US-001 | User Registration via Mobile OTP            | backend, mobile | 8  | S0-001     |
+| US-101 | Google Sign-In (Optional Convenience Login) | backend, mobile | 5  | US-001     |
+| US-102 | Apple Sign-In (Optional Convenience Login)  | backend, mobile | 5  | US-001     |
 | US-002 | One Account Per User Enforcement            | backend         | 3  | US-001     |
 | US-003 | User Profile Management                     | backend, mobile | 5  | US-001     |
+| US-103 | Profile Hub / Account Menu Navigation       | backend, mobile | 5  | US-003     |
+| US-104 | Account Logout                              | backend, mobile | 2  | US-001     |
+| US-105 | Account Security Settings                   | backend, mobile | 5  | US-003     |
 | US-077 | Critical Event Notifications                | backend, mobile | 5  | US-001     |
 | US-088 | Lifecycle State - User Account              | backend         | 3  | US-001     |
 
 ## Exit Criteria
 
-* Aadhaar onboarding complete
-* Login operational
+* Mobile OTP registration and login operational
+* Google Sign-In functional (optional)
+* Apple Sign-In functional (optional)
+* Aadhaar onboarding complete (skippable until first transaction)
 * User profiles operational
+* Profile hub navigation, logout, and account security settings operational (menu items to not-yet-built sections show empty/coming-soon states until their sprints land)
 
 ---
 
@@ -448,7 +456,7 @@ Add advanced features and optimize platform.
 | Sprint | Focus Area                          | Stories | SP  | Duration |
 | ------ | ----------------------------------- | ------- | --- | -------- |
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
-| S1     | Identity & User Management          | 5       | 24  | 2 weeks  |
+| S1     | Identity & User Management          | 8       | 36  | 2 weeks  |
 | S2     | Seller Listing Creation             | 10      | 52  | 2 weeks  |
 | S3     | Discovery & Search                  | 4       | 21  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
@@ -463,11 +471,11 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **105** | **565** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **108** | **577** | **32 weeks** |
 
 ## Coverage
 
-### Stories Planned: 105 / 100 total user stories
+### Stories Planned: 108 / 105 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -475,6 +483,8 @@ Add advanced features and optimize platform.
 - New features (US-068 to US-087): ✅ 20 stories
 - Lifecycle states (US-088 to US-096): ✅ 9 stories
 - Compliance (US-097 to US-100): ✅ 4 stories
+- Social Login (US-101 to US-102): ✅ 2 stories
+- Profile Management Extensions (US-103 to US-105): ✅ 3 stories
 
 **Not Yet Planned (Future Backlog):**
 - US-061: Screen Reader Compatibility (merged into US-099)
@@ -482,7 +492,7 @@ Add advanced features and optimize platform.
 - US-063: Data Deletion Request (merged into US-098)
 - US-066: Saved Searches and Alerts (included in Sprint 3)
 
-All 100 user stories from the user-stories.md file are now covered in the sprint plan.
+All 105 user stories from the user-stories.md file are now covered in the sprint plan.
 
 ## Key Milestones
 

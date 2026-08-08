@@ -92,24 +92,12 @@ No breaking changes allowed within version.
 
 # 3. Authentication APIs
 
-## Registration
+## Mobile OTP Registration
 
 ```http
-POST /api/v1/auth/register/start
-```
-
-Purpose:
-
-```text
-Initiate registration
-```
-
----
-
-## OTP Verification
-
-```http
-POST /api/v1/auth/otp/verify
+POST /api/v1/auth/register/initiate
+POST /api/v1/auth/register/verify-mobile
+POST /api/v1/auth/register/skip-aadhaar
 ```
 
 ---
@@ -117,15 +105,48 @@ POST /api/v1/auth/otp/verify
 ## Aadhaar Verification
 
 ```http
+POST /api/v1/auth/aadhaar/initiate
 POST /api/v1/auth/aadhaar/verify
 ```
 
 ---
 
-## Login
+## Mobile OTP Login (returning users)
 
 ```http
 POST /api/v1/auth/login
+```
+
+---
+
+## Google Sign-In
+
+```http
+POST /api/v1/auth/social/google
+```
+
+Purpose:
+
+```text
+Accept Google ID token from client.
+Validate server-side with Google.
+Return JWT (or prompt mobile verify if new user).
+```
+
+---
+
+## Apple Sign-In
+
+```http
+POST /api/v1/auth/social/apple
+```
+
+Purpose:
+
+```text
+Accept Apple identity token from client.
+Validate server-side using Apple's JWK public keys.
+Return JWT (or prompt mobile verify if new user).
 ```
 
 ---
@@ -692,12 +713,12 @@ CallEnded
 
 ### Purpose
 
-Identity verification.
+Identity verification (required before first buy/sell transaction).
 
 ### Integration Type
 
 ```text
-REST API
+REST API (plug-and-play port/adapter — provider selected via config)
 ```
 
 ### Flow
@@ -705,11 +726,83 @@ REST API
 ```text
 User
  ↓
-Backend
+Backend (AadhaarVerificationPort)
  ↓
-Aadhaar Provider
+Aadhaar Provider (sandbox / AuthBridge / DigiLocker)
  ↓
 Verification Result
+```
+
+---
+
+## Google Sign-In
+
+### Purpose
+
+Optional convenience login for returning users.
+
+### Integration Type
+
+```text
+OAuth 2.0 — ID Token validation (server-side only)
+```
+
+### Flow
+
+```text
+User taps "Continue with Google"
+ ↓
+Flutter google_sign_in → Google OAuth consent
+ ↓
+Client sends idToken to backend
+ ↓
+Backend validates idToken via Google token info API
+ ↓
+Backend issues ValueX JWT
+```
+
+### Key Config
+
+```text
+Client ID: Google OAuth 2.0 Client ID (per platform: Android, iOS, Web)
+Server-side validation endpoint: https://oauth2.googleapis.com/tokeninfo
+```
+
+---
+
+## Apple Sign-In
+
+### Purpose
+
+Optional convenience login for iOS users (mandatory alongside Google Sign-In per App Store guideline 4.8).
+
+### Integration Type
+
+```text
+Sign in with Apple — Identity Token validation (server-side using Apple JWK)
+```
+
+### Flow
+
+```text
+User taps "Sign in with Apple"
+ ↓
+Flutter sign_in_with_apple → native Apple sheet (Face ID / Touch ID)
+ ↓
+Client sends identityToken to backend
+ ↓
+Backend validates identityToken using Apple's public JWK keys
+ ↓
+Backend issues ValueX JWT
+```
+
+### Key Config
+
+```text
+Service ID: Apple Sign-In Service ID
+Key ID + Private Key: from Apple Developer portal
+JWK endpoint: https://appleid.apple.com/auth/keys
+Stable user identifier: sub claim (not email — email may be hidden)
 ```
 
 ---

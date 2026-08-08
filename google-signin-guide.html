@@ -1,0 +1,1134 @@
+<title>Google Sign-In: Dev & Prod Guide — ValueX</title>
+<style>
+  /* ── Tokens ── */
+  :root {
+    --bg:          #F8FAFC;
+    --surface:     #FFFFFF;
+    --surface-2:   #F1F5F9;
+    --border:      #E2E8F0;
+    --text:        #0F172A;
+    --text-2:      #475569;
+    --text-3:      #94A3B8;
+    --accent:      #3B82F6;
+    --accent-dim:  #EFF6FF;
+    --dev:         #16A34A;
+    --dev-dim:     #F0FDF4;
+    --prod:        #D97706;
+    --prod-dim:    #FFFBEB;
+    --danger:      #DC2626;
+    --danger-dim:  #FEF2F2;
+    --code-bg:     #F1F5F9;
+    --code-text:   #0F172A;
+    --sidebar-w:   260px;
+    --radius:      8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #0F172A;
+      --surface:   #1E293B;
+      --surface-2: #0D1117;
+      --border:    #334155;
+      --text:      #F1F5F9;
+      --text-2:    #94A3B8;
+      --text-3:    #64748B;
+      --accent:    #60A5FA;
+      --accent-dim:#1E3A5F;
+      --dev:       #4ADE80;
+      --dev-dim:   #052E16;
+      --prod:      #FCD34D;
+      --prod-dim:  #451A03;
+      --danger:    #F87171;
+      --danger-dim:#450A0A;
+      --code-bg:   #0D1117;
+      --code-text: #E2E8F0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:        #0F172A; --surface: #1E293B; --surface-2: #0D1117;
+    --border:    #334155; --text: #F1F5F9; --text-2: #94A3B8; --text-3: #64748B;
+    --accent:    #60A5FA; --accent-dim: #1E3A5F;
+    --dev:       #4ADE80; --dev-dim: #052E16;
+    --prod:      #FCD34D; --prod-dim: #451A03;
+    --danger:    #F87171; --danger-dim: #450A0A;
+    --code-bg:   #0D1117; --code-text: #E2E8F0;
+  }
+  :root[data-theme="light"] {
+    --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9;
+    --border:#E2E8F0; --text:#0F172A; --text-2:#475569; --text-3:#94A3B8;
+    --accent:#3B82F6; --accent-dim:#EFF6FF;
+    --dev:#16A34A; --dev-dim:#F0FDF4;
+    --prod:#D97706; --prod-dim:#FFFBEB;
+    --danger:#DC2626; --danger-dim:#FEF2F2;
+    --code-bg:#F1F5F9; --code-text:#0F172A;
+  }
+
+  /* ── Reset & base ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 15px; scroll-behavior: smooth; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+  }
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 56px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text);
+  }
+  .topbar-brand .vx {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.75rem;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .theme-toggle {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .theme-toggle:hover { background: var(--border); }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    padding: 24px 0;
+    position: sticky;
+    top: 56px;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .nav-section-label {
+    padding: 6px 20px 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-top: 12px;
+  }
+  .nav-section-label:first-child { margin-top: 0; }
+  .nav-link {
+    display: block;
+    padding: 6px 20px;
+    font-size: 0.85rem;
+    color: var(--text-2);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  .nav-link:hover {
+    color: var(--text);
+    background: var(--surface-2);
+    border-left-color: var(--border);
+  }
+  .nav-link.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-dim);
+    font-weight: 600;
+  }
+
+  /* ── Content ── */
+  .content {
+    padding: 40px 48px 80px;
+    max-width: 860px;
+  }
+  .page-header { margin-bottom: 40px; }
+  .page-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.25;
+    text-wrap: balance;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  .page-subtitle { color: var(--text-2); font-size: 0.95rem; max-width: 600px; }
+
+  /* ── Sections ── */
+  .section { margin-bottom: 56px; }
+  .section-anchor { scroll-margin-top: 72px; }
+  h2 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text);
+    margin: 24px 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  p { color: var(--text-2); margin-bottom: 12px; font-size: 0.925rem; }
+  p:last-child { margin-bottom: 0; }
+  strong { color: var(--text); font-weight: 600; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+    vertical-align: middle;
+  }
+  .badge-dev  { background: var(--dev-dim);  color: var(--dev); }
+  .badge-prod { background: var(--prod-dim); color: var(--prod); }
+  .badge-info { background: var(--accent-dim); color: var(--accent); }
+
+  /* ── Mode card ── */
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .mode-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    background: var(--surface);
+  }
+  .mode-card.dev  { border-top: 3px solid var(--dev); }
+  .mode-card.prod { border-top: 3px solid var(--prod); }
+  .mode-card-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mode-card ul { padding-left: 18px; }
+  .mode-card li { font-size: 0.85rem; color: var(--text-2); line-height: 1.8; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; list-style: none; }
+  .steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+    align-items: start;
+  }
+  .steps li::before {
+    content: counter(step);
+    width: 28px;
+    height: 28px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .steps li .step-body { flex: 1; }
+  .steps li .step-title { font-weight: 600; font-size: 0.9rem; color: var(--text); margin-bottom: 4px; }
+  .steps li .step-desc { font-size: 0.855rem; color: var(--text-2); line-height: 1.6; }
+
+  /* ── Code blocks ── */
+  .code-block {
+    position: relative;
+    margin: 14px 0;
+    border-radius: var(--radius);
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .code-lang {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .copy-btn {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-3);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--text-3); }
+  .copy-btn.copied { color: var(--dev); border-color: var(--dev); }
+  pre {
+    padding: 16px;
+    overflow-x: auto;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    line-height: 1.65;
+    color: var(--code-text);
+    tab-size: 2;
+  }
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82em;
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  pre code { background: none; padding: 0; border: none; color: inherit; font-size: inherit; }
+
+  /* Syntax colours (light-safe) */
+  .kw { color: #7C3AED; } :root[data-theme="dark"] .kw, @media(prefers-color-scheme:dark){.kw}{ color: #C084FC; }
+  .str { color: #16A34A; }
+  .cmt { color: var(--text-3); font-style: italic; }
+  .hl { background: rgba(59,130,246,0.12); display: block; margin: 0 -16px; padding: 0 16px; }
+
+  /* ── Callout ── */
+  .callout {
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 16px 0;
+    font-size: 0.875rem;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    border: 1px solid;
+  }
+  .callout-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+  .callout-body { color: var(--text-2); }
+  .callout-body strong { color: var(--text); }
+  .callout.info  { background: var(--accent-dim); border-color: #BFDBFE; }
+  .callout.warn  { background: var(--prod-dim);   border-color: #FDE68A; }
+  .callout.error { background: var(--danger-dim); border-color: #FECACA; }
+
+  /* ── Env table ── */
+  .env-table-wrap { overflow-x: auto; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.855rem; }
+  th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-2);
+    vertical-align: top;
+  }
+  td:first-child { font-family: 'Cascadia Code', monospace; font-size: 0.79rem; color: var(--accent); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface-2); }
+
+  /* ── Flow diagram ── */
+  .flow {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 20px 24px;
+    margin: 16px 0;
+    font-size: 0.84rem;
+  }
+  .flow-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 14px;
+  }
+  .flow-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .flow-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    color: var(--text);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .flow-box.accent { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .flow-box.dev    { background: var(--dev-dim);    border-color: var(--dev);    color: var(--dev); font-weight: 600; }
+  .flow-box.prod   { background: var(--prod-dim);   border-color: var(--prod);   color: var(--prod); font-weight: 600; }
+  .flow-arrow { color: var(--text-3); font-size: 0.9rem; }
+  .flow-label { font-size: 0.75rem; color: var(--text-3); font-style: italic; }
+
+  /* ── Error reference ── */
+  .error-grid { display: grid; gap: 10px; margin: 16px 0; }
+  .error-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    align-items: start;
+    font-size: 0.85rem;
+  }
+  .error-code { font-family: monospace; font-size: 0.78rem; color: var(--danger); font-weight: 600; white-space: nowrap; }
+  .error-desc { color: var(--text-2); }
+  .error-desc strong { color: var(--text); display: block; margin-bottom: 2px; }
+
+  /* ── Checklist ── */
+  .checklist { list-style: none; margin: 12px 0; }
+  .checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 0.875rem;
+    color: var(--text-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '☐';
+    color: var(--accent);
+    font-size: 1rem;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 720px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .content { padding: 24px 20px 60px; }
+    .mode-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="shell">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="vx">VX</span>
+      Google Sign-In Configuration Guide
+    </div>
+    <div class="topbar-right">
+      <span class="badge badge-info">US-101</span>
+      <button class="theme-toggle" onclick="toggleTheme()">Toggle theme</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="nav-section-label">Getting Started</div>
+    <a class="nav-link" href="#overview">Overview</a>
+    <a class="nav-link" href="#modes">Mock vs HTTP mode</a>
+
+    <div class="nav-section-label">Development</div>
+    <a class="nav-link" href="#dev-config">Dev configuration</a>
+    <a class="nav-link" href="#dev-flow1">Test: New Google user</a>
+    <a class="nav-link" href="#dev-flow2">Test: Returning user</a>
+    <a class="nav-link" href="#dev-flow3">Test: Link to existing mobile</a>
+
+    <div class="nav-section-label">Production</div>
+    <a class="nav-link" href="#gcloud-setup">Google Cloud setup</a>
+    <a class="nav-link" href="#client-ids">Create client IDs</a>
+    <a class="nav-link" href="#prod-config">Prod configuration</a>
+    <a class="nav-link" href="#real-token">Getting a real token</a>
+
+    <div class="nav-section-label">Reference</div>
+    <a class="nav-link" href="#endpoints">API endpoints</a>
+    <a class="nav-link" href="#errors">Error reference</a>
+    <a class="nav-link" href="#checklist">Go-live checklist</a>
+  </nav>
+
+  <!-- Main content -->
+  <main class="content">
+
+    <div class="page-header">
+      <div class="page-eyebrow">US-101 · Google Sign-In</div>
+      <h1 class="page-title">How to Test and Configure Google Sign-In</h1>
+      <p class="page-subtitle">Complete guide for local development with the mock adapter and production deployment with real Google OAuth tokens. Covers backend configuration, PowerShell examples, and Google Cloud Console setup.</p>
+    </div>
+
+    <!-- ── Overview ── -->
+    <section class="section" id="overview">
+      <h2 id="overview" class="section-anchor">Overview</h2>
+      <p>The backend supports Google Sign-In via a port/adapter pattern. A <strong>mock adapter</strong> handles development and CI — no Google account or internet needed. The <strong>HTTP adapter</strong> runs in production, validating tokens against Google's tokeninfo endpoint.</p>
+
+      <div class="flow">
+        <div class="flow-title">Registration flow — new Google user</div>
+        <div class="flow-row">
+          <div class="flow-box accent">POST /social/google</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">validate token</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">socialSessionToken returned</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-box accent">POST /social/google/initiate-mobile</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">mobile OTP sent</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-box accent">POST /social/google/verify-mobile</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box dev">JWT issued · IDENTITY_VERIFICATION_PENDING</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">Login flow — returning Google user</div>
+        <div class="flow-row">
+          <div class="flow-box accent">POST /social/google</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">token validated</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box dev">JWT issued immediately</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Modes ── -->
+    <section class="section" id="modes">
+      <h2 class="section-anchor">Mock vs HTTP mode</h2>
+      <div class="mode-grid">
+        <div class="mode-card dev">
+          <div class="mode-card-title"><span class="badge badge-dev">Dev / Mock</span></div>
+          <ul>
+            <li>No Google Cloud setup needed</li>
+            <li>No real ID tokens required</li>
+            <li>Token format: <code>mock-&lt;suffix&gt;</code></li>
+            <li>Token <code>invalid</code> always fails</li>
+            <li>OTPs printed to application log</li>
+            <li>Works fully offline</li>
+          </ul>
+        </div>
+        <div class="mode-card prod">
+          <div class="mode-card-title"><span class="badge badge-prod">Prod / HTTP</span></div>
+          <ul>
+            <li>Calls Google's tokeninfo endpoint</li>
+            <li>Validates token signature and expiry</li>
+            <li>Checks <code>aud</code> against configured client IDs</li>
+            <li>Requires valid Google Cloud project</li>
+            <li>Supports Web, Android, iOS tokens</li>
+            <li>Rejects any token not issued for ValueX</li>
+          </ul>
+        </div>
+      </div>
+
+      <p>The active mode is controlled by a single environment variable. All other behaviour is identical between modes.</p>
+    </section>
+
+    <!-- ── Dev config ── -->
+    <section class="section" id="dev-config">
+      <h2 class="section-anchor">Dev configuration <span class="badge badge-dev">Mock mode</span></h2>
+      <p>The mock adapter is active by default — nothing in <code>application.yml</code> needs to change for local dev. Confirm the effective values in your <code>.env</code> or leave them unset:</p>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">.env (or defaults)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code><span class="cmt"># Mock adapter — no real Google credentials needed</span>
+GOOGLE_OAUTH_PROVIDER=mock
+
+<span class="cmt"># These are ignored in mock mode — can be left blank</span>
+GOOGLE_CLIENT_ID_WEB=
+GOOGLE_CLIENT_ID_ANDROID=
+GOOGLE_CLIENT_ID_IOS=</code></pre>
+      </div>
+
+      <h3>Mock token format</h3>
+      <p>Send any string starting with <code>mock-</code> as the <code>idToken</code>. The suffix becomes the user identity — use different suffixes to simulate different Google accounts. The special token <code>invalid</code> always throws <code>ERROR_INVALID_GOOGLE_TOKEN</code>.</p>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">Token examples</span></div>
+        <pre><code>mock-alice   →  sub=google-sub-alice,  email=alice@gmail.com
+mock-bob     →  sub=google-sub-bob,    email=bob@gmail.com
+mock-user1   →  sub=google-sub-user1,  email=user1@gmail.com
+invalid      →  throws ERROR_INVALID_GOOGLE_TOKEN</code></pre>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">💡</span>
+        <div class="callout-body">The OTP sent during <code>initiate-mobile</code> is printed to the Spring Boot log. Search for <strong>"OTP sent"</strong> or <strong>"[DEV-MOCK]"</strong>.</div>
+      </div>
+    </section>
+
+    <!-- ── Dev flow 1 ── -->
+    <section class="section" id="dev-flow1">
+      <h2 class="section-anchor">Dev test: New Google user <span class="badge badge-dev">Mock</span></h2>
+      <p>Complete 3-step flow for a Google account that has never signed into ValueX before.</p>
+
+      <h3>Step 1 — Validate Google token</h3>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/api/v1/auth/social/google" `
+  -ContentType "application/json" `
+  -Body '{"idToken": "mock-alice"}' | ConvertTo-Json -Depth 5</code></pre>
+      </div>
+
+      <p>Expected response — <code>requiresMobileVerification: true</code>:</p>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">json · response</span></div>
+        <pre><code>{
+  "success": true,
+  "data": {
+    "requiresMobileVerification": <span class="kw">true</span>,
+    "socialSessionToken": <span class="str">"3f8a1c2d-..."</span>,
+    "googleEmail": <span class="str">"alice@gmail.com"</span>
+  }
+}</code></pre>
+      </div>
+
+      <h3>Step 2 — Send mobile OTP</h3>
+      <p>Use the <code>socialSessionToken</code> from step 1.</p>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/api/v1/auth/social/google/initiate-mobile" `
+  -ContentType "application/json" `
+  -Body '{
+    "socialSessionToken": "3f8a1c2d-...",
+    "mobile": "9876543210",
+    "termsAccepted": true,
+    "consentGiven": true
+  }' | ConvertTo-Json -Depth 5</code></pre>
+      </div>
+
+      <p>Check the application log for the OTP:</p>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">log output</span></div>
+        <pre><code>[DEV-MOCK] Sending OTP <span class="str">483920</span> to mobile=9876543210 purpose=MOBILE_VERIFY</code></pre>
+      </div>
+
+      <h3>Step 3 — Verify OTP and get JWT</h3>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/api/v1/auth/social/google/verify-mobile" `
+  -ContentType "application/json" `
+  -Body '{
+    "socialSessionToken": "3f8a1c2d-...",
+    "mobile": "9876543210",
+    "otp": "483920"
+  }' | ConvertTo-Json -Depth 5</code></pre>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">json · response</span></div>
+        <pre><code>{
+  "success": true,
+  "data": {
+    "accessToken": <span class="str">"eyJhbGci..."</span>,
+    "refreshToken": <span class="str">"eyJhbGci..."</span>,
+    "aadhaarVerified": <span class="kw">false</span>,
+    "userId": <span class="str">"a1b2c3d4-..."</span>
+  }
+}</code></pre>
+      </div>
+
+      <p>The account is now in <strong>IDENTITY_VERIFICATION_PENDING</strong> state. The user can proceed to Aadhaar verification or skip it.</p>
+    </section>
+
+    <!-- ── Dev flow 2 ── -->
+    <section class="section" id="dev-flow2">
+      <h2 class="section-anchor">Dev test: Returning Google user <span class="badge badge-dev">Mock</span></h2>
+      <p>Once a Google account has been linked (via flow 1), subsequent sign-ins return a JWT in a single call — no mobile step needed.</p>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/api/v1/auth/social/google" `
+  -ContentType "application/json" `
+  -Body '{"idToken": "mock-alice"}' | ConvertTo-Json -Depth 5</code></pre>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">json · response</span></div>
+        <pre><code>{
+  "success": true,
+  "data": {
+    "requiresMobileVerification": <span class="kw">false</span>,
+    "accessToken": <span class="str">"eyJhbGci..."</span>,
+    "refreshToken": <span class="str">"eyJhbGci..."</span>,
+    "aadhaarVerified": <span class="kw">false</span>,
+    "userId": <span class="str">"a1b2c3d4-..."</span>
+  }
+}</code></pre>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">💡</span>
+        <div class="callout-body">The same <code>mock-alice</code> token will always resolve to the same <code>google-sub-alice</code> identity. Re-running flow 1 with a different suffix (<code>mock-bob</code>) creates a separate user.</div>
+      </div>
+    </section>
+
+    <!-- ── Dev flow 3 ── -->
+    <section class="section" id="dev-flow3">
+      <h2 class="section-anchor">Dev test: Link Google to existing mobile account <span class="badge badge-dev">Mock</span></h2>
+      <p>A user already registered via mobile OTP (US-001) can link their Google account for future convenience login. Their mobile must be in <strong>ACTIVE</strong> state.</p>
+
+      <h3>Step 1 — initiate with a new Google token (not yet linked)</h3>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/api/v1/auth/social/google" `
+  -ContentType "application/json" `
+  -Body '{"idToken": "mock-charlie"}' | ConvertTo-Json -Depth 5
+<span class="cmt"># → requiresMobileVerification: true, socialSessionToken: "xyz..."</span></code></pre>
+      </div>
+
+      <h3>Step 2 — use the mobile of the existing ACTIVE account</h3>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8080/api/v1/auth/social/google/initiate-mobile" `
+  -ContentType "application/json" `
+  -Body '{
+    "socialSessionToken": "xyz...",
+    "mobile": "9999999999",
+    "termsAccepted": true,
+    "consentGiven": true
+  }' | ConvertTo-Json -Depth 5</code></pre>
+      </div>
+
+      <h3>Step 3 — verify OTP</h3>
+      <p>After verification, Google is linked to the existing account. The session token is deleted from Redis. No state transition occurs — the account stays ACTIVE.</p>
+
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <div class="callout-body"><strong>Account must be ACTIVE.</strong> If the mobile account is still in <code>EMAIL_VERIFICATION_PENDING</code> or <code>IDENTITY_VERIFICATION_PENDING</code>, the system returns <code>ERROR_INVALID_STATE</code>. The user must complete their existing registration first.</div>
+      </div>
+    </section>
+
+    <!-- ── Google Cloud ── -->
+    <section class="section" id="gcloud-setup">
+      <h2 class="section-anchor">Google Cloud Console setup <span class="badge badge-prod">Prod</span></h2>
+      <p>Only needed once. The person with access to the Google Cloud project should complete these steps before switching to HTTP mode.</p>
+
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <div class="step-title">Create or select a Google Cloud project</div>
+            <div class="step-desc">Go to <strong>console.cloud.google.com</strong>. Create a project named "ValueX" (or use an existing one). Note the project ID.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Configure the OAuth Consent Screen</div>
+            <div class="step-desc">Navigate to <strong>APIs &amp; Services → OAuth consent screen</strong>. Set user type to <strong>External</strong>. Fill in: App name ("ValueX"), support email, developer contact email. Add scopes: <code>openid</code>, <code>email</code>, <code>profile</code> — nothing else. Add test users while in Testing mode.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Collect SHA-1 fingerprints for Android</div>
+            <div class="step-desc">The Android client ID requires the keystore SHA-1. Run both commands and keep the output ready:</div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell · debug keystore</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>keytool -list -v `
+  -keystore "$env:USERPROFILE\.android\debug.keystore" `
+  -alias androiddebugkey `
+  -storepass android -keypass android</code></pre>
+      </div>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell · release keystore</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>keytool -list -v `
+  -keystore "C:\path\to\release.keystore" `
+  -alias your-alias-name</code></pre>
+      </div>
+
+      <div class="callout info">
+        <span class="callout-icon">💡</span>
+        <div class="callout-body">If using <strong>Play App Signing</strong> (recommended), get the SHA-1 from Play Console → Your App → Setup → App Signing → <em>App signing key certificate</em>. This is the fingerprint that must be registered — not the upload key.</div>
+      </div>
+    </section>
+
+    <!-- ── Client IDs ── -->
+    <section class="section" id="client-ids">
+      <h2 class="section-anchor">Create OAuth client IDs <span class="badge badge-prod">Prod</span></h2>
+      <p>Go to <strong>APIs &amp; Services → Credentials → Create Credentials → OAuth client ID</strong>. Create three separate client IDs:</p>
+
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <div class="step-title">Web application client ID</div>
+            <div class="step-desc">Application type: <strong>Web application</strong>. Name: "ValueX Web". No redirect URIs needed — this client ID is used only for backend token validation. Copy the client ID; it goes into <code>GOOGLE_CLIENT_ID_WEB</code>.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Android client ID</div>
+            <div class="step-desc">Application type: <strong>Android</strong>. Package name: <code>com.valuex.app</code>. SHA-1: paste the fingerprint from the keytool step. Create one entry for debug SHA-1, a second for release SHA-1. Download <code>google-services.json</code> and place it at <code>android/app/google-services.json</code> in the Flutter project.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">iOS client ID</div>
+            <div class="step-desc">Application type: <strong>iOS</strong>. Bundle ID: <code>com.valuex.app</code>. Download <code>GoogleService-Info.plist</code> and place it at <code>ios/Runner/GoogleService-Info.plist</code>. Copy the <code>REVERSED_CLIENT_ID</code> value from the plist — it is required as a URL scheme in <code>Info.plist</code>.</div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">xml · ios/Runner/Info.plist — add URL scheme</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>&lt;<span class="kw">key</span>&gt;CFBundleURLTypes&lt;/<span class="kw">key</span>&gt;
+&lt;<span class="kw">array</span>&gt;
+  &lt;<span class="kw">dict</span>&gt;
+    &lt;<span class="kw">key</span>&gt;CFBundleURLSchemes&lt;/<span class="kw">key</span>&gt;
+    &lt;<span class="kw">array</span>&gt;
+      &lt;<span class="kw">string</span>&gt;<span class="str">com.googleusercontent.apps.YOUR_REVERSED_CLIENT_ID</span>&lt;/<span class="kw">string</span>&gt;
+    &lt;/<span class="kw">array</span>&gt;
+  &lt;/<span class="kw">dict</span>&gt;
+&lt;/<span class="kw">array</span>&gt;</code></pre>
+      </div>
+    </section>
+
+    <!-- ── Prod config ── -->
+    <section class="section" id="prod-config">
+      <h2 class="section-anchor">Production configuration <span class="badge badge-prod">HTTP mode</span></h2>
+      <p>Set the following environment variables in your production deployment (Docker Compose, Kubernetes secret, or hosting platform config):</p>
+
+      <div class="env-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Environment variable</th>
+              <th>Value</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>GOOGLE_OAUTH_PROVIDER</td>
+              <td>http</td>
+              <td>Activates real token validation. Default is <code>mock</code>.</td>
+            </tr>
+            <tr>
+              <td>GOOGLE_CLIENT_ID_WEB</td>
+              <td>xxx.apps.googleusercontent.com</td>
+              <td>Web application client ID from Google Cloud Console</td>
+            </tr>
+            <tr>
+              <td>GOOGLE_CLIENT_ID_ANDROID</td>
+              <td>xxx.apps.googleusercontent.com</td>
+              <td>Android client ID. Tokens from the Flutter Android app will carry this as <code>aud</code>.</td>
+            </tr>
+            <tr>
+              <td>GOOGLE_CLIENT_ID_IOS</td>
+              <td>xxx.apps.googleusercontent.com</td>
+              <td>iOS client ID. Tokens from the Flutter iOS app will carry this as <code>aud</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Add these to <code>.env.example</code> so other developers know they exist:</p>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">.env.example</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code><span class="cmt"># Google OAuth — set all three client IDs in production</span>
+<span class="cmt"># Leave provider=mock for local dev (default)</span>
+GOOGLE_OAUTH_PROVIDER=mock
+GOOGLE_CLIENT_ID_WEB=
+GOOGLE_CLIENT_ID_ANDROID=
+GOOGLE_CLIENT_ID_IOS=</code></pre>
+      </div>
+
+      <div class="callout warn">
+        <span class="callout-icon">⚠️</span>
+        <div class="callout-body"><strong>All three client IDs must be set when using HTTP mode.</strong> The backend validates the <code>aud</code> claim in every Google token against all three. Leaving one blank means tokens from that platform will be rejected.</div>
+      </div>
+
+      <h3>Verify the switch is active</h3>
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">log output</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code><span class="cmt"># In application logs at startup, look for:</span>
+INFO  c.v.a.a.o.HttpGoogleTokenAdapter - Initialized with 3 accepted client IDs
+
+<span class="cmt"># If you see MockGoogleTokenAdapter instead, check GOOGLE_OAUTH_PROVIDER</span></code></pre>
+      </div>
+    </section>
+
+    <!-- ── Real token ── -->
+    <section class="section" id="real-token">
+      <h2 class="section-anchor">Getting a real Google ID token for prod testing</h2>
+      <p>With HTTP mode active, you need a real Google ID token to test the endpoints. Two options:</p>
+
+      <h3>Option A — Google OAuth Playground</h3>
+      <ol class="steps">
+        <li>
+          <div class="step-body">
+            <div class="step-title">Open OAuth Playground</div>
+            <div class="step-desc">Go to <strong>developers.google.com/oauthplayground</strong></div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Configure with your web client ID</div>
+            <div class="step-desc">Click the gear icon (top right) → check <strong>"Use your own OAuth credentials"</strong> → enter your Web Client ID and Client Secret.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Authorize the openid scope</div>
+            <div class="step-desc">In Step 1, type <code>openid email profile</code> in the input and click Authorize. Sign in with a Google account.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Exchange for tokens</div>
+            <div class="step-desc">Click <strong>Exchange authorization code for tokens</strong>. The response contains <code>id_token</code> — copy it.</div>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <div class="step-title">Use the token in your API call</div>
+            <div class="step-desc">Replace <code>PASTE_ID_TOKEN_HERE</code> in the PowerShell example below. Tokens expire in 1 hour.</div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="code-block">
+        <div class="code-header"><span class="code-lang">powershell · test with real token</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre><code>Invoke-RestMethod -Method Post `
+  -Uri "https://your-api.valuex.in/api/v1/auth/social/google" `
+  -ContentType "application/json" `
+  -Body '{"idToken": "PASTE_ID_TOKEN_HERE"}' | ConvertTo-Json -Depth 5</code></pre>
+      </div>
+
+      <h3>Option B — Flutter app in debug mode</h3>
+      <p>Run the Flutter app with the debug Google client ID. After <code>GoogleSignIn().signIn()</code>, print <code>authentication.idToken</code> to the debug console and use it directly in PowerShell for API-level testing.</p>
+
+      <div class="callout error">
+        <span class="callout-icon">🔒</span>
+        <div class="callout-body"><strong>Never share or commit real ID tokens.</strong> They contain user PII (email, name) and are valid for up to 1 hour. Treat them like passwords.</div>
+      </div>
+    </section>
+
+    <!-- ── Endpoints ── -->
+    <section class="section" id="endpoints">
+      <h2 class="section-anchor">API endpoint reference</h2>
+      <p>All three endpoints are <strong>public</strong> — no JWT required. Base path: <code>/api/v1/auth</code></p>
+
+      <div class="env-table-wrap">
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>POST</td><td>/social/google</td><td>None</td><td>Validate Google ID token. Returns JWT if linked, or <code>socialSessionToken</code> if new user.</td></tr>
+            <tr><td>POST</td><td>/social/google/initiate-mobile</td><td>None</td><td>Send mobile OTP to link a mobile number to the new Google account. Requires <code>socialSessionToken</code>.</td></tr>
+            <tr><td>POST</td><td>/social/google/verify-mobile</td><td>None</td><td>Verify OTP, create or link account, return JWT. Session token deleted after use.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Session token behaviour</h3>
+      <div class="callout info">
+        <span class="callout-icon">ℹ️</span>
+        <div class="callout-body">The <code>socialSessionToken</code> is a UUID stored in Redis with a <strong>10-minute TTL</strong>. It is deleted after successful OTP verification. If the user waits more than 10 minutes between steps, they must restart from <code>/social/google</code>.</div>
+      </div>
+    </section>
+
+    <!-- ── Errors ── -->
+    <section class="section" id="errors">
+      <h2 class="section-anchor">Error reference</h2>
+
+      <div class="error-grid">
+        <div class="error-row">
+          <div class="error-code">ERROR_INVALID_GOOGLE_TOKEN</div>
+          <div class="error-desc"><strong>Token validation failed</strong> In mock mode: only triggered by passing the string <code>invalid</code>. In HTTP mode: token is expired, signature invalid, or <code>aud</code> does not match any configured client ID.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_SOCIAL_SESSION_EXPIRED</div>
+          <div class="error-desc"><strong>Redis session missing</strong> More than 10 minutes elapsed between steps, or the session token was already consumed. Ask the user to sign in with Google again.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_SOCIAL_SESSION_INVALID</div>
+          <div class="error-desc"><strong>Incomplete session</strong> <code>initiate-mobile</code> was not called before <code>verify-mobile</code>. The session in Redis has only 3 parts (no mobile appended yet).</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED</div>
+          <div class="error-desc"><strong>Duplicate Google link</strong> The mobile number provided belongs to an account that already has a Google account linked. Each Google account can be linked to one ValueX account only.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_INVALID_STATE</div>
+          <div class="error-desc"><strong>Incomplete existing registration</strong> The mobile number already exists in the database but the account is not ACTIVE (e.g. stuck at <code>EMAIL_VERIFICATION_PENDING</code>). The user must complete their original registration first.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_MOBILE_MISMATCH</div>
+          <div class="error-desc"><strong>Mobile changed between steps</strong> The mobile passed to <code>verify-mobile</code> does not match what was stored in Redis during <code>initiate-mobile</code>. The client must send the same mobile in both calls.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_INVALID_OTP</div>
+          <div class="error-desc"><strong>Wrong OTP</strong> Standard OTP validation failure. Check the mock adapter log for the correct 6-digit code in dev.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_OTP_EXPIRED</div>
+          <div class="error-desc"><strong>OTP TTL elapsed</strong> The 5-minute OTP window has passed. Call <code>initiate-mobile</code> again to resend.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_OTP_RATE_LIMIT</div>
+          <div class="error-desc"><strong>Too many OTP requests</strong> More than 3 send attempts per mobile per 10-minute window. Wait for the window to reset.</div>
+        </div>
+        <div class="error-row">
+          <div class="error-code">ERROR_TERMS_NOT_ACCEPTED</div>
+          <div class="error-desc"><strong>Missing consent</strong> <code>termsAccepted</code> or <code>consentGiven</code> was <code>false</code> in the <code>initiate-mobile</code> request.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Checklist ── -->
+    <section class="section" id="checklist">
+      <h2 class="section-anchor">Go-live checklist</h2>
+      <p>Complete all items before switching <code>GOOGLE_OAUTH_PROVIDER</code> to <code>http</code> in production.</p>
+
+      <h3>Google Cloud Console</h3>
+      <ul class="checklist">
+        <li>OAuth consent screen configured with app name, support email, and privacy policy URL</li>
+        <li>Consent screen submitted for Google verification (required before external users can sign in)</li>
+        <li>Web application client ID created</li>
+        <li>Android client ID created with debug SHA-1 and release SHA-1</li>
+        <li>iOS client ID created with correct Bundle ID</li>
+      </ul>
+
+      <h3>Flutter project</h3>
+      <ul class="checklist">
+        <li><code>google-services.json</code> placed at <code>android/app/</code></li>
+        <li><code>GoogleService-Info.plist</code> placed at <code>ios/Runner/</code></li>
+        <li><code>REVERSED_CLIENT_ID</code> URL scheme added to <code>ios/Runner/Info.plist</code></li>
+        <li>Google Sign-In plugin configured in <code>android/build.gradle</code></li>
+        <li><code>google_sign_in</code> package in <code>pubspec.yaml</code></li>
+      </ul>
+
+      <h3>Backend</h3>
+      <ul class="checklist">
+        <li><code>GOOGLE_OAUTH_PROVIDER=http</code> set in production environment</li>
+        <li><code>GOOGLE_CLIENT_ID_WEB</code> set to the web client ID</li>
+        <li><code>GOOGLE_CLIENT_ID_ANDROID</code> set to the Android client ID</li>
+        <li><code>GOOGLE_CLIENT_ID_IOS</code> set to the iOS client ID</li>
+        <li>End-to-end test with a real Google token (via OAuth Playground) passing</li>
+        <li><code>.env.example</code> updated with the four new variable names</li>
+      </ul>
+
+      <h3>Legal</h3>
+      <ul class="checklist">
+        <li>Privacy policy live at a public URL, mentioning Google Sign-In data usage</li>
+        <li>Privacy policy URL registered in the Google OAuth consent screen</li>
+      </ul>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  function toggleTheme() {
+    const root = document.documentElement;
+    const current = root.getAttribute('data-theme');
+    const isDark = current === 'dark' ||
+      (!current && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  }
+
+  function copyCode(btn) {
+    const pre = btn.closest('.code-block').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 1800);
+    });
+  }
+
+  // Sidebar active link on scroll
+  const sections = document.querySelectorAll('.section-anchor, [id]');
+  const navLinks  = document.querySelectorAll('.nav-link');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`.nav-link[href="#${e.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  document.querySelectorAll('section[id], h2[id]').forEach(el => observer.observe(el));
+</script>

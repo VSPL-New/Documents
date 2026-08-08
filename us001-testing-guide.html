@@ -1,0 +1,671 @@
+<title>US-001 Testing Guide — ValueX Auth Flow</title>
+<style>
+  :root {
+    --bg:        #F2F6FF;
+    --surface:   #FFFFFF;
+    --border:    #D4DEFD;
+    --text:      #1A2340;
+    --muted:     #5A6A8A;
+    --accent:    #3B6BF0;
+    --accent-bg: #EBF0FF;
+    --code-bg:   #E4ECFF;
+    --code-text: #1A2340;
+    --success:   #16A34A;
+    --success-bg:#DCFCE7;
+    --warn-bg:   #FEF9C3;
+    --warn-text: #713F12;
+    --step-num:  #C7D6FF;
+    --post-bg:   #3B6BF0;
+    --post-text: #FFFFFF;
+    --mono: "SF Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #0B1426;
+      --surface:   #111E38;
+      --border:    #1E3060;
+      --text:      #D8E4FF;
+      --muted:     #7A90BE;
+      --accent:    #5B8BFF;
+      --accent-bg: #0E1E48;
+      --code-bg:   #0A1530;
+      --code-text: #A8C0FF;
+      --success:   #4ADE80;
+      --success-bg:#052E16;
+      --warn-bg:   #2D2000;
+      --warn-text: #FDE047;
+      --step-num:  #1E3060;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:        #F2F6FF;
+    --surface:   #FFFFFF;
+    --border:    #D4DEFD;
+    --text:      #1A2340;
+    --muted:     #5A6A8A;
+    --accent:    #3B6BF0;
+    --accent-bg: #EBF0FF;
+    --code-bg:   #E4ECFF;
+    --code-text: #1A2340;
+    --success:   #16A34A;
+    --success-bg:#DCFCE7;
+    --warn-bg:   #FEF9C3;
+    --warn-text: #713F12;
+    --step-num:  #C7D6FF;
+  }
+  :root[data-theme="dark"] {
+    --bg:        #0B1426;
+    --surface:   #111E38;
+    --border:    #1E3060;
+    --text:      #D8E4FF;
+    --muted:     #7A90BE;
+    --accent:    #5B8BFF;
+    --accent-bg: #0E1E48;
+    --code-bg:   #0A1530;
+    --code-text: #A8C0FF;
+    --success:   #4ADE80;
+    --success-bg:#052E16;
+    --warn-bg:   #2D2000;
+    --warn-text: #FDE047;
+    --step-num:  #1E3060;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    min-height: 100vh;
+    padding: 48px 24px 80px;
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow::after {
+    content: "";
+    display: block;
+    height: 1px;
+    width: 32px;
+    background: var(--accent);
+    opacity: 0.4;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-wrap: balance;
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .meta-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 10px;
+    letter-spacing: 0.04em;
+  }
+
+  /* Steps */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 32px;
+    font-weight: 300;
+    color: var(--step-num);
+    line-height: 1;
+    min-width: 32px;
+    user-select: none;
+  }
+  .step-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .step-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .step-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+    text-wrap: balance;
+  }
+
+  /* Endpoint bar */
+  .endpoint-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 28px;
+    background: var(--accent-bg);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .method-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    background: var(--post-bg);
+    color: var(--post-text);
+    padding: 3px 9px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .endpoint-path {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .auth-badge {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .auth-public {
+    background: var(--success-bg);
+    color: var(--success);
+  }
+  .auth-required {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+
+  /* Step body */
+  .step-body {
+    padding: 20px 28px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .block-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 14px 18px;
+    border-radius: 6px;
+    overflow-x: auto;
+    tab-size: 2;
+  }
+
+  .key   { color: var(--accent); }
+  .str   { color: var(--success); }
+  .num   { color: #F59E0B; }
+  .bool  { color: #A78BFA; }
+  .placeholder { color: var(--muted); font-style: italic; }
+
+  /* Callout */
+  .callout {
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.55;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .callout-info  { background: var(--accent-bg);  color: var(--text); border-left: 3px solid var(--accent); }
+  .callout-ok    { background: var(--success-bg); color: var(--text); border-left: 3px solid var(--success); }
+  .callout-warn  { background: var(--warn-bg);    color: var(--warn-text); border-left: 3px solid #CA8A04; }
+  .callout-icon  { font-size: 14px; line-height: 1.4; flex-shrink: 0; }
+  .callout code  {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: rgba(0,0,0,0.06);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  :root[data-theme="dark"] .callout code,
+  @media (prefers-color-scheme: dark) { .callout code { background: rgba(255,255,255,0.08); } }
+
+  /* UI steps */
+  .ui-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ui-step {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 13.5px;
+  }
+  .ui-step-n {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .ui-step-text { color: var(--text); }
+  .ui-step-text code {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  /* Section divider */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 40px 0 16px;
+  }
+  .section-label::before,
+  .section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Errors table */
+  .errors-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .errors-table th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .errors-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .errors-table tr:last-child td { border-bottom: none; }
+  .errors-table code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .http-code {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .http-401 { color: #F59E0B; }
+  .http-400 { color: #EF4444; }
+  .http-200 { color: var(--success); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>
+
+<div class="page">
+
+  <header class="header">
+    <div class="eyebrow">US-001 · Sprint 1 · Identity &amp; User Management</div>
+    <h1>User Registration via Mobile OTP — QA Testing Guide</h1>
+    <p class="subtitle">End-to-end test sequence for the full registration and Aadhaar verification flow using Swagger UI against a local dev environment.</p>
+    <div class="meta-row">
+      <span class="meta-pill">Base URL: http://localhost:8080</span>
+      <span class="meta-pill">Swagger: /swagger-ui.html</span>
+      <span class="meta-pill">OTP Provider: mock</span>
+      <span class="meta-pill">Aadhaar Provider: sandbox</span>
+    </div>
+  </header>
+
+  <div class="steps">
+
+    <!-- STEP 1 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">01</div>
+        <div class="step-meta">
+          <div class="step-title">Initiate Registration</div>
+          <div class="step-desc">Registers the mobile number and triggers an OTP. No authentication required.</div>
+        </div>
+      </div>
+      <div class="endpoint-bar">
+        <span class="method-badge">POST</span>
+        <span class="endpoint-path">/api/v1/auth/register/initiate</span>
+        <span class="auth-badge auth-public">PUBLIC</span>
+      </div>
+      <div class="step-body">
+        <div>
+          <div class="block-label">Request body</div>
+          <pre>{
+  <span class="key">"mobile"</span>:        <span class="str">"9876543210"</span>,
+  <span class="key">"termsAccepted"</span>: <span class="bool">true</span>,
+  <span class="key">"consentGiven"</span>:  <span class="bool">true</span>
+}</pre>
+        </div>
+        <div class="callout callout-info">
+          <span class="callout-icon">→</span>
+          <span>Check the application console log for the OTP. Look for:<br>
+          <code>[DEV-MOCK] OTP for mobile=9876543210 purpose=MOBILE_VERIFY otp=XXXXXX</code></span>
+        </div>
+        <div>
+          <div class="block-label">Expected response — 200 OK</div>
+          <pre>{
+  <span class="key">"success"</span>: <span class="bool">true</span>,
+  <span class="key">"data"</span>: {
+    <span class="key">"message"</span>:              <span class="str">"OTP sent to your mobile number"</span>,
+    <span class="key">"otpExpiresInSeconds"</span>:  <span class="num">300</span>
+  }
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">02</div>
+        <div class="step-meta">
+          <div class="step-title">Verify Mobile OTP</div>
+          <div class="step-desc">Validates the OTP and issues a JWT. Copy the <code style="font-family:var(--mono);font-size:12px;background:var(--code-bg);padding:1px 6px;border-radius:3px">accessToken</code> from the response — needed for steps 4 and 5.</div>
+        </div>
+      </div>
+      <div class="endpoint-bar">
+        <span class="method-badge">POST</span>
+        <span class="endpoint-path">/api/v1/auth/register/verify-mobile</span>
+        <span class="auth-badge auth-public">PUBLIC</span>
+      </div>
+      <div class="step-body">
+        <div>
+          <div class="block-label">Request body</div>
+          <pre>{
+  <span class="key">"mobile"</span>: <span class="str">"9876543210"</span>,
+  <span class="key">"otp"</span>:    <span class="str">"XXXXXX"</span>   <span class="placeholder">← value from console log</span>
+}</pre>
+        </div>
+        <div>
+          <div class="block-label">Expected response — 200 OK</div>
+          <pre>{
+  <span class="key">"success"</span>: <span class="bool">true</span>,
+  <span class="key">"data"</span>: {
+    <span class="key">"accessToken"</span>:    <span class="str">"eyJhbGci..."</span>,  <span class="placeholder">← copy this</span>
+    <span class="key">"refreshToken"</span>:   <span class="str">"eyJhbGci..."</span>,
+    <span class="key">"aadhaarVerified"</span>: <span class="bool">false</span>,
+    <span class="key">"userId"</span>:         <span class="str">"uuid-here"</span>
+  }
+}</pre>
+        </div>
+        <div class="callout callout-ok">
+          <span class="callout-icon">✓</span>
+          <span><strong>User state after this step:</strong> account transitions to <code>IDENTITY_VERIFICATION_PENDING</code>. The JWT has <code>aadhaarVerified: false</code>.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">03</div>
+        <div class="step-meta">
+          <div class="step-title">Authorize in Swagger UI</div>
+          <div class="step-desc">Set the Bearer token so subsequent requests include the Authorization header automatically.</div>
+        </div>
+      </div>
+      <div class="step-body">
+        <div class="ui-steps">
+          <div class="ui-step">
+            <div class="ui-step-n">1</div>
+            <div class="ui-step-text">Click the <strong>Authorize 🔒</strong> button in the top-right of the Swagger UI page.</div>
+          </div>
+          <div class="ui-step">
+            <div class="ui-step-n">2</div>
+            <div class="ui-step-text">In the <strong>bearerAuth</strong> field, paste the <code>accessToken</code> value only — no <code>Bearer </code> prefix. Swagger adds it automatically.</div>
+          </div>
+          <div class="ui-step">
+            <div class="ui-step-n">3</div>
+            <div class="ui-step-text">Click <strong>Authorize</strong> then <strong>Close</strong>. All subsequent requests will send <code>Authorization: Bearer &lt;token&gt;</code>.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 4 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">04</div>
+        <div class="step-meta">
+          <div class="step-title">Initiate Aadhaar Verification</div>
+          <div class="step-desc">Starts the Aadhaar OTP flow via the sandbox provider. Copy the <code style="font-family:var(--mono);font-size:12px;background:var(--code-bg);padding:1px 6px;border-radius:3px">transactionId</code> from the response.</div>
+        </div>
+      </div>
+      <div class="endpoint-bar">
+        <span class="method-badge">POST</span>
+        <span class="endpoint-path">/api/v1/auth/aadhaar/initiate</span>
+        <span class="auth-badge auth-required">JWT REQUIRED</span>
+      </div>
+      <div class="step-body">
+        <div>
+          <div class="block-label">Request body</div>
+          <pre>{
+  <span class="key">"aadhaarNumber"</span>: <span class="str">"123456789012"</span>,
+  <span class="key">"consentToken"</span>:  <span class="str">"consent-ts-123"</span>
+}</pre>
+        </div>
+        <div>
+          <div class="block-label">Expected response — 200 OK</div>
+          <pre>{
+  <span class="key">"success"</span>: <span class="bool">true</span>,
+  <span class="key">"data"</span>: {
+    <span class="key">"transactionId"</span>: <span class="str">"sandbox-txn-..."</span>   <span class="placeholder">← copy this</span>
+  }
+}</pre>
+        </div>
+        <div class="callout callout-info">
+          <span class="callout-icon">→</span>
+          <span>The sandbox provider generates a <code>transactionId</code> prefixed <code>sandbox-txn-</code>. No real Aadhaar OTP is sent.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5 -->
+    <div class="step">
+      <div class="step-header">
+        <div class="step-num">05</div>
+        <div class="step-meta">
+          <div class="step-title">Complete Aadhaar Verification</div>
+          <div class="step-desc">Validates the sandbox OTP and transitions the account to <code style="font-family:var(--mono);font-size:12px;background:var(--code-bg);padding:1px 6px;border-radius:3px">ACTIVE</code>. Issues a new JWT with <code style="font-family:var(--mono);font-size:12px;background:var(--code-bg);padding:1px 6px;border-radius:3px">aadhaarVerified: true</code>.</div>
+        </div>
+      </div>
+      <div class="endpoint-bar">
+        <span class="method-badge">POST</span>
+        <span class="endpoint-path">/api/v1/auth/aadhaar/verify</span>
+        <span class="auth-badge auth-required">JWT REQUIRED</span>
+      </div>
+      <div class="step-body">
+        <div>
+          <div class="block-label">Request body</div>
+          <pre>{
+  <span class="key">"transactionId"</span>: <span class="str">"sandbox-txn-..."</span>,  <span class="placeholder">← from step 4</span>
+  <span class="key">"otp"</span>:           <span class="str">"123456"</span>             <span class="placeholder">← sandbox pass code</span>
+}</pre>
+        </div>
+        <div>
+          <div class="block-label">Expected response — 200 OK</div>
+          <pre>{
+  <span class="key">"success"</span>: <span class="bool">true</span>,
+  <span class="key">"data"</span>: {
+    <span class="key">"accessToken"</span>:    <span class="str">"eyJhbGci..."</span>,
+    <span class="key">"refreshToken"</span>:   <span class="str">"eyJhbGci..."</span>,
+    <span class="key">"aadhaarVerified"</span>: <span class="bool">true</span>,   <span class="placeholder">← account is now ACTIVE</span>
+    <span class="key">"userId"</span>:         <span class="str">"uuid-here"</span>
+  }
+}</pre>
+        </div>
+        <div class="callout callout-ok">
+          <span class="callout-icon">✓</span>
+          <span><strong>Registration complete.</strong> Account state is <code>ACTIVE</code>. Use the new <code>accessToken</code> for all marketplace API calls.</span>
+        </div>
+        <div class="callout callout-warn">
+          <span class="callout-icon">!</span>
+          <span>Sandbox only accepts <code>"123456"</code> as the passing OTP. Any other value returns an Aadhaar verification failure.</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /steps -->
+
+  <div class="section-label">Common errors</div>
+
+  <div class="table-wrap">
+    <table class="errors-table">
+      <thead>
+        <tr>
+          <th>HTTP</th>
+          <th>Error code</th>
+          <th>Cause &amp; fix</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="http-code http-401">401</span></td>
+          <td><code>UNAUTHORIZED</code></td>
+          <td>Missing or expired JWT on a protected endpoint. Repeat steps 2–3 to get a fresh token.</td>
+        </tr>
+        <tr>
+          <td><span class="http-code http-400">400</span></td>
+          <td><code>ERROR_OTP_EXPIRED</code></td>
+          <td>OTP TTL is 300 s. Re-run step 1 to generate a new one.</td>
+        </tr>
+        <tr>
+          <td><span class="http-code http-400">400</span></td>
+          <td><code>ERROR_INVALID_OTP</code></td>
+          <td>Wrong OTP value. Check the console log for the correct 6-digit code.</td>
+        </tr>
+        <tr>
+          <td><span class="http-code http-400">400</span></td>
+          <td><code>ERROR_OTP_MAX_ATTEMPTS</code></td>
+          <td>5 failed OTP attempts within the 10-minute window. Wait for the window to reset or use a different mobile number.</td>
+        </tr>
+        <tr>
+          <td><span class="http-code http-400">400</span></td>
+          <td><code>ERROR_MOBILE_ALREADY_REGISTERED</code></td>
+          <td>Mobile already has an account. Use a different number or clear the <code>users</code> table in the dev DB.</td>
+        </tr>
+        <tr>
+          <td><span class="http-code http-400">400</span></td>
+          <td><code>ERROR_AADHAAR_ALREADY_LINKED</code></td>
+          <td>The Aadhaar number is linked to another account. Use a different 12-digit number in step 4.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <span>ValueX · US-001 QA Guide</span>
+    <span>Sprint 1 · Identity &amp; User Management</span>
+  </footer>
+
+</div>

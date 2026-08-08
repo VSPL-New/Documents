@@ -152,16 +152,18 @@ Event-Driven Microservices
 
 ### Responsibilities
 
-* Mobile OTP
-* Aadhaar verification
-* JWT authentication
-* Session management
+* Mobile OTP (primary registration and login)
+* Google Sign-In (optional convenience login)
+* Apple Sign-In (optional convenience login)
+* Aadhaar identity verification (skippable until first transaction)
+* JWT authentication and session management
 * One-user-one-account enforcement
 * User account lifecycle
 
 ### Owns
 
 * users
+* user_social_accounts
 * identity_verifications
 * user_sessions
 * device_fingerprints
@@ -170,10 +172,14 @@ Event-Driven Microservices
 ### APIs
 
 ```http
-POST /api/v1/auth/register/start
-POST /api/v1/auth/otp/verify
+POST /api/v1/auth/register/initiate
+POST /api/v1/auth/register/verify-mobile
+POST /api/v1/auth/register/skip-aadhaar
+POST /api/v1/auth/aadhaar/initiate
 POST /api/v1/auth/aadhaar/verify
 POST /api/v1/auth/login
+POST /api/v1/auth/social/google
+POST /api/v1/auth/social/apple
 POST /api/v1/auth/logout
 POST /api/v1/auth/token/refresh
 GET  /api/v1/auth/me
@@ -181,8 +187,11 @@ GET  /api/v1/auth/me
 
 ### Critical Rules
 
-* One Aadhaar = One Account
-* Aadhaar stored securely
+* Mobile number is always the account anchor — social login on first use must still verify a mobile number via OTP
+* One Aadhaar = One Account (across all states including suspended and banned)
+* Aadhaar stored as SHA-256 hash only — never plain text
+* Google/Apple identity tokens validated server-side only — never trust client-side claims
+* Apple `sub` claim (not email) used as stable Apple account identifier
 * Suspended users cannot login
 * Banned users cannot transact
 

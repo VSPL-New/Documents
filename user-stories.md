@@ -23,48 +23,77 @@
 14. [New Features - PRD v1.3 Alignment](#new-features---prd-v13-alignment)
 15. [Lifecycle State Machines](#lifecycle-state-machines)
 16. [Compliance & Accessibility](#compliance--accessibility)
+17. [Profile Management Extensions](#profile-management-extensions)
 
 ---
 
 ## User Management & Authentication
 
-### US-001: User Registration with Aadhaar Verification
+### US-001: User Registration via Mobile OTP, Email Verification, and Aadhaar
 **As a** new user  
-**I want to** register using my Aadhaar  
-**So that** I can access the platform securely with verified identity
+**I want to** register by verifying my mobile number and email address  
+**So that** I can access the platform with a trusted identity
+
+**Registration Flow:**
+1. Verify mobile (SMS OTP) → account: `EMAIL_VERIFICATION_PENDING`
+2. Verify email (email OTP) → account: `IDENTITY_VERIFICATION_PENDING`
+3a. Complete Aadhaar verification → account: `ACTIVE` (`aadhaarVerified = true`)
+3b. Skip Aadhaar → account: `ACTIVE` (`aadhaarVerified = false`, limited until Aadhaar done)
 
 **Acceptance Criteria:**
 - Given I am on the registration page
-- When I enter my mobile number
-- Then I receive an OTP for mobile verification
-- And after OTP validation, I am prompted for Aadhaar verification
-- When I complete Aadhaar verification via third-party service
-- Then my account is created successfully
-- And I am assigned a unique user ID
-- And my verified identity is stored securely
+- When I enter my mobile number and accept terms & conditions
+- Then I receive a 6-digit OTP via SMS
+- When I enter the correct OTP within 5 minutes
+- Then my account moves to `EMAIL_VERIFICATION_PENDING` state
+- And I am issued a JWT to continue registration
+- When I provide my email address
+- Then I receive a 6-digit OTP via email
+- When I enter the correct email OTP within 5 minutes
+- Then my email is verified and account moves to `IDENTITY_VERIFICATION_PENDING` state
+- When I choose to complete Aadhaar verification immediately
+- Then I am prompted to enter my Aadhaar number and consent
+- And after successful Aadhaar OTP verification, my account transitions to `ACTIVE` with `aadhaarVerified = true`
+- When I choose to skip Aadhaar verification
+- Then I receive a new JWT and my account transitions to `ACTIVE`
+- And I can browse and use most platform features
+- But I must complete Aadhaar verification before my first buy or sell transaction
 
 **Edge Cases:**
-- User already registered with same Aadhaar
-- Aadhaar verification fails (invalid, expired, or API timeout)
 - Mobile number already linked to another account
+- Email address already linked to another account
+- User enters email OTP before mobile OTP is verified
 - User cancels Aadhaar verification mid-flow
-- Network interruption during verification
-- Third-party service downtime
+- Aadhaar verification fails (invalid, expired, or API timeout)
+- User already registered with same Aadhaar (from a different account)
+- Network interruption during any OTP or Aadhaar verification step
+- Third-party Aadhaar service downtime
+- User requests OTP too many times on mobile or email (rate limiting applies)
 
 **Validation Rules:**
-- Mobile number must be 10 digits
-- Mobile number must be unique per account
-- Aadhaar must be valid 12-digit number
-- One Aadhaar can link to only one account
-- User must accept terms & conditions
-- User must provide consent for data processing
+- Mobile number must be 10 digits, Indian format; unique per account
+- Mobile OTP is 6 digits, expires after 5 minutes
+- Email must be a valid format; unique per account
+- Email OTP is 6 digits, expires after 5 minutes
+- Maximum 3 OTP send requests per mobile or email per 10 minutes
+- Maximum 5 failed OTP attempts per channel before 10-minute cooldown
+- Email verification must be completed before Aadhaar verification can begin
+- Aadhaar must be valid 12-digit number (when provided)
+- One Aadhaar can link to only one account across all states
+- User must accept terms & conditions and provide consent for data processing
 
 **Error Scenarios:**
 - `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered"
+- `ERROR_EMAIL_ALREADY_REGISTERED`: "This email is already linked to another account"
+- `ERROR_INVALID_OTP`: "Invalid or expired OTP"
+- `ERROR_OTP_EXPIRED`: "OTP has expired. Please request a new one"
+- `ERROR_OTP_RATE_LIMIT`: "Too many OTP requests. Please try again in 10 minutes"
+- `ERROR_OTP_MAX_ATTEMPTS`: "Too many failed attempts. Please request a new OTP"
+- `ERROR_INVALID_STATE`: "This step is not available in the current account state"
 - `ERROR_AADHAAR_ALREADY_USED`: "This Aadhaar is already linked to an account"
 - `ERROR_AADHAAR_VERIFICATION_FAILED`: "Unable to verify Aadhaar. Please try again"
 - `ERROR_AADHAAR_SERVICE_UNAVAILABLE`: "Verification service temporarily unavailable"
-- `ERROR_INVALID_OTP`: "Invalid or expired OTP"
+- `ERROR_AADHAAR_VERIFICATION_REQUIRED`: "Please complete Aadhaar verification to proceed"
 
 ---
 
@@ -104,32 +133,45 @@
 **I want to** manage my profile information  
 **So that** buyers/sellers can view relevant details about me
 
+**Related User Stories:**
+- Profile fields here (avatar, display name, location) are surfaced from the Profile Hub: US-103
+- Account security (mobile/email change, sessions, delete account): US-105
+- Logout: US-104
+
+**Design Note (v3.3):** Users do **not** upload a free-form profile photo. Instead they pick an **avatar** from a fixed catalog of avatar images the frontend app ships/renders — this removes the need for image content moderation entirely (no user-supplied image ever reaches the platform for a profile picture). The backend owns the canonical list of valid avatar IDs and only stores which one is selected.
+
 **Acceptance Criteria:**
 - Given I am logged in
 - When I navigate to my profile
-- Then I can view my profile details (name, photo, location, ratings, joined date)
-- When I update my profile photo, display name, or location
+- Then I can view my profile details (avatar, display name, location, ratings, joined date)
+- When I open the avatar picker
+- Then I see the full catalog of available avatars
+- When I select an avatar and confirm
+- Then my profile updates to show the selected avatar
+- When I update my display name or location
 - Then changes are saved successfully
 - And other users see updated information
+- Given I have never picked an avatar
+- When I view my profile
+- Then a default avatar is shown
 
 **Edge Cases:**
-- User uploads inappropriate profile image
+- User selects an avatar ID that isn't in the current catalog (stale client-side list, tampered request)
 - User tries to change verified Aadhaar name
-- User leaves required fields empty
-- Profile photo exceeds size limit
+- User submits an empty/blank display name or city on update
 - User updates location outside India
+- Avatar catalog changes (avatar removed) after a user already selected it — existing selection remains valid until the user picks a new one
 
 **Validation Rules:**
-- Profile photo max size: 5MB
-- Allowed formats: JPG, PNG
+- Avatar selection must be one of the platform's published avatar catalog IDs
+- Every account has a default avatar from account creation, before any explicit selection
 - Display name: 3-50 characters, no special symbols
 - Location must be valid Indian city/state
 - Aadhaar-verified name cannot be edited
 
 **Error Scenarios:**
-- `ERROR_PHOTO_TOO_LARGE`: "Profile photo must be less than 5MB"
-- `ERROR_INVALID_FORMAT`: "Only JPG and PNG formats allowed"
-- `ERROR_INAPPROPRIATE_CONTENT`: "Content violates community guidelines"
+- `ERROR_INVALID_AVATAR`: "Selected avatar is not available. Please choose another"
+- `ERROR_INAPPROPRIATE_CONTENT`: retired — no longer applicable, since profile pictures are no longer user-uploaded images
 
 ---
 
@@ -4054,11 +4096,255 @@
 
 ---
 
+### US-101: Google Sign-In (Optional Convenience Login)
+**As a** returning user  
+**I want to** sign in using my Google account  
+**So that** I can log in without entering my mobile number and OTP every time
+
+**Acceptance Criteria:**
+- Given I am on the login screen
+- When I tap "Continue with Google"
+- Then I am redirected to Google OAuth consent screen
+- When I grant consent and Google returns an ID token
+- Then the backend validates the Google ID token with Google's public keys
+- If my Google email is already linked to a ValueX account:
+  - Then I am logged in and issued a new JWT
+- If this is a new Google account (first social login):
+  - Then I am prompted to enter and verify my mobile number via OTP
+  - After mobile OTP verification, my account is created (or linked if mobile already exists)
+  - Then I can continue with or without Aadhaar verification
+- When I am logged in via Google
+- Then my session is identical to Mobile OTP login (same JWT, same permissions)
+
+**Edge Cases:**
+- Google token expired or invalid
+- Google email already linked to another ValueX account (via different Google account)
+- User revokes Google access from Google account settings
+- Google OAuth service temporarily unavailable
+- User's mobile number (entered after social login) already registered under a different account
+
+**Validation Rules:**
+- Google ID token must be validated server-side using Google's token verification endpoint
+- Token audience must match ValueX's Google Client ID
+- Email from Google token must be stored (not used as account key — mobile is the account key)
+- Social login only permitted after account has a verified mobile number
+
+**Error Scenarios:**
+- `ERROR_INVALID_GOOGLE_TOKEN`: "Google sign-in failed. Please try again"
+- `ERROR_GOOGLE_SERVICE_UNAVAILABLE`: "Google Sign-In is temporarily unavailable"
+- `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered with another account"
+- `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Google account is already linked to another ValueX account"
+
+**Flutter Implementation Notes:**
+- Use `google_sign_in` Flutter package
+- Send `idToken` from Google to backend — backend validates, never trust client-side verification
+- On success show standard home screen; on new account show mobile verification screen
+
+---
+
+### US-102: Apple Sign-In (Optional Convenience Login)
+**As a** returning user on an Apple device  
+**I want to** sign in using my Apple ID  
+**So that** I can log in quickly with Face ID / Touch ID without entering credentials
+
+**Acceptance Criteria:**
+- Given I am on the login screen on an iOS device
+- When I tap "Sign in with Apple"
+- Then the native Apple Sign-In sheet is presented
+- When I authenticate (Face ID / Touch ID / password)
+- Then Apple returns an identity token and optionally an email
+- Then the backend validates the Apple identity token using Apple's public keys
+- If my Apple account is already linked to a ValueX account:
+  - Then I am logged in and issued a new JWT
+- If this is a new Apple account (first Apple login):
+  - Then I am prompted to enter and verify my mobile number via OTP
+  - After mobile OTP verification, my account is created (or linked if mobile already exists)
+  - Then I can continue with or without Aadhaar verification
+- When I am logged in via Apple
+- Then my session is identical to Mobile OTP login (same JWT, same permissions)
+
+**Edge Cases:**
+- Apple hides user email (Hide My Email feature) — system must use `sub` claim as the stable Apple user identifier, not email
+- Apple only returns email on first sign-in — must be stored on first use
+- User removes app from "Sign in with Apple" in Apple ID settings
+- Apple Sign-In is not available on Android (must be iOS/macOS only)
+- Apple identity token expired or signature invalid
+
+**Validation Rules:**
+- Apple identity token must be validated server-side using Apple's public keys (JWK endpoint)
+- Token `iss` must be `https://appleid.apple.com`
+- Token `aud` must match ValueX's Apple Service ID
+- Apple `sub` (stable user identifier) stored as the social account key — NOT email
+- Apple Sign-In is mandatory on iOS if any other third-party login is offered (App Store guideline 4.8)
+- Social login only permitted after account has a verified mobile number
+
+**Error Scenarios:**
+- `ERROR_INVALID_APPLE_TOKEN`: "Apple Sign-In failed. Please try again"
+- `ERROR_APPLE_SERVICE_UNAVAILABLE`: "Apple Sign-In is temporarily unavailable"
+- `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered with another account"
+- `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Apple ID is already linked to another ValueX account"
+
+**Flutter Implementation Notes:**
+- Use `sign_in_with_apple` Flutter package
+- Apple Sign-In is required on iOS if Google Sign-In is shown (App Store Rule 4.8)
+- Send `identityToken` to backend — backend validates, never trust client-side
+- Store `userIdentifier` (the `sub` claim) as the Apple account key, not email
+- On Android, show Google Sign-In only (Apple Sign-In not available)
+
+---
+
+## Profile Management Extensions
+
+### US-103: Profile Hub / Account Menu Navigation
+**As a** registered user  
+**I want to** access all my account-related sections from a single Profile hub  
+**So that** I can quickly navigate to my orders, listings, payments, and settings without hunting for them
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I tap the "Profile" tab
+- Then I see my profile summary (photo, display name, rating, joined date) at the top
+- And below it, a menu of sections grouped by category:
+  - **Activity**: My Orders, My Listings, Saved Items, Offers/Negotiations
+  - **Payments**: Payment & Transaction History, Payout Settings (sellers only)
+  - **Preferences**: Notification Preferences, Language
+  - **Support**: Help & Support, Raise Dispute, My Support Tickets
+  - **Account**: Edit Profile, Account Security, Privacy Settings, Logout
+- When I tap any menu item
+- Then I am navigated to the corresponding screen
+- When a section has actionable items (e.g., pending orders, unread offers)
+- Then a badge/count indicator is shown next to that menu item
+
+**Edge Cases:**
+- New user with no orders/listings/saved items (empty states shown, not hidden)
+- Seller-only sections shown to buyers who haven't listed anything yet
+- Menu item destination temporarily unavailable (service down)
+- User has pending items in multiple sections simultaneously (multiple badges)
+
+**Validation Rules:**
+- Sections requiring seller status remain visible to all users but stay empty until first listing
+- Badge counts refresh on profile view and on relevant push notification receipt
+- Logout requires confirmation dialog (see US-104)
+
+**Error Scenarios:**
+- `ERROR_SECTION_UNAVAILABLE`: "This section is temporarily unavailable"
+
+**Related User Stories:**
+- Profile summary fields: US-003
+- Activity: My Orders → US-023, US-070; My Listings → US-010, US-067, US-064; Saved Items → US-073; Offers → US-076
+- Payments: US-071 (transaction history), US-072 (payout settings)
+- Preferences: US-087 (notifications), US-044 (language)
+- Support: US-043, US-045, US-046 (help & support), US-047 (raise dispute), US-074 (ticket status)
+- Account: US-105 (account security), US-063 / US-098 (delete account), US-104 (logout)
+
+**Flutter Implementation Notes:**
+- ProfileScreen acts as the navigation shell; each menu row uses `ListTile` with leading icon, trailing badge/chevron
+- Badge counts sourced from a single `ProfileSummaryProvider` (Riverpod) aggregating unread/pending counts per section
+- Seller-only rows (Payout Settings, Seller Analytics) conditionally rendered based on `hasActiveListings` flag
+
+---
+
+### US-104: Account Logout
+**As a** registered user  
+**I want to** log out of my account  
+**So that** I can secure my session, especially on shared devices
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I tap "Logout" from the Profile menu
+- Then I see a confirmation dialog: "Are you sure you want to log out?"
+- When I confirm
+- Then my session token is invalidated on the server
+- And locally stored session data is cleared
+- And I am redirected to the login screen
+- When I cancel
+- Then I remain on the current screen with no change
+
+**Edge Cases:**
+- User logs out while a listing/message is being uploaded (in-flight request)
+- User logs out on a device with no network (local logout only, server invalidation queued)
+- User has multiple active sessions on other devices
+- Logout triggered automatically after password/PIN change (force re-login)
+
+**Validation Rules:**
+- Server-side JWT/session invalidation required, not just client-side token deletion
+- Locally cached sensitive data cleared on logout (draft listings excluded)
+- In-flight uploads allowed to complete or are cancelled with a warning before logout proceeds
+
+**Error Scenarios:**
+- `ERROR_LOGOUT_FAILED`: "Unable to log out. Please try again"
+- `WARNING_UPLOAD_IN_PROGRESS`: "An upload is in progress. Logging out will cancel it"
+
+**Related User Stories:**
+- Accessed from Profile Hub: US-103
+- Related to session creation: US-001 (registration/JWT issuance), US-101 / US-102 (social login sessions)
+- Logging out of all other devices: US-105
+
+**Flutter Implementation Notes:**
+- Logout clears `flutter_secure_storage` tokens and resets Riverpod auth state
+- Confirmation via standard `AlertDialog`; destructive action styled red
+- Navigates to login screen via `go_router` and clears navigation stack
+
+---
+
+### US-105: Account Security Settings
+**As a** registered user  
+**I want to** manage my account security settings  
+**So that** I can protect my account from unauthorized access
+
+**Acceptance Criteria:**
+- Given I am logged in
+- When I navigate to "Profile > Account Security"
+- Then I see:
+  - Registered mobile number (masked, with "Change" option requiring OTP re-verification)
+  - Registered email (masked, with "Change" option requiring OTP re-verification)
+  - Aadhaar verification status (read-only badge; prompts to complete if pending)
+  - Active sessions/devices list with last active time
+  - "Log out of all other devices" action
+  - "Delete My Account" entry point
+- When I change my mobile or email
+- Then I must verify the new value via OTP before it takes effect
+- When I tap "Log out of all other devices"
+- Then all sessions except the current one are invalidated
+- When I tap "Delete My Account"
+- Then I am taken to the account deletion flow
+
+**Edge Cases:**
+- User tries to change mobile to a number already registered to another account
+- User has no other active sessions to log out
+- User loses access to old mobile/email before completing change verification
+- Aadhaar verification status shown as pending for a long time
+
+**Validation Rules:**
+- Mobile/email change requires OTP verification on the new value (same rules as US-001: 6-digit OTP, 5-minute expiry)
+- Old mobile/email remains active until new one is verified
+- Session list limited to last 10 active sessions, sorted by most recent
+- Account deletion entry point only enabled if no active orders/disputes (per US-063 / US-098 rules)
+
+**Error Scenarios:**
+- `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered with another account"
+- `ERROR_EMAIL_ALREADY_REGISTERED`: "This email is already linked to another account"
+- `ERROR_INVALID_OTP`: "Invalid or expired OTP"
+- `ERROR_NO_OTHER_SESSIONS`: "No other active sessions found"
+
+**Related User Stories:**
+- Accessed from Profile Hub: US-103
+- OTP verification rules shared with: US-001 (registration)
+- Account deletion: US-063, US-098
+- Single-session logout: US-104
+
+**Flutter Implementation Notes:**
+- AccountSecurityScreen with masked mobile/email fields (e.g. `•••• •••210`) and "Change" CTA reusing the OTP flow from US-001
+- Active sessions list backed by backend session table; "This device" tag on current session
+- Delete Account CTA styled as destructive, routes to existing deletion confirmation flow (US-063 / US-098)
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 100  
-**Coverage:** Full PRD_ValueX_v1.3 alignment + Flutter Implementation Notes  
-**Version:** 3.0 (Updated 2026-07-05)
+**Total User Stories:** 105  
+**Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
+**Version:** 3.3 (Updated 2026-08-07) — US-003 redesigned: avatar selection replaces free-form profile photo upload
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4080,6 +4366,8 @@
 - **Lifecycle State Machines (US-088 to US-096):** 9 stories - State management
   - User, Listing, Order, Payment, Shipping, Return, Dispute, Ticket, Subscription
 - **Compliance & Accessibility (US-097 to US-100):** 4 stories - GDPR, accessibility, analytics
+- **Social Login (US-101 to US-102):** 2 stories - Google & Apple Sign-In
+- **Profile Management Extensions (US-103 to US-105):** 3 stories - Gap-fill identified when auditing US-003: Profile Hub navigation tying together My Orders/Listings/Payments/Payouts/Notifications/Language/Support/Dispute, plus Logout and Account Security (mobile/email change, sessions, delete account entry point)
 
 ---
 

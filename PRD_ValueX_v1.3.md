@@ -4,7 +4,7 @@
 **Company:** ValueQuo Solutions Pvt. Ltd.  
 **Author:** Abhay Kumar  
 **Date:** April 21, 2026  
-**Version:** 1.3
+**Version:** 1.4
 
 ---
 
@@ -17,6 +17,7 @@
 | 3 | Added more details | 1.1 | MS Copilot | Abhay |
 | 4 | Added Premium Plans | 1.2 | Abhay | - |
 | 5 | Added Lifecycle State | 1.3 | Abhay | - |
+| 6 | Added Social Login Options (Google Sign-In, Apple Sign-In) | 1.4 | Abhay | - |
 
 ---
 
@@ -136,7 +137,7 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Seller Journey
 
-1. Register using Aadhaar-based authentication
+1. Register via Mobile OTP (primary), Google Sign-In, or Apple Sign-In
 2. Capture item photos via app
 3. Create listing (AI-assisted)
 4. Choose listing plan – Basic, Boosted, Priority
@@ -193,7 +194,11 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 ## 5. Feature Breakdown (by Domain)
 
 ### User Management
-- Aadhaar-based authentication for user registration
+- Multi-method authentication for user registration and login:
+  - **Mobile OTP** (primary — always required on first registration)
+  - **Google Sign-In** (optional convenience login after account creation)
+  - **Apple Sign-In** (optional convenience login after account creation)
+- Aadhaar-based identity verification (skippable until first transaction)
 - One-user-one-account enforcement
 - Profile management
 
@@ -256,7 +261,11 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 ## 6. Functional Requirements
 
 ### User & Authentication
-- **FR-1:** Users must register using Aadhaar-based authentication
+- **FR-1:** Users must register using Mobile OTP as the primary authentication method
+- **FR-1.1:** System must support Google Sign-In as an optional convenience login for returning users
+- **FR-1.2:** System must support Apple Sign-In as an optional convenience login for returning users
+- **FR-1.3:** Social login (Google/Apple) on first use must still collect and verify mobile number via OTP before completing registration
+- **FR-1.4:** Aadhaar-based identity verification is required before a user's first buy or sell transaction; it may be skipped at registration
 - **FR-2:** System must enforce one account per user
 - **FR-3:** Users must have unique identity mapping
 
@@ -502,6 +511,9 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 ## 13. External Integrations
 
 - **Aadhaar authentication service**
+- **Google OAuth 2.0** (Google Sign-In)
+- **Apple Sign-In** (Sign in with Apple)
+- **SMS OTP provider** (mobile number verification)
 - **Payment gateways** (for escrow)
 - **Logistics providers** (pickup, delivery, reverse pickup)
 - **Communication services** (voice/video)
