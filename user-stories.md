@@ -24,6 +24,7 @@
 15. [Lifecycle State Machines](#lifecycle-state-machines)
 16. [Compliance & Accessibility](#compliance--accessibility)
 17. [Profile Management Extensions](#profile-management-extensions)
+18. [Authentication Extensions](#authentication-extensions)
 
 ---
 
@@ -33,6 +34,10 @@
 **As a** new user  
 **I want to** register by verifying my mobile number and email address  
 **So that** I can access the platform with a trusted identity
+
+**Related User Stories:**
+- This story covers first-time registration only. Returning-user login: US-106
+- Session renewal after the token issued here expires: US-107
 
 **Registration Flow:**
 1. Verify mobile (SMS OTP) → account: `EMAIL_VERIFICATION_PENDING`
@@ -4340,11 +4345,111 @@
 
 ---
 
+## Authentication Extensions
+
+### US-106: Mobile OTP Login for Returning Users
+**As a** registered user who signed up via mobile OTP  
+**I want to** log back into my account using my mobile number and OTP  
+**So that** I can access my account again after my session expires, without registering a second time
+
+**Design Note:** Identified as a gap when auditing the backend API flow for returning users — US-001 only covers first-time registration and explicitly *rejects* an already-registered mobile (`ERROR_MOBILE_ALREADY_REGISTERED`) with no alternate path. US-101/US-102 (Google/Apple Sign-In) are written as *"Optional Convenience Login"* — a shortcut around mobile-OTP login — but the primary mobile-OTP login path they're a shortcut *around* was never itself specced. This story fills that gap.
+
+**Acceptance Criteria:**
+- Given I already have an account (any state other than mid-registration OTP steps)
+- When I enter my registered mobile number on the login screen
+- Then I receive a 6-digit OTP via SMS
+- When I enter the correct OTP within 5 minutes
+- Then I am issued a new access token and refresh token
+- And I am taken to the appropriate screen for my account's current state — `ACTIVE` accounts go to the home screen; accounts that never finished registration (e.g. `EMAIL_VERIFICATION_PENDING`) resume at that exact step
+- Given my account is `SUSPENDED`
+- Then login is blocked with a suspension message
+- Given my account is `BANNED` or `CLOSED`
+- Then login is blocked with a recovery-required message
+
+**Edge Cases:**
+- Mobile number entered has no account at all — must not silently create one; point the user to registration instead
+- Account is mid-registration (never reached `ACTIVE`) — login must resume it, not treat it as an error
+- Account state changes (suspended/banned) between OTP send and OTP verify
+- Repeated login OTP requests — same abuse-prevention rules as registration OTP
+
+**Validation Rules:**
+- Login requires an existing account — the mobile number must already be registered (opposite check from US-001's registration)
+- Same OTP mechanics as US-001: 6-digit, 5-minute expiry, max 3 sends / 10 min, max 5 failed verifies / 10 min
+- The issued JWT reflects the account's *current* `status` and `aadhaarVerified` values, read fresh from the database — never a cached/stale value from a previous session
+- Login must not be usable to bypass Aadhaar-gated actions any differently than a freshly registered session would
+
+**Error Scenarios:**
+- `ERROR_MOBILE_NOT_REGISTERED`: "No account found with this mobile number. Please register"
+- `ERROR_ACCOUNT_SUSPENDED`: "Your account is suspended. Please contact support"
+- `ERROR_ACCOUNT_RECOVERY_REQUIRED`: "Your account requires recovery. Please contact support"
+- `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`, `ERROR_OTP_RATE_LIMIT`, `ERROR_OTP_MAX_ATTEMPTS` (same as US-001)
+
+**Related User Stories:**
+- Shares OTP send/verify mechanics with US-001 (registration)
+- US-101 (Google Sign-In) and US-102 (Apple Sign-In) are convenience alternatives to this story, not replacements for it
+- Token issued here expires per US-107 (Access Token Refresh) rules
+- Logout: US-104
+
+**Flutter Implementation Notes:**
+- Login screen offers mobile-number entry as the primary action, with "Continue with Google"/"Continue with Apple" as secondary buttons beneath it
+- Reuses the OTP-entry widget already built for registration (US-001)
+- On success, route based on the returned `status` claim rather than assuming `ACTIVE` — anything short of `ACTIVE` re-enters the registration flow at that step
+
+---
+
+### US-107: Access Token Refresh
+**As a** logged-in user  
+**I want** my session to renew automatically using my refresh token  
+**So that** I don't have to re-enter my mobile OTP every time my short-lived access token expires
+
+**Design Note:** Every current auth flow (US-001, US-101, US-102, and the new US-106) already issues a `refreshToken` in its response — but no endpoint anywhere accepts one. It's a dead value today. Separately, the JWT validation filter checks only signature and expiry, not the token's `type` claim — meaning a refresh token can currently be used directly as a bearer access token, which this story's validation rules close.
+
+**Acceptance Criteria:**
+- Given I hold a valid, unexpired refresh token
+- When my access token expires and the app submits the refresh token
+- Then I receive a new access token and a new refresh token
+- Given my refresh token has expired or was already used once (rotated out)
+- Then the refresh attempt fails and I must log in again (US-106 or social sign-in)
+- Given I log out (US-104)
+- Then my refresh token is invalidated immediately and cannot be used again
+- Given my account was suspended/banned after the refresh token was issued
+- Then the refresh attempt fails even though the token itself hasn't expired
+
+**Edge Cases:**
+- A previously-used (rotated-out) refresh token is presented again — treat as possible theft, invalidate the whole token family if session tracking exists
+- An access token is submitted to the refresh endpoint instead of a refresh token
+- Two refresh calls fire concurrently from the same client (e.g. two open tabs) near expiry
+- Clock skew right at the expiry boundary
+
+**Validation Rules:**
+- The refresh endpoint must reject any token whose `type` claim is not `refresh`
+- Refresh tokens are single-use: each successful refresh issues a new refresh token and invalidates the one just used (rotation)
+- The new access token's `status`/`aadhaarVerified` claims are re-read from the database at refresh time, not copied from the old token — so state changes from another session (e.g. Aadhaar verified elsewhere) propagate on next refresh
+- A refresh must fail closed if the account is no longer in good standing at refresh time, regardless of token expiry
+
+**Error Scenarios:**
+- `ERROR_INVALID_REFRESH_TOKEN`: "Session expired. Please log in again"
+- `ERROR_REFRESH_TOKEN_EXPIRED`: "Session expired. Please log in again"
+- `ERROR_WRONG_TOKEN_TYPE`: "Invalid token for this operation"
+- `ERROR_ACCOUNT_RECOVERY_REQUIRED` / `ERROR_ACCOUNT_SUSPENDED`: account state changed since the token was issued
+
+**Related User Stories:**
+- Consumes tokens issued by US-001, US-101, US-102, US-106
+- If session tracking ships for US-104/US-105 (the `jti`/`user_sessions` design), refresh rotation should mark the old session revoked and create a new one; if not, refresh operates statelessly (signature + expiry + type check only)
+- Logout: US-104 (must invalidate the refresh token, not just the access token)
+
+**Flutter Implementation Notes:**
+- HTTP client interceptor catches `401`, calls the refresh endpoint with the stored refresh token, retries the original request once
+- On refresh failure, force logout and route to the login screen (US-106)
+- Refresh token stored in secure storage only, never in plain shared preferences
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 105  
+**Total User Stories:** 107  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.3 (Updated 2026-08-07) — US-003 redesigned: avatar selection replaces free-form profile photo upload
+**Version:** 3.4 (Updated 2026-08-12) — Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4368,6 +4473,7 @@
 - **Compliance & Accessibility (US-097 to US-100):** 4 stories - GDPR, accessibility, analytics
 - **Social Login (US-101 to US-102):** 2 stories - Google & Apple Sign-In
 - **Profile Management Extensions (US-103 to US-105):** 3 stories - Gap-fill identified when auditing US-003: Profile Hub navigation tying together My Orders/Listings/Payments/Payouts/Notifications/Language/Support/Dispute, plus Logout and Account Security (mobile/email change, sessions, delete account entry point)
+- **Authentication Extensions (US-106 to US-107):** 2 stories - Gap-fill identified when tracing the backend's returning-user API flow: mobile-OTP login (US-001 only covers first-time registration and blocks already-registered mobiles) and access-token refresh (refresh tokens are issued by every auth flow but no endpoint ever consumes one)
 
 ---
 

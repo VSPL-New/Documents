@@ -46,6 +46,8 @@ Allow users to register and login via multiple auth methods, verify identity, an
 | ID     | Story                                       | Repo            | SP | Dependency |
 | ------ | ------------------------------------------- | --------------- | -- | ---------- |
 | US-001 | User Registration via Mobile OTP            | backend, mobile | 8  | S0-001     |
+| US-106 | Mobile OTP Login for Returning Users        | backend, mobile | 5  | US-001     |
+| US-107 | Access Token Refresh                        | backend, mobile | 5  | US-106     |
 | US-101 | Google Sign-In (Optional Convenience Login) | backend, mobile | 5  | US-001     |
 | US-102 | Apple Sign-In (Optional Convenience Login)  | backend, mobile | 5  | US-001     |
 | US-002 | One Account Per User Enforcement            | backend         | 3  | US-001     |
@@ -59,6 +61,8 @@ Allow users to register and login via multiple auth methods, verify identity, an
 ## Exit Criteria
 
 * Mobile OTP registration and login operational
+* Returning users can log back in via mobile OTP without re-registering (US-106)
+* Access tokens can be silently refreshed via the refresh token, with rotation and type validation (US-107)
 * Google Sign-In functional (optional)
 * Apple Sign-In functional (optional)
 * Aadhaar onboarding complete (skippable until first transaction)
@@ -456,7 +460,7 @@ Add advanced features and optimize platform.
 | Sprint | Focus Area                          | Stories | SP  | Duration |
 | ------ | ----------------------------------- | ------- | --- | -------- |
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
-| S1     | Identity & User Management          | 8       | 36  | 2 weeks  |
+| S1     | Identity & User Management          | 10      | 46  | 2 weeks  |
 | S2     | Seller Listing Creation             | 10      | 52  | 2 weeks  |
 | S3     | Discovery & Search                  | 4       | 21  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
@@ -471,11 +475,11 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **108** | **577** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **110** | **587** | **32 weeks** |
 
 ## Coverage
 
-### Stories Planned: 108 / 105 total user stories
+### Stories Planned: 110 / 107 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -485,6 +489,7 @@ Add advanced features and optimize platform.
 - Compliance (US-097 to US-100): ✅ 4 stories
 - Social Login (US-101 to US-102): ✅ 2 stories
 - Profile Management Extensions (US-103 to US-105): ✅ 3 stories
+- Authentication Extensions (US-106 to US-107): ✅ 2 stories
 
 **Not Yet Planned (Future Backlog):**
 - US-061: Screen Reader Compatibility (merged into US-099)
@@ -492,7 +497,7 @@ Add advanced features and optimize platform.
 - US-063: Data Deletion Request (merged into US-098)
 - US-066: Saved Searches and Alerts (included in Sprint 3)
 
-All 105 user stories from the user-stories.md file are now covered in the sprint plan.
+All 107 user stories from the user-stories.md file are now covered in the sprint plan.
 
 ## Key Milestones
 
