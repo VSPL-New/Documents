@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 1: Identity & User Management
 
-**Document Version:** 1.4
+**Document Version:** 1.9
 **Product:** ValueX
 **Sprint:** Sprint 1 - Identity & User Management
 **Sprint Duration:** 2 Weeks
@@ -14,12 +14,17 @@
 | 1.2 | Aug 2026 | Updated to reflect actual implementation: email verification step added to US-001 flow; US-101 port/adapter architecture revised (GoogleTokenPort, MockGoogleTokenAdapter, multi-client-ID config); two new Google endpoints added (initiate-mobile, verify-mobile); Google link-to-existing-account flow documented; email_verified security check added; skip-aadhaar return type corrected; package structure corrected; JWT claims corrected; US-102 Apple Sign-In dropped |
 | 1.3 | Aug 2026 | Added US-103 (Profile Hub / Account Menu Navigation), US-104 (Account Logout), US-105 (Account Security Settings) — gaps identified when auditing US-003 against user-stories.md v3.2. Introduces session tracking (`jti` claim + `user_sessions` table + Redis blocklist) as shared infrastructure for US-104/US-105. Design only — not yet implemented. |
 | 1.4 | Aug 2026 | US-003 redesigned: avatar selection (fixed catalog, `avatar_id`) replaces free-form profile photo upload — removes `StoragePort`/S3 pipeline and image content-moderation dependency entirely. `users.profile_photo_url` (V2) superseded by `users.avatar_id` (V6). Future `user_sessions`/`contact_change_attempts` migration renumbered V6→V7 accordingly. Reflects actual implementation of US-003. |
+| 1.5 | Aug 2026 | US-103 implemented: `ProfileMenuBadgeProvider` SPI, `ProfileMenuService`, `GET /api/v1/users/me/menu-summary` on the existing `UserProfileController`. Zero badge providers registered (confirmed no notification persistence exists yet — `com.valuex.notification` is still Sprint-0 scaffolding, US-077 not built) — extensibility proven by test (empty list + multi-provider aggregation), not by the LLD's example `NotificationsBadgeProvider`, which is deferred to whenever US-077 lands. `ProfileMenuSummaryResponse` implemented as `@Data @Builder class` (§8.4), not the originally-sketched `record`, to match every sibling DTO. |
+| 1.6 | Aug 2026 | US-103 PR review + AC audit: `ProfileMenuService` hardened — constructor-time duplicate-`menuKey` validation (fail fast, not a live-request crash), per-provider failure/negative-count isolation (log + omit, doesn't break the whole response), `badges` map returned unmodifiable, `ProfileMenuBadgeProvider` SPI fully documented, plus a narrow Docker-free Spring-context test proving `List<ProfileMenuBadgeProvider>` autowiring actually works. Separately, an AC audit found `memberSince` ("joined date") was missing from the summary response despite being in the AC text — added. `rating` and a seller `hasActiveListings` signal remain genuinely unavailable (Ratings and Listings aren't built yet) — not fixable until those stories land. |
+| 1.7 | Aug 2026 | Full doc-vs-code audit (not just the avatar change): §8.2's `ProfileMenuService`/`ProfileMenuBadgeProvider` snippets were stale (still showed `@RequiredArgsConstructor`, no constructor validation, no per-provider isolation) — rewritten to match real source, with the review-added behaviors called out explicitly instead of silently baked in. §16.4 JWT Claims (numbered §15.4 at the time) presented the design-only `jti` claim as if implemented — it is not; the real `JwtTokenProvider` has no `jti` claim, flagged clearly. §17.1's "ProfileMenuService Tests" list had three invented method names that don't match what was actually written — replaced with real method names for every US-003/US-103 test class, plus the previously-undocumented `ProfileMenuServiceWiringIntegrationTest`. §17.2's `UserRegistrationIntegrationTest` was always fictional (never built) — now labeled as such. §15.4/15.6/15.7 (Notifications/Logout/Account Security endpoints) now explicitly flagged "not implemented" rather than reading as live. Implementation Sequence table gained a Status column, corrected two stale class names (§3, §10: `SocialLoginPort`/`GoogleSocialLoginAdapter` → `GoogleTokenPort`/`GoogleSignInService`, a v1.2 rename this table never picked up), marked Apple as dropped, and added the PR-review hardening as its own row (19a). §1.3 Exit Criteria checkboxes now reflect actual status instead of being uniformly unchecked. |
+| 1.8 | Aug 2026 | US-106 (Mobile OTP Login for Returning Users) implemented and documented: new §13 covers the login flow, the 10-state login-eligibility table, `UserLoginService` (reuses the long-dormant `OtpPurpose.LOGIN`, reuses the existing `ERROR_INVALID_STATE` convention rather than inventing a new error code — same pattern as `GoogleSignInService.initiateMobileForSocialLink`), and what login deliberately never touches (no state transition, no `User` row writes, no session/audit infrastructure — none of that exists yet). Old §13-16 renumbered to §14-17 (Database Schema, API Design, Security Considerations, Testing Strategy) to make room. §15.1 gained the two new `/auth/login/*` endpoint specs, §16.5 gained their rate-limit rows, §17.1 gained real `UserLoginServiceTest`/`AuthControllerTest` method names, §2.4 Package Structure updated with the new DTO/service classes, and Implementation Sequence gained row 23. |
+| 1.9 | Aug 2026 | US-106 AC audit found a real gap: neither the JWT nor `AuthResponse` ever returned the account's `status`, so the client had no way to satisfy the AC's "route to the appropriate screen for my account's current state" without an extra API call. Fixed by adding `status` to `AuthResponse` — populated in all five places it's built (`UserLoginService.verifyLogin`, `UserRegistrationService.verifyMobileOtp`/`.skipAadhaar`, `AadhaarVerificationService.completeVerification`, `GoogleSignInService.verifySocialMobileOtp`), so registration, login, Aadhaar, and Google sign-in all return it consistently, not just login. All affected JSON response examples in §15.1/§15.2 and the flow diagrams in §3.1/§4/§13.2/§13.4 updated to show it. `SocialSignInResponse` (Google Flow B, already-linked immediate JWT) is a separate DTO and was not touched — out of scope of this fix. Also fixed two Sonar `S5778` code smells in `ProfileMenuServiceTest` (lambdas with multiple throw-possible invocations) found during the first Sonar scan of the US-106 branch. |
 
 **Reference Documents:**
 - PRD v1.4
 - HLD Parts 1-3
 - Sprint Plan v2.0
-- User Stories v3.3
+- User Stories v3.4
 - Sprint-0-Foundation-Architecture-LLD v1.0
 
 ---
@@ -38,10 +43,11 @@
 10. [US-105: Account Security Settings](#10-us-105-account-security-settings)
 11. [US-077: Critical Event Notifications](#11-us-077-critical-event-notifications)
 12. [US-088: Lifecycle State - User Account](#12-us-088-lifecycle-state---user-account)
-13. [Database Schema](#13-database-schema)
-14. [API Design](#14-api-design)
-15. [Security Considerations](#15-security-considerations)
-16. [Testing Strategy](#16-testing-strategy)
+13. [US-106: Mobile OTP Login for Returning Users](#13-us-106-mobile-otp-login-for-returning-users)
+14. [Database Schema](#14-database-schema)
+15. [API Design](#15-api-design)
+16. [Security Considerations](#16-security-considerations)
+17. [Testing Strategy](#17-testing-strategy)
 
 ---
 
@@ -56,6 +62,7 @@ Allow users to register and log in via multiple auth methods (Mobile OTP, Google
 | ID     | Story                                       | Repo            | SP | Dependency |
 |--------|---------------------------------------------|-----------------|----|------------|
 | US-001 | User Registration via Mobile OTP            | backend, mobile | 8  | S0-001     |
+| US-106 | Mobile OTP Login for Returning Users        | backend, mobile | 5  | US-001     |
 | US-101 | Google Sign-In (Optional Convenience Login) | backend, mobile | 5  | US-001     |
 | ~~US-102~~ | ~~Apple Sign-In (Optional Convenience Login)~~ | ~~backend, mobile~~ | ~~5~~ | — **Dropped** |
 | US-002 | One Account Per User Enforcement            | backend         | 3  | US-001     |
@@ -68,20 +75,23 @@ Allow users to register and log in via multiple auth methods (Mobile OTP, Google
 
 ## 1.3 Exit Criteria
 
-- [ ] User can register via mobile OTP
-- [ ] Email verification step works (OTP sent to email after mobile OTP)
-- [ ] Google Sign-In working (returns JWT, new-user flow collects mobile)
+Status as of v1.9 — checked items are actually implemented and covered by passing tests, not just designed:
+
+- [x] User can register via mobile OTP
+- [x] Returning users can log back in via mobile OTP without re-registering (US-106 — see §13)
+- [x] Email verification step works (OTP sent to email after mobile OTP)
+- [x] Google Sign-In working (returns JWT, new-user flow collects mobile)
 - [ ] ~~Apple Sign-In~~ — **Dropped from scope**
-- [ ] Aadhaar verification flow works (skip + complete)
-- [ ] Aadhaar gate enforced on first transaction attempt
-- [ ] Duplicate account prevention operational
-- [ ] User profile view and edit working
-- [ ] Profile hub summary endpoint returns badge counts (extensible provider SPI)
-- [ ] Logout revokes current session (JWT `jti` blocklisted immediately)
-- [ ] Mobile/email change via OTP working; active-sessions list and "log out of other devices" working
-- [ ] Account state transitions tracked and audited
-- [ ] Critical event notifications sent (in-app + push)
-- [ ] All endpoints documented in Swagger UI
+- [x] Aadhaar verification flow works (skip + complete)
+- [x] Aadhaar gate enforced on first transaction attempt
+- [x] Duplicate account prevention operational
+- [x] User profile view and edit working (avatar selection, not photo upload — see §7)
+- [x] Profile hub summary endpoint returns badge counts (extensible provider SPI, hardened per PR review — see §8)
+- [ ] Logout revokes current session (JWT `jti` blocklisted immediately) — **design only, not implemented** (US-104; the real `JwtTokenProvider` has no `jti` claim yet — see §16.4)
+- [ ] Mobile/email change via OTP working; active-sessions list and "log out of other devices" working — **design only, not implemented** (US-105)
+- [x] Account state transitions tracked and audited (`UserAccountStateMachine` + `account_status_history`, exercised by every registration/Aadhaar test)
+- [ ] Critical event notifications sent (in-app + push) — **design only, not implemented** (US-077; `com.valuex.notification` is still the Sprint-0 state-machine scaffold, no entity/table/dispatcher)
+- [x] All *implemented* endpoints documented in Swagger UI (`@Operation`/`@Tag` on every real controller method)
 
 ---
 
@@ -202,6 +212,7 @@ com.valuex.auth/
 │   │   └── ProfileMenuBadgeProvider.java   # SPI — each domain module contributes a badge count (US-103)
 │   ├── service/
 │   │   ├── UserRegistrationService.java    # Registration + mobile OTP flow
+│   │   ├── UserLoginService.java           # Login for returning users (US-106)
 │   │   ├── EmailVerificationService.java   # Email OTP send + verify
 │   │   ├── AadhaarVerificationService.java # Aadhaar initiate + verify
 │   │   ├── GoogleSignInService.java        # Google 3-step sign-in flow
@@ -212,6 +223,8 @@ com.valuex.auth/
 │   └── dto/
 │       ├── InitiateRegistrationRequest.java
 │       ├── VerifyMobileOtpRequest.java
+│       ├── InitiateLoginRequest.java       # { mobile } — US-106
+│       ├── VerifyLoginOtpRequest.java      # { mobile, otp } — US-106
 │       ├── SendEmailOtpRequest.java
 │       ├── VerifyEmailOtpRequest.java
 │       ├── InitiateAadhaarRequest.java
@@ -258,7 +271,7 @@ com.valuex.auth/
 │   └── AadhaarGatingInterceptor.java       # Enforces identity gate
 │
 └── api/
-    ├── AuthController.java                 # All auth endpoints (registration + social + logout)
+    ├── AuthController.java                 # All auth endpoints (registration + login + social + logout)
     ├── UserProfileController.java          # Profile endpoints + menu-summary (US-103)
     ├── AvatarController.java               # GET /api/v1/avatars — avatar catalog (US-003)
     └── AccountSecurityController.java      # Mobile/email change, sessions (US-105)
@@ -309,7 +322,8 @@ Step 2: Verify Mobile OTP
   → Delete OTP + counters from Redis
   → Transition state: OTP_PENDING → EMAIL_VERIFICATION_PENDING  ← actual state
   → Generate JWT (aadhaarVerified=false, userId, role=USER)
-  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId }
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId,
+                            status=EMAIL_VERIFICATION_PENDING }
 
 Step 3: Email Verification  ← added during development
   POST /api/v1/auth/email/send-otp
@@ -329,7 +343,7 @@ Step 4a: Skip Aadhaar (User chooses to skip)
   POST /api/v1/auth/register/skip-aadhaar
   → Transition state: IDENTITY_VERIFICATION_PENDING → ACTIVE  ← actual behaviour
   → Reissue JWT
-  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId }
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId, status=ACTIVE }
   Note: aadhaarVerified stays false; Aadhaar gate blocks first transaction
 
 Step 4b: Initiate Aadhaar Verification
@@ -352,7 +366,7 @@ Step 5: Complete Aadhaar Verification
   → Update attempt log: status=SUCCESS
   → Transition state: IDENTITY_VERIFICATION_PENDING → ACTIVE
   → Reissue JWT (aadhaarVerified=true)
-  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=true, userId }
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=true, userId, status=ACTIVE }
 ```
 
 ## 3.2 User Entity
@@ -603,7 +617,8 @@ POST /api/v1/auth/social/google/verify-mobile
   → Write UserSocialAccount row linking Google sub → new userId
   → Clear session + OTP from Redis
   → Issue JWT
-  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId }
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId,
+                            status=IDENTITY_VERIFICATION_PENDING }
 ```
 
 ### Flow B — Returning Google user (already linked)
@@ -945,42 +960,68 @@ package com.valuex.auth.application.port;
 
 public interface ProfileMenuBadgeProvider {
     String menuKey();              // e.g. "MY_ORDERS", "OFFERS", "SUPPORT_TICKETS"
-    int badgeCount(UUID userId);   // 0 if nothing pending
+    int badgeCount(UUID userId);   // must be non-negative; must be fast/non-blocking
 }
 ```
 
-`ProfileMenuService` autowires `List<ProfileMenuBadgeProvider>` — Spring injects whatever providers exist at the time. In Sprint 1, only the notifications provider exists; every other menu key is simply absent from the response until its owning sprint registers a provider bean.
+Deliberately a plain `String` key, not a shared enum — an enum would have to live somewhere (this module or another shared one), forcing every future implementing module to depend on it just to plug in, which defeats the point of the SPI. Each implementation defines its own `menuKey()` as a local constant. The real interface (`ProfileMenuBadgeProvider.java`) carries full Javadoc on both methods covering this, plus the uniqueness and non-blocking contracts — added during PR review, not shown in full here to avoid the doc and the source drifting on the next wording tweak.
+
+`ProfileMenuService` autowires `List<ProfileMenuBadgeProvider>` — Spring injects whatever providers exist at the time (an empty list is valid, not an error). As of Sprint 1, **zero providers are registered** — `com.valuex.notification` has no persisted entity yet (only the Sprint-0 state-machine scaffold), so even the notifications example below has never actually been built. Every menu key is simply absent from the response until its owning sprint registers a provider bean.
+
+The snippet below is the *shape* of the real implementation, trimmed for readability — see `ProfileMenuService.java` for the exact, current source. Three things were added during PR review that aren't obvious from a trimmed snippet, so don't reproduce this verbatim without them:
+
+1. **No `@RequiredArgsConstructor`.** The constructor is written by hand so it can validate `badgeProviders` before the object exists — see point 3.
+2. **Per-provider try/catch**, not `Collectors.toMap`. A provider that throws, or returns a negative count, has its key logged and omitted — it does not fail the whole response for every other provider.
+3. **Constructor-time uniqueness check.** Two providers registering the same `menuKey()` throws `IllegalStateException` at app startup (or test object construction), not on a live user's request via a cryptic `Collectors.toMap` crash.
 
 ```java
 package com.valuex.auth.application.service;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class ProfileMenuService {
 
     private final UserRepository userRepository;
     private final List<ProfileMenuBadgeProvider> badgeProviders;
 
+    public ProfileMenuService(UserRepository userRepository, List<ProfileMenuBadgeProvider> badgeProviders) {
+        this.userRepository = userRepository;
+        this.badgeProviders = badgeProviders;
+        validateUniqueMenuKeys(badgeProviders);   // point 3 — throws IllegalStateException on collision
+    }
+
     public ProfileMenuSummaryResponse getSummary(UUID userId) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new NotFoundException("User not found"));
 
-        Map<String, Integer> badges = badgeProviders.stream()
-            .collect(Collectors.toMap(
-                ProfileMenuBadgeProvider::menuKey,
-                p -> p.badgeCount(userId)));
+        Map<String, Integer> badges = new LinkedHashMap<>();
+        for (ProfileMenuBadgeProvider provider : badgeProviders) {
+            try {
+                int count = provider.badgeCount(userId);
+                if (count >= 0) {
+                    badges.put(provider.menuKey(), count);
+                } else {
+                    log.warn("negative count from {} — omitting", provider.getClass().getSimpleName());
+                }
+            } catch (RuntimeException e) {
+                log.warn("provider {} failed — omitting", provider.getClass().getSimpleName(), e);   // point 2
+            }
+        }
 
         return ProfileMenuSummaryResponse.builder()
             .displayName(user.getDisplayName())
             .avatarId(user.getAvatarId())
             .aadhaarVerified(user.isAadhaarVerified())
-            .badges(badges)   // e.g. {"NOTIFICATIONS": 3}
+            .memberSince(user.getCreatedAt())   // AC audit fix — US-103's AC calls for "joined date" in the summary
+            .badges(Collections.unmodifiableMap(badges))   // e.g. {"NOTIFICATIONS": 3}
             .build();
     }
+
+    private static void validateUniqueMenuKeys(List<ProfileMenuBadgeProvider> providers) { /* see source */ }
 }
 ```
 
-Sprint 1's own notifications provider:
+Sprint 1's own notifications provider — **hypothetical, not built.** `NotificationRepository` doesn't exist (US-077 hasn't shipped), so this class has never actually been created; it's shown only to illustrate what registering a provider looks like once one exists:
 
 ```java
 package com.valuex.auth.adapter.menu;
@@ -989,7 +1030,7 @@ package com.valuex.auth.adapter.menu;
 @RequiredArgsConstructor
 public class NotificationsBadgeProvider implements ProfileMenuBadgeProvider {
 
-    private final NotificationRepository notificationRepository;
+    private final NotificationRepository notificationRepository;   // does not exist yet
 
     @Override
     public String menuKey() { return "NOTIFICATIONS"; }
@@ -1025,15 +1066,23 @@ Menu items whose destination story hasn't shipped yet have no matching key in th
 
 ## 8.4 ProfileMenuSummaryResponse DTO
 
+Implemented as `@Data @Builder class`, not a `record` — every sibling DTO in this package
+(`UserProfileResponse`, `AuthResponse`, `AvatarCatalogResponse`, ...) is a plain `@Data @Builder`
+class, and matching that keeps accessor style (`.getDisplayName()`, not `.displayName()`)
+consistent across the whole test suite for zero functional difference.
+
 ```java
 package com.valuex.auth.application.dto;
 
-public record ProfileMenuSummaryResponse(
-    String displayName,
-    String avatarId,
-    boolean aadhaarVerified,
-    Map<String, Integer> badges
-) {}
+@Data
+@Builder
+public class ProfileMenuSummaryResponse {
+    private String displayName;
+    private String avatarId;
+    private boolean aadhaarVerified;
+    private Instant memberSince;
+    private Map<String, Integer> badges;
+}
 ```
 
 ---
@@ -1389,7 +1438,153 @@ public void liftExpiredSuspensions() {
 
 ---
 
-# 13. Database Schema
+# 13. US-106: Mobile OTP Login for Returning Users
+
+## 13.1 Why This Story Exists
+
+Traced while auditing the backend's actual API flow for returning users: there was no way for a mobile-OTP user to log back in. `POST /register/initiate` explicitly rejects an already-registered mobile with `ERROR_MOBILE_ALREADY_REGISTERED`, and US-101/US-102 (Google/Apple Sign-In) are documented as *"Optional Convenience Login"* — a shortcut around a primary mobile-OTP login path that had never itself been built. US-106 closes that gap.
+
+## 13.2 Login Flow
+
+```
+Step 1: Initiate Login
+  POST /api/v1/auth/login/initiate
+  Body: { mobile }
+  → Look up user by mobile — not found → ERROR_MOBILE_NOT_REGISTERED
+  → assertLoginEligible(user) — see §13.3
+  → Rate limit (shared otp_rate:{mobile} bucket with registration — see §13.4)
+  → Generate OTP (6 digits), store SHA-256(OTP) in Redis: otp:{mobile}:LOGIN  TTL=300s
+  → Call OtpPort.sendOtp(mobile, otp, LOGIN)
+  → Return: { message: "OTP sent", otpExpiresInSeconds: 300 }
+
+Step 2: Verify Login OTP
+  POST /api/v1/auth/login/verify-mobile
+  Body: { mobile, otp }
+  → Fail-rate-limit check first (otp_fail:{mobile}), mirroring US-001's verify-mobile ordering
+  → Re-fetch user by mobile, re-run assertLoginEligible(user)
+    — this second check is what actually satisfies "account state changes between send and verify"
+  → Validate OTP hash from Redis
+  → Delete OTP + fail-counter keys
+  → Issue JWT reflecting the account's CURRENT status/aadhaarVerified, read fresh from `user`
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified, userId, status }
+    -- `status` is what lets the client route correctly post-login (§1.3 exit criterion,
+       previously a gap: neither the JWT nor AuthResponse carried it — see v1.9 changelog)
+
+No state transition occurs anywhere in this flow — login only reads state, it never writes it.
+Unlike registration's verify-mobile step (OTP_PENDING → EMAIL_VERIFICATION_PENDING), there is no
+stateMachine.transition() call, no account_status_history row, and neither method is @Transactional.
+```
+
+## 13.3 State Eligibility — Who Can Log Back In
+
+Cross-checked against the actual `UserAccountState` enum and §12.2's Access Control table:
+
+| State | Login? | Result |
+|---|---|---|
+| NEW, OTP_PENDING | No | `ERROR_INVALID_STATE` — mobile was never verified, nothing to log into yet |
+| EMAIL_VERIFICATION_PENDING | **Yes** | resumes at the email step |
+| IDENTITY_VERIFICATION_PENDING | **Yes** | resumes at the Aadhaar step |
+| ACTIVE | **Yes** | home |
+| UNDER_REVIEW, RESTRICTED | **Yes** | per §12.2 — these states can log in, just can't list/buy |
+| SUSPENDED | No | `ERROR_ACCOUNT_SUSPENDED` |
+| BANNED, CLOSED | No | `ERROR_ACCOUNT_RECOVERY_REQUIRED` |
+
+`assertLoginEligible` is called at **both** initiate and verify — calling it twice, not once, is what actually handles the "suspended/banned between send and verify" edge case from `user-stories.md`.
+
+**Error code decision:** NEW/OTP_PENDING reuses `ERROR_INVALID_STATE` rather than a new code — `GoogleSignInService.initiateMobileForSocialLink` already throws this exact code for the analogous "account exists, registration incomplete" situation. Every other error code is either specified directly in the AC (`ERROR_MOBILE_NOT_REGISTERED`, `ERROR_ACCOUNT_SUSPENDED`) or reused verbatim from existing strings (`ERROR_ACCOUNT_RECOVERY_REQUIRED` copied from `GoogleSignInService`; `ERROR_INVALID_OTP`/`ERROR_OTP_EXPIRED`/`ERROR_OTP_RATE_LIMIT`/`ERROR_OTP_MAX_ATTEMPTS` copied from `UserRegistrationService`).
+
+## 13.4 UserLoginService
+
+A separate service from `UserRegistrationService` — matches this module's one-service-per-concern
+split (`EmailVerificationService`, `AadhaarVerificationService`, `GoogleSignInService` are all
+separate despite sharing OTP mechanics). Registration requires a mobile that does **not** exist;
+login requires the opposite — bolting them together would blur that. No `UserAccountStateMachine`
+or `JdbcTemplate` dependency, since login never transitions state or writes audit history.
+
+```java
+package com.valuex.auth.application.service;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class UserLoginService {
+
+    private final UserRepository userRepository;
+    private final OtpPort otpPort;
+    private final RedisCacheService redisCache;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final ValuexProperties valuexProperties;
+    private final SecureRandom secureRandom = new SecureRandom();
+
+    public MessageResponse initiateLogin(InitiateLoginRequest request) {
+        User user = findRegisteredUser(request.getMobile());
+        assertLoginEligible(user);
+        // rate-limit check on otp_rate:{mobile} -> ERROR_OTP_RATE_LIMIT
+        // generate OTP, hash, redisCache.set("otp:" + mobile + ":" + OtpPurpose.LOGIN, hash, ttl)
+        // otpPort.sendOtp(mobile, otp, OtpPurpose.LOGIN)
+    }
+
+    public AuthResponse verifyLogin(VerifyLoginOtpRequest request) {
+        // rate-limit check on otp_fail:{mobile} first, mirrors verifyMobileOtp's exact ordering
+        User user = findRegisteredUser(request.getMobile());
+        assertLoginEligible(user);   // re-checked -- covers "state changed between send and verify"
+        // fetch+compare OTP hash from otp:{mobile}:LOGIN -> ERROR_OTP_EXPIRED / ERROR_INVALID_OTP
+        // delete both Redis keys
+        return AuthResponse.builder()
+            .accessToken(jwtTokenProvider.generateAccessToken(
+                user.getId(), "USER", user.isAadhaarVerified(), "MOBILE_OTP"))
+            .refreshToken(jwtTokenProvider.generateRefreshToken(user.getId()))
+            .aadhaarVerified(user.isAadhaarVerified())   // read fresh from `user`, never cached
+            .userId(user.getId().toString())
+            .status(user.getStatus().name())             // lets the client route post-login (§13.2)
+            .build();
+    }
+
+    private User findRegisteredUser(String mobile) {
+        return userRepository.findByMobile(mobile)
+            .orElseThrow(() -> new BusinessException("ERROR_MOBILE_NOT_REGISTERED",
+                "No account found with this mobile number. Please register"));
+    }
+
+    private void assertLoginEligible(User user) {
+        switch (user.getStatus()) {
+            case NEW, OTP_PENDING -> throw new BusinessException("ERROR_INVALID_STATE",
+                "Please complete your mobile number verification before logging in");
+            case SUSPENDED -> throw new BusinessException("ERROR_ACCOUNT_SUSPENDED",
+                "Your account is suspended. Please contact support");
+            case BANNED, CLOSED -> throw new BusinessException("ERROR_ACCOUNT_RECOVERY_REQUIRED",
+                "Your account requires recovery. Please contact support");
+            default -> { /* EMAIL_VERIFICATION_PENDING, IDENTITY_VERIFICATION_PENDING,
+                            ACTIVE, UNDER_REVIEW, RESTRICTED -- all allowed */ }
+        }
+    }
+}
+```
+
+Trimmed for readability (full OTP generation/rate-limit code omitted) — see `UserLoginService.java`
+for the exact current source.
+
+## 13.5 `OtpPurpose.LOGIN` — Finally Used
+
+`OtpPurpose` has carried an unused `LOGIN` value since US-001. Login OTPs use Redis key
+`otp:{mobile}:LOGIN`, distinct from registration's `otp:{mobile}:MOBILE_VERIFY`. Rate-limit buckets
+(`otp_rate:{mobile}`, `otp_fail:{mobile}`) are **shared** with registration's identical prefixes,
+not purpose-scoped — safe because a mobile can never be simultaneously eligible for both
+registration (requires `!existsByMobile`) and login (requires `existsByMobile`).
+
+## 13.6 What Login Deliberately Does Not Touch
+
+- **`account_status_history`** — an audit trail of state *transitions* only; login causes none.
+- **Session/`jti` tracking** — the `user_sessions` design (§2.5, US-104/US-105) doesn't exist in
+  real code yet. Login correctly does not add one; that's US-107/US-104 territory.
+- **Aadhaar gating** — already uniformly enforced by `AadhaarGatingInterceptor` reading the
+  `aadhaarVerified` JWT claim regardless of which flow issued the token. Since login reads
+  `user.isAadhaarVerified()` fresh from the DB into that claim exactly like every other flow, no
+  new gating logic is needed.
+
+---
+
+# 14. Database Schema
 
 ## 8.1 Flyway Migration: V2__auth_schema.sql
 
@@ -1508,9 +1703,9 @@ CREATE INDEX idx_contact_change_user ON contact_change_attempts(user_id);
 
 ---
 
-# 14. API Design
+# 15. API Design
 
-## 14.1 Auth Endpoints
+## 15.1 Auth Endpoints
 
 ### POST /api/v1/auth/register/initiate
 **Request:**
@@ -1551,11 +1746,61 @@ CREATE INDEX idx_contact_change_user ON contact_change_attempts(user_id);
     "accessToken": "eyJ...",
     "refreshToken": "eyJ...",
     "aadhaarVerified": false,
-    "userId": "uuid"
+    "userId": "uuid",
+    "status": "EMAIL_VERIFICATION_PENDING"
   }
 }
 ```
 **Errors:** `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`
+
+---
+
+### POST /api/v1/auth/login/initiate
+See §13 (US-106) for the full login flow.
+**Request:**
+```json
+{ "mobile": "9876543210" }
+```
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "OTP sent to your mobile number",
+    "otpExpiresInSeconds": 300
+  }
+}
+```
+**Errors:** `ERROR_MOBILE_NOT_REGISTERED`, `ERROR_OTP_RATE_LIMIT`, `ERROR_INVALID_STATE`
+(mobile never verified), `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED`
+
+---
+
+### POST /api/v1/auth/login/verify-mobile
+**Request:**
+```json
+{ "mobile": "9876543210", "otp": "123456" }
+```
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "aadhaarVerified": true,
+    "userId": "uuid",
+    "status": "ACTIVE"
+  }
+}
+```
+Note: `aadhaarVerified` and `status` both reflect the account's **current** DB state at login
+time (e.g. a user who finished Aadhaar verification since their last login gets
+`aadhaarVerified: true` immediately). The client routes on `status` — `ACTIVE` goes to the
+home screen; anything short of `ACTIVE` (e.g. `EMAIL_VERIFICATION_PENDING`,
+`IDENTITY_VERIFICATION_PENDING`) resumes registration at that exact step. See §13.4.
+**Errors:** `ERROR_MOBILE_NOT_REGISTERED`, `ERROR_OTP_MAX_ATTEMPTS`, `ERROR_OTP_EXPIRED`,
+`ERROR_INVALID_OTP`, `ERROR_INVALID_STATE`, `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED`
 
 ---
 
@@ -1603,7 +1848,8 @@ CREATE INDEX idx_contact_change_user ON contact_change_attempts(user_id);
     "accessToken": "eyJ...",
     "refreshToken": "eyJ...",
     "aadhaarVerified": false,
-    "userId": "uuid"
+    "userId": "uuid",
+    "status": "ACTIVE"
   }
 }
 ```
@@ -1652,14 +1898,15 @@ blocks first transaction attempt.
     "accessToken": "eyJ...",
     "refreshToken": "eyJ...",
     "aadhaarVerified": true,
-    "verifiedName": "A**** K****"
+    "verifiedName": "A**** K****",
+    "status": "ACTIVE"
   }
 }
 ```
 
 ---
 
-## 14.2 Social Login Endpoints
+## 15.2 Social Login Endpoints
 
 All three Google endpoints are **public** (no Bearer token required).
 
@@ -1734,10 +1981,15 @@ All three Google endpoints are **public** (no Bearer token required).
     "accessToken": "eyJ...",
     "refreshToken": "eyJ...",
     "aadhaarVerified": false,
-    "userId": "uuid"
+    "userId": "uuid",
+    "status": "IDENTITY_VERIFICATION_PENDING"
   }
 }
 ```
+Note: `status` is `IDENTITY_VERIFICATION_PENDING` for a newly created Google user (email
+already verified by Google, so registration's email-OTP step is skipped — see
+`GoogleSignInService.createNewSocialUser`) or the linked account's existing `status` when
+linking Google to an already-registered mobile number.
 **Errors:** `ERROR_SOCIAL_SESSION_EXPIRED`, `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`
 
 ---
@@ -1746,7 +1998,7 @@ All three Google endpoints are **public** (no Bearer token required).
 
 ---
 
-## 14.3 User Profile Endpoints
+## 15.3 User Profile Endpoints
 
 ### GET /api/v1/users/me
 **Auth:** Bearer token required
@@ -1808,7 +2060,10 @@ All three Google endpoints are **public** (no Bearer token required).
 
 ---
 
-## 14.4 Notifications Endpoints
+## 15.4 Notifications Endpoints
+
+> **Not implemented.** US-077 hasn't been built — no `Notification` entity, table, or controller exists.
+> These endpoints are design only.
 
 ### GET /api/v1/notifications
 **Auth:** Bearer token required
@@ -1823,7 +2078,7 @@ All three Google endpoints are **public** (no Bearer token required).
 
 ---
 
-## 14.5 Profile Hub Endpoint
+## 15.5 Profile Hub Endpoint
 
 ### GET /api/v1/users/me/menu-summary
 **Auth:** Bearer token required
@@ -1835,6 +2090,7 @@ All three Google endpoints are **public** (no Bearer token required).
     "displayName": "Abhay",
     "avatarId": "avatar-01",
     "aadhaarVerified": true,
+    "memberSince": "2026-07-09T00:00:00Z",
     "badges": { "NOTIFICATIONS": 3 }
   }
 }
@@ -1843,7 +2099,10 @@ Note: badge keys for menu items whose owning sprint hasn't shipped yet are simpl
 
 ---
 
-## 14.6 Logout Endpoint
+## 15.6 Logout Endpoint
+
+> **Not implemented.** US-104 hasn't been built — `grep`-confirmed zero "logout" references anywhere
+> in `src/main/java`. There is currently no way to invalidate a token before it naturally expires.
 
 ### POST /api/v1/auth/logout
 **Auth:** Bearer token required
@@ -1859,7 +2118,10 @@ Idempotent — calling it again on an already-revoked session still returns 200.
 
 ---
 
-## 14.7 Account Security Endpoints
+## 15.7 Account Security Endpoints
+
+> **Not implemented.** US-105 hasn't been built — no `AccountSecurityController`/`AccountSecurityService`
+> exists. Mobile/email change, session listing, and "log out of other devices" are all design only.
 
 ### GET /api/v1/users/me/account-security
 **Auth:** Bearer token required
@@ -1915,9 +2177,9 @@ Same contract as mobile change, against `newEmail`.
 
 ---
 
-# 15. Security Considerations
+# 16. Security Considerations
 
-## 15.1 Social Login Token Security
+## 16.1 Social Login Token Security
 
 | Rule | Detail |
 |---|---|
@@ -1928,7 +2190,7 @@ Same contract as mobile change, against `newEmail`.
 | No client-side shortcut | Flutter plugins return validated tokens — but backend must re-validate independently |
 | ~~Apple token validation~~ | ~~US-102 dropped~~ |
 
-## 15.2 Aadhaar Data Handling
+## 16.2 Aadhaar Data Handling
 
 | Data | Storage | Notes |
 |---|---|---|
@@ -1937,7 +2199,7 @@ Same contract as mobile change, against `newEmail`.
 | Aadhaar name | `users.aadhaar_name` | Masked (A**** K****) from provider |
 | Verification attempt | `aadhaar_verification_attempts` | Audit trail with hash, not plain number |
 
-## 15.3 OTP Security
+## 16.3 OTP Security
 
 - OTP is 6 digits, alphanumeric entropy optional (config)
 - Stored as `SHA-256(otp)` in Redis — never plain text
@@ -1945,12 +2207,13 @@ Same contract as mobile change, against `newEmail`.
 - OTP invalidated immediately after successful use
 - Max 5 failed OTP attempts before lockout (10-minute cooldown)
 
-## 15.4 JWT Claims
+## 16.4 JWT Claims
+
+**As actually implemented today** (`JwtTokenProvider.java`):
 
 ```json
 {
   "sub": "user-uuid",
-  "jti": "3f8a1c2d-e5f6-4a9b-8c1d-2e3f4a5b6c7d",
   "type": "access",
   "role": "USER",
   "aadhaarVerified": false,
@@ -1964,13 +2227,21 @@ Same contract as mobile change, against `newEmail`.
 
 Note: `accountStatus` is **not** included in the JWT — state is always read from the database.
 The `type` claim distinguishes access tokens from refresh tokens (`"access"` | `"refresh"`).
-The `jti` claim (added in v1.3) identifies the `user_sessions` row this token belongs to — see Section 2.5 and Section 15.6.
 
-## 15.5 Rate Limiting (via Redis)
+> **`jti` is design-only, not implemented.** Section 2.5 designs a `jti` claim + `user_sessions` table
+> for US-104/US-105 (logout, session revocation) — but those stories haven't been built, and the real
+> `JwtTokenProvider` has no `jti` claim today. A refresh token issued right now is functionally
+> indistinguishable from an access token to `JwtAuthenticationFilter` except for the `type` claim
+> (which the filter also doesn't currently check — see US-107 in `user-stories.md` for this gap).
+> Don't assume `jti` exists anywhere in the real token until US-104 actually ships.
+
+## 16.5 Rate Limiting (via Redis)
 
 | Endpoint | Limit | Window |
 |---|---|---|
 | `/register/initiate` | 3 requests | per mobile per 10 min |
+| `/login/initiate` | 3 requests | per mobile per 10 min (shared `otp.max-send-attempts-per-window` config) |
+| `/login/verify-mobile` (fail) | 5 attempts | per mobile per 10 min (shared `otp.max-verify-attempts-per-window` config) |
 | `/email/send-otp` | 3 requests | per user per 10 min |
 | `/email/verify-otp` (fail) | 5 attempts | per user per 10 min |
 | `/aadhaar/initiate` | 3 requests | per user per 10 min |
@@ -1980,7 +2251,7 @@ The `jti` claim (added in v1.3) identifies the `user_sessions` row this token be
 | `/users/me/email/change/initiate` | 3 requests | per user per 10 min |
 | `/auth/logout` | 10 requests | per user per 10 min (abuse guard) |
 
-## 15.6 Session & Token Revocation (US-104 / US-105)
+## 16.6 Session & Token Revocation (US-104 / US-105)
 
 | Rule | Detail |
 |---|---|
@@ -1992,9 +2263,9 @@ The `jti` claim (added in v1.3) identifies the `user_sessions` row this token be
 
 ---
 
-# 16. Testing Strategy
+# 17. Testing Strategy
 
-## 16.1 Unit Tests
+## 17.1 Unit Tests
 
 ### UserRegistrationService Tests
 - `shouldSendOtpAndTransitionStateToOtpPending`
@@ -2053,23 +2324,78 @@ The `jti` claim (added in v1.3) identifies the `user_sessions` row this token be
 
 ~~Apple tests~~ — dropped with US-102
 
-### ProfileMenuService Tests (US-103)
-- `shouldAggregateBadgesFromAllRegisteredProviders`
-- `shouldOmitBadgeKeyWhenNoProviderRegistered`
-- `shouldReturnZeroCountWhenNoUnreadNotifications`
+### UserLoginService Tests (US-106) — implemented, real method names
 
-### SessionService Tests (US-104)
+`UserLoginServiceTest`:
+- `shouldSendOtpWhenAccountIsActive`
+- `shouldRejectInitiateWhenMobileNotRegistered`
+- `shouldRejectInitiateWhenRateLimitExceeded`
+- `shouldRejectInitiateWhenMobileNeverVerified` — `@ParameterizedTest @EnumSource(names={"NEW","OTP_PENDING"})`
+- `shouldRejectInitiateWhenAccountSuspended`
+- `shouldRejectInitiateWhenAccountBannedOrClosed` — `@ParameterizedTest @EnumSource(names={"BANNED","CLOSED"})`
+- `shouldAllowInitiateForEveryOtherEligibleState` — `@ParameterizedTest @EnumSource(names={"EMAIL_VERIFICATION_PENDING","IDENTITY_VERIFICATION_PENDING","UNDER_REVIEW","RESTRICTED"})`
+- `shouldVerifyOtpAndReturnJwtReflectingCurrentDbState`
+- `shouldReturnStatusReflectingAccountsCurrentStateNotAHardcodedValue` — `@ParameterizedTest @EnumSource(names={"EMAIL_VERIFICATION_PENDING","IDENTITY_VERIFICATION_PENDING","ACTIVE","UNDER_REVIEW","RESTRICTED"})`; added in v1.9 alongside the `AuthResponse.status` fix
+- `shouldRejectVerifyWhenMobileNotRegistered`
+- `shouldRejectVerifyWhenAccountBecameSuspendedBetweenSendAndVerify`
+- `shouldRejectVerifyWhenOtpExpired`
+- `shouldRejectVerifyWhenOtpIsWrong`
+- `shouldRejectVerifyWhenMaxFailAttemptsExceeded`
+- `shouldNeverMutateUserDuringLogin` — asserts `verify(userRepository, never()).save(...)`/`saveAndFlush(...)`; login never writes state
+
+`AuthControllerTest`:
+- `shouldReturnOkWhenLoginInitiated`
+- `shouldReturnJwtWhenLoginOtpVerified`
+
+### US-003 Tests — implemented, real method names
+
+`UserProfileServiceTest`:
+- `shouldReturnProfileForExistingUser`
+- `shouldThrowNotFoundWhenGettingMissingUser`
+- `shouldUpdateDisplayNameAndCity`
+- `shouldLeaveFieldsUnchangedWhenNotProvided`
+- `shouldNeverExposeAadhaarNameAsEditable`
+- `shouldReturnAvatarCatalogFromConfig`
+- `shouldSelectAvatarWhenIdIsInCatalog`
+- `shouldRejectAvatarIdNotInCatalog`
+
+`UserProfileControllerTest`:
+- `shouldReturnProfileForAuthenticatedUser`
+- `shouldReturnUpdatedProfileOnPatch`
+- `shouldReturnUpdatedProfileWhenAvatarSelected`
+- `shouldReturnMenuSummaryForAuthenticatedUser`
+
+`AvatarControllerTest`:
+- `shouldReturnAvatarCatalog`
+
+### ProfileMenuService Tests (US-103) — implemented, real method names
+
+The three names below (`shouldAggregateBadgesFromAllRegisteredProviders`, `shouldOmitBadgeKeyWhenNoProviderRegistered`, `shouldReturnZeroCountWhenNoUnreadNotifications`) were this section's original *design-time guess* and don't match what was actually written — corrected here:
+
+`ProfileMenuServiceTest`:
+- `shouldReturnSummaryWithEmptyBadgesWhenNoProvidersRegistered`
+- `shouldAggregateBadgeCountsFromAllRegisteredProviders`
+- `shouldReturnUnmodifiableBadgesMap` — added during PR review (§8.4/§16)
+- `shouldOmitBadgeAndContinueWhenAProviderThrows` — added during PR review (per-provider isolation)
+- `shouldOmitBadgeWhenProviderReturnsNegativeCount` — added during PR review
+- `shouldThrowWhenTwoProvidersShareTheSameMenuKey` — added during PR review (constructor validation)
+- `shouldThrowNotFoundWhenUserMissing`
+
+`ProfileMenuServiceWiringIntegrationTest` — added during PR review, a distinct kind of test from the rest of this list:
+- `shouldAutowireEveryRegisteredBadgeProviderBean` — a narrow, Docker-free Spring context test (own `@Configuration` registering two stub `ProfileMenuBadgeProvider` beans + a `@MockBean UserRepository`) proving Spring's `List<ProfileMenuBadgeProvider>` collection actually works end-to-end. Every other test in this document's "Unit Tests" section constructs its service directly with a hand-built `List.of(...)` or Mockito mocks — none of them touch the real Spring container, so none of them could have caught a wiring bug. This is the one test in the whole module that does.
+
+### SessionService Tests (US-104) — design only, not written (story not implemented)
 - `shouldCreateSessionOnSuccessfulLogin`
 - `shouldRevokeSessionAndBlocklistJti`
 - `shouldSetBlocklistTtlToRemainingTokenLifetime`
 - `shouldRejectRevokeForSessionBelongingToAnotherUser`
 - `shouldBeIdempotentWhenRevokingAlreadyRevokedSession`
 
-### JwtAuthenticationFilter Tests (US-104)
+### JwtAuthenticationFilter Tests (US-104) — design only, not written (story not implemented)
 - `shouldRejectRequestWithBlocklistedJti`
 - `shouldAllowRequestWithNonBlocklistedJti`
 
-### AccountSecurityService Tests (US-105)
+### AccountSecurityService Tests (US-105) — design only, not written (story not implemented)
 - `shouldInitiateMobileChangeAndSendOtpToNewNumber`
 - `shouldRejectMobileChangeWhenNewNumberAlreadyRegistered`
 - `shouldVerifyMobileChangeAndUpdateUser`
@@ -2079,7 +2405,13 @@ The `jti` claim (added in v1.3) identifies the `user_sessions` row this token be
 - `shouldRevokeAllSessionsExceptCaller`
 - `shouldRejectRevokeOthersWhenNoOtherSessionsExist`
 
-## 16.2 Integration Tests
+## 17.2 Integration Tests
+
+**Illustrative — `UserRegistrationIntegrationTest` below does not exist.** No `@AutoConfigureMockMvc`
+request-level integration test has been written for any flow yet (see Implementation Sequence, Step 22).
+The only integration-style tests that actually exist are `ValuexApplicationTests` (full app boot via
+Testcontainers, needs Docker) and `ProfileMenuServiceWiringIntegrationTest` (§17.1, Docker-free). This
+snippet documents the intended shape for when request-level tests are eventually added.
 
 ```java
 @SpringBootTest
@@ -2130,7 +2462,7 @@ class UserRegistrationIntegrationTest {
 }
 ```
 
-## 16.3 Provider Switching Test
+## 17.3 Provider Switching Test
 
 A test profile (`application-providertest.yml`) verifies that swapping `valuex.aadhaar.provider` or `valuex.otp.provider` loads the correct adapter bean without any code changes. Same applies for `valuex.social.google.enabled` and `valuex.social.apple.enabled`.
 
@@ -2138,31 +2470,39 @@ A test profile (`application-providertest.yml`) verifies that swapping `valuex.a
 
 # Implementation Sequence
 
-| # | Task | Story | Depends On |
-|---|---|---|---|
-| 1 | `V2__auth_schema.sql` Flyway migration (incl. `user_social_accounts`) | US-001 | S0-004 |
-| 2 | `User.java` entity + `UserRepository` | US-001 | Step 1 |
-| 3 | `OtpPort` + `AadhaarVerificationPort` + `SocialLoginPort` interfaces | US-001 | — |
-| 4 | `MockOtpAdapter` + `SandboxAadhaarAdapter` + config | US-001 | Step 3 |
-| 5 | `UserRegistrationService` (initiate + verify OTP) | US-001 | Steps 2, 3, 4 |
-| 6 | `AadhaarVerificationService` (initiate + verify + skip) | US-001 | Step 5 |
-| 7 | `AuthController` — all registration endpoints | US-001 | Step 6 |
-| 8 | `AadhaarGatingInterceptor` + `@RequiresIdentityVerification` | US-001, US-088 | Step 6 |
-| 9 | Duplicate enforcement in registration flow | US-002 | Step 5 |
-| 10 | `GoogleSocialLoginAdapter` + `SocialLoginService` + `/auth/social/google` | US-101 | Step 5 |
-| 11 | `AppleSocialLoginAdapter` + `/auth/social/apple` | US-102 | Step 10 |
-| 12 | `V6__replace_profile_photo_with_avatar.sql` migration | US-003 | Step 1 |
-| 12a | `UserProfileService` (profile CRUD + avatar catalog/selection) + `UserProfileController` + `AvatarController` | US-003 | Steps 2, 12 |
-| 13 | Notification entity + dispatcher + event listeners | US-077 | Step 5 |
-| 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 |
-| 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-104, US-105 | Step 1 |
-| 16 | Add `jti` claim to token issuance; `SessionService` (create/revoke/blocklist) | US-104 | Steps 5, 10, 15 |
-| 17 | Extend `JwtAuthenticationFilter` with blocklist check | US-104 | Step 16 |
-| 18 | `AuthController` logout endpoint | US-104 | Step 16 |
-| 19 | `ProfileMenuBadgeProvider` SPI + `ProfileMenuService` + `NotificationsBadgeProvider` + menu-summary endpoint | US-103 | Step 13 |
-| 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 |
-| 21 | Unit tests | All | Steps 5-14, 16-20 |
-| 22 | Integration tests | All | Steps 7-14, 17-20 |
+Status as of v1.9. Task names in rows 3 and 10 were corrected in v1.7 — the original names
+(`SocialLoginPort`, `GoogleSocialLoginAdapter`) were superseded by the real `GoogleTokenPort`/
+`GoogleSignInService` design back in v1.2, but this table was never updated to match at the time.
+Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1.9.
+
+| # | Task | Story | Depends On | Status |
+|---|---|---|---|---|
+| 1 | `V2__auth_schema.sql` Flyway migration (incl. `user_social_accounts`) | US-001 | S0-004 | ✅ Done |
+| 2 | `User.java` entity + `UserRepository` | US-001 | Step 1 | ✅ Done |
+| 3 | `OtpPort` + `AadhaarVerificationPort` + `GoogleTokenPort` interfaces | US-001 | — | ✅ Done |
+| 4 | `MockOtpAdapter` + `SandboxAadhaarAdapter` + config | US-001 | Step 3 | ✅ Done |
+| 5 | `UserRegistrationService` (initiate + verify OTP) | US-001 | Steps 2, 3, 4 | ✅ Done |
+| 6 | `AadhaarVerificationService` (initiate + verify + skip) | US-001 | Step 5 | ✅ Done |
+| 7 | `AuthController` — all registration endpoints | US-001 | Step 6 | ✅ Done |
+| 8 | `AadhaarGatingInterceptor` + `@RequiresIdentityVerification` | US-001, US-088 | Step 6 | ✅ Done |
+| 9 | Duplicate enforcement in registration flow | US-002 | Step 5 | ✅ Done |
+| 10 | `GoogleTokenPort` adapters + `GoogleSignInService` + `/auth/social/google*` | US-101 | Step 5 | ✅ Done |
+| 11 | ~~Apple Sign-In adapter + `/auth/social/apple`~~ | US-102 | Step 10 | ❌ Dropped from scope |
+| 12 | `V6__replace_profile_photo_with_avatar.sql` migration | US-003 | Step 1 | ✅ Done |
+| 12a | `UserProfileService` (profile CRUD + avatar catalog/selection) + `UserProfileController` + `AvatarController` | US-003 | Steps 2, 12 | ✅ Done |
+| 13 | Notification entity + dispatcher + event listeners | US-077 | Step 5 | ⬜ Not started — `com.valuex.notification` is still the Sprint-0 state-machine scaffold only |
+| 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 | ⬜ Not started — no `@Scheduled` job exists anywhere in the codebase |
+| 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-104, US-105 | Step 1 | ⬜ Not started — next real migration is still V7, unclaimed |
+| 16 | Add `jti` claim to token issuance; `SessionService` (create/revoke/blocklist) | US-104 | Steps 5, 10, 15 | ⬜ Not started — real `JwtTokenProvider` has no `jti` claim (see §16.4) |
+| 17 | Extend `JwtAuthenticationFilter` with blocklist check | US-104 | Step 16 | ⬜ Not started |
+| 18 | `AuthController` logout endpoint | US-104 | Step 16 | ⬜ Not started — zero "logout" references anywhere in `src/main/java` |
+| 19 | `ProfileMenuBadgeProvider` SPI + `ProfileMenuService` + menu-summary endpoint | US-103 | Step 13 | ✅ Done — **except** `NotificationsBadgeProvider`, correctly deferred until Step 13 lands (zero providers registered today, by design, not a bug) |
+| 19a | `ProfileMenuService` hardening: constructor-time duplicate-key validation, per-provider failure/negative-count isolation, unmodifiable `badges` map, full SPI Javadoc, Spring-wiring integration test | US-103 | Step 19 | ✅ Done — added during PR review, not part of the original plan |
+| 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 | ⬜ Not started |
+| 21 | Unit tests | US-001, US-002, US-003, US-101, US-103, US-106 | Steps 5-9, 12a, 19-19a, 23 | ✅ Done for every implemented story |
+| 22 | Integration tests | All | Steps 7-14, 17-20 | 🟡 Partial — `ValuexApplicationTests` (Testcontainers/Docker, boots the whole app) plus the narrow `ProfileMenuServiceWiringIntegrationTest` (Docker-free, proves `List<ProfileMenuBadgeProvider>` autowiring). No dedicated request-level `MockMvc` integration tests exist yet for any flow — everything implemented is verified at the unit level only. |
+| 23 | `InitiateLoginRequest`/`VerifyLoginOtpRequest` DTOs + `UserLoginService` (initiate + verify login OTP, reuses `OtpPurpose.LOGIN`) + `/auth/login/*` endpoints on `AuthController` + `SecurityConfig` `permitAll()` entries | US-106 | Steps 2, 5 | ✅ Done — see §13 |
+| 23a | `AuthResponse.status` field, populated in all 5 builder call sites (`UserLoginService`, `UserRegistrationService` x2, `AadhaarVerificationService`, `GoogleSignInService`) — closes the AC gap where the client couldn't tell which screen to route to after auth | US-106 | Step 23 | ✅ Done — added during US-106 AC audit, not part of the original plan |
 
 ---
 
