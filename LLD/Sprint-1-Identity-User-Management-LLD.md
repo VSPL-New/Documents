@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 1: Identity & User Management
 
-**Document Version:** 1.9
+**Document Version:** 1.10
 **Product:** ValueX
 **Sprint:** Sprint 1 - Identity & User Management
 **Sprint Duration:** 2 Weeks
@@ -19,6 +19,7 @@
 | 1.7 | Aug 2026 | Full doc-vs-code audit (not just the avatar change): §8.2's `ProfileMenuService`/`ProfileMenuBadgeProvider` snippets were stale (still showed `@RequiredArgsConstructor`, no constructor validation, no per-provider isolation) — rewritten to match real source, with the review-added behaviors called out explicitly instead of silently baked in. §16.4 JWT Claims (numbered §15.4 at the time) presented the design-only `jti` claim as if implemented — it is not; the real `JwtTokenProvider` has no `jti` claim, flagged clearly. §17.1's "ProfileMenuService Tests" list had three invented method names that don't match what was actually written — replaced with real method names for every US-003/US-103 test class, plus the previously-undocumented `ProfileMenuServiceWiringIntegrationTest`. §17.2's `UserRegistrationIntegrationTest` was always fictional (never built) — now labeled as such. §15.4/15.6/15.7 (Notifications/Logout/Account Security endpoints) now explicitly flagged "not implemented" rather than reading as live. Implementation Sequence table gained a Status column, corrected two stale class names (§3, §10: `SocialLoginPort`/`GoogleSocialLoginAdapter` → `GoogleTokenPort`/`GoogleSignInService`, a v1.2 rename this table never picked up), marked Apple as dropped, and added the PR-review hardening as its own row (19a). §1.3 Exit Criteria checkboxes now reflect actual status instead of being uniformly unchecked. |
 | 1.8 | Aug 2026 | US-106 (Mobile OTP Login for Returning Users) implemented and documented: new §13 covers the login flow, the 10-state login-eligibility table, `UserLoginService` (reuses the long-dormant `OtpPurpose.LOGIN`, reuses the existing `ERROR_INVALID_STATE` convention rather than inventing a new error code — same pattern as `GoogleSignInService.initiateMobileForSocialLink`), and what login deliberately never touches (no state transition, no `User` row writes, no session/audit infrastructure — none of that exists yet). Old §13-16 renumbered to §14-17 (Database Schema, API Design, Security Considerations, Testing Strategy) to make room. §15.1 gained the two new `/auth/login/*` endpoint specs, §16.5 gained their rate-limit rows, §17.1 gained real `UserLoginServiceTest`/`AuthControllerTest` method names, §2.4 Package Structure updated with the new DTO/service classes, and Implementation Sequence gained row 23. |
 | 1.9 | Aug 2026 | US-106 AC audit found a real gap: neither the JWT nor `AuthResponse` ever returned the account's `status`, so the client had no way to satisfy the AC's "route to the appropriate screen for my account's current state" without an extra API call. Fixed by adding `status` to `AuthResponse` — populated in all five places it's built (`UserLoginService.verifyLogin`, `UserRegistrationService.verifyMobileOtp`/`.skipAadhaar`, `AadhaarVerificationService.completeVerification`, `GoogleSignInService.verifySocialMobileOtp`), so registration, login, Aadhaar, and Google sign-in all return it consistently, not just login. All affected JSON response examples in §15.1/§15.2 and the flow diagrams in §3.1/§4/§13.2/§13.4 updated to show it. `SocialSignInResponse` (Google Flow B, already-linked immediate JWT) is a separate DTO and was not touched — out of scope of this fix. Also fixed two Sonar `S5778` code smells in `ProfileMenuServiceTest` (lambdas with multiple throw-possible invocations) found during the first Sonar scan of the US-106 branch. |
+| 1.10 | Aug 2026 | US-107 (Access Token Refresh) implemented and documented: new §14 covers `POST /auth/refresh` (`TokenRefreshService`), the central stateless-vs-rotation scoping decision (session/`jti` tracking doesn't exist anywhere in the codebase, so single-use rotation and logout-invalidation are explicitly deferred to US-104/US-105 — matching the story's own documented fallback), and an explicit list of every AC/edge-case this leaves unmet (§14.5). Also closes a real pre-existing security gap the story's design note called out: `JwtAuthenticationFilter` now rejects refresh-type tokens used as bearer tokens (previously authenticated with `role=null`/`ROLE_null`) via new `JwtTokenProvider.isAccessToken`/`isRefreshToken`/`isTokenExpired` methods. Old §14-17 renumbered to §15-18 (Database Schema, API Design, Security Considerations, Testing Strategy). §16.1 gained the `/auth/refresh` endpoint spec, §17.4 JWT Claims updated to describe the new token-type-check behavior, §18.1 gained real `TokenRefreshServiceTest`/`AuthControllerTest`/`JwtTokenProviderTest`/`JwtAuthenticationFilterTest` method names, §2.4 Package Structure updated, and Implementation Sequence gained rows 24-24a. Two Sonar issues (one `S6068` redundant-matcher smell x2, seven `S5778` multi-throw-lambda smells) found and fixed in `TokenRefreshServiceTest` during the first scan of the US-107 branch. |
 
 **Reference Documents:**
 - PRD v1.4
@@ -44,10 +45,11 @@
 11. [US-077: Critical Event Notifications](#11-us-077-critical-event-notifications)
 12. [US-088: Lifecycle State - User Account](#12-us-088-lifecycle-state---user-account)
 13. [US-106: Mobile OTP Login for Returning Users](#13-us-106-mobile-otp-login-for-returning-users)
-14. [Database Schema](#14-database-schema)
-15. [API Design](#15-api-design)
-16. [Security Considerations](#16-security-considerations)
-17. [Testing Strategy](#17-testing-strategy)
+14. [US-107: Access Token Refresh](#14-us-107-access-token-refresh)
+15. [Database Schema](#15-database-schema)
+16. [API Design](#16-api-design)
+17. [Security Considerations](#17-security-considerations)
+18. [Testing Strategy](#18-testing-strategy)
 
 ---
 
@@ -63,6 +65,7 @@ Allow users to register and log in via multiple auth methods (Mobile OTP, Google
 |--------|---------------------------------------------|-----------------|----|------------|
 | US-001 | User Registration via Mobile OTP            | backend, mobile | 8  | S0-001     |
 | US-106 | Mobile OTP Login for Returning Users        | backend, mobile | 5  | US-001     |
+| US-107 | Access Token Refresh                        | backend, mobile | 5  | US-106     |
 | US-101 | Google Sign-In (Optional Convenience Login) | backend, mobile | 5  | US-001     |
 | ~~US-102~~ | ~~Apple Sign-In (Optional Convenience Login)~~ | ~~backend, mobile~~ | ~~5~~ | — **Dropped** |
 | US-002 | One Account Per User Enforcement            | backend         | 3  | US-001     |
@@ -75,10 +78,11 @@ Allow users to register and log in via multiple auth methods (Mobile OTP, Google
 
 ## 1.3 Exit Criteria
 
-Status as of v1.9 — checked items are actually implemented and covered by passing tests, not just designed:
+Status as of v1.10 — checked items are actually implemented and covered by passing tests, not just designed:
 
 - [x] User can register via mobile OTP
 - [x] Returning users can log back in via mobile OTP without re-registering (US-106 — see §13)
+- [x] Access tokens can be refreshed via the refresh token — **stateless only**, single-use rotation and logout-invalidation deferred to US-104/US-105 (US-107 — see §14)
 - [x] Email verification step works (OTP sent to email after mobile OTP)
 - [x] Google Sign-In working (returns JWT, new-user flow collects mobile)
 - [ ] ~~Apple Sign-In~~ — **Dropped from scope**
@@ -87,7 +91,7 @@ Status as of v1.9 — checked items are actually implemented and covered by pass
 - [x] Duplicate account prevention operational
 - [x] User profile view and edit working (avatar selection, not photo upload — see §7)
 - [x] Profile hub summary endpoint returns badge counts (extensible provider SPI, hardened per PR review — see §8)
-- [ ] Logout revokes current session (JWT `jti` blocklisted immediately) — **design only, not implemented** (US-104; the real `JwtTokenProvider` has no `jti` claim yet — see §16.4)
+- [ ] Logout revokes current session (JWT `jti` blocklisted immediately) — **design only, not implemented** (US-104; the real `JwtTokenProvider` has no `jti` claim yet — see §17.4)
 - [ ] Mobile/email change via OTP working; active-sessions list and "log out of other devices" working — **design only, not implemented** (US-105)
 - [x] Account state transitions tracked and audited (`UserAccountStateMachine` + `account_status_history`, exercised by every registration/Aadhaar test)
 - [ ] Critical event notifications sent (in-app + push) — **design only, not implemented** (US-077; `com.valuex.notification` is still the Sprint-0 state-machine scaffold, no entity/table/dispatcher)
@@ -216,6 +220,7 @@ com.valuex.auth/
 │   │   ├── EmailVerificationService.java   # Email OTP send + verify
 │   │   ├── AadhaarVerificationService.java # Aadhaar initiate + verify
 │   │   ├── GoogleSignInService.java        # Google 3-step sign-in flow
+│   │   ├── TokenRefreshService.java        # Stateless access-token refresh (US-107)
 │   │   ├── UserProfileService.java         # Profile CRUD + avatar selection/catalog
 │   │   ├── ProfileMenuService.java         # Profile hub badge aggregation (US-103)
 │   │   ├── SessionService.java             # Session create/revoke/blocklist (US-104/US-105)
@@ -225,6 +230,7 @@ com.valuex.auth/
 │       ├── VerifyMobileOtpRequest.java
 │       ├── InitiateLoginRequest.java       # { mobile } — US-106
 │       ├── VerifyLoginOtpRequest.java      # { mobile, otp } — US-106
+│       ├── RefreshTokenRequest.java        # { refreshToken } — US-107
 │       ├── SendEmailOtpRequest.java
 │       ├── VerifyEmailOtpRequest.java
 │       ├── InitiateAadhaarRequest.java
@@ -271,7 +277,7 @@ com.valuex.auth/
 │   └── AadhaarGatingInterceptor.java       # Enforces identity gate
 │
 └── api/
-    ├── AuthController.java                 # All auth endpoints (registration + login + social + logout)
+    ├── AuthController.java                 # All auth endpoints (registration + login + refresh + social + logout)
     ├── UserProfileController.java          # Profile endpoints + menu-summary (US-103)
     ├── AvatarController.java               # GET /api/v1/avatars — avatar catalog (US-003)
     └── AccountSecurityController.java      # Mobile/email change, sessions (US-105)
@@ -1584,7 +1590,98 @@ registration (requires `!existsByMobile`) and login (requires `existsByMobile`).
 
 ---
 
-# 14. Database Schema
+# 14. US-107: Access Token Refresh
+
+## 14.1 Why This Story Exists
+
+Every auth flow (US-001, US-101, US-106) already issues a `refreshToken` in its `AuthResponse` —
+but until now, no endpoint anywhere accepted one. It was a dead value. Separately,
+`JwtAuthenticationFilter` only checked signature + expiry, not the token's `type` claim, so a
+refresh token could authenticate as a bearer access token today (with `role=null`, since refresh
+tokens carry no role claim — a latent `ROLE_null` authority bug this story also closes).
+
+## 14.2 The Stateless-vs-Rotation Decision
+
+The story's AC asks for true single-use rotation (invalidate the old refresh token on use) and
+logout-invalidation. Both require session/`jti` tracking infrastructure that **does not exist
+anywhere in this codebase** — no `jti` claim, no `user_sessions` table, no Redis blocklist. That's
+100% design-only, scoped to US-104/US-105 (§2.5), neither implemented. Logout (US-104) doesn't
+exist at all — zero "logout" references anywhere in `src/main/java`.
+
+The story's own "Related User Stories" text pre-authorizes exactly this fallback: *"if session
+tracking doesn't exist, refresh operates statelessly (signature + expiry + type check only)."*
+Building `jti`/Redis tracking now means designing infrastructure that US-104/US-105 will need to
+define anyway (revocation-on-logout semantics, TTL alignment, theft-family invalidation) — likely
+redone once those stories land with their own opinions. **Decision: implemented stateless.** See
+§14.5 for exactly which ACs/edge cases this leaves unmet.
+
+## 14.3 Refresh Flow
+
+```
+POST /api/v1/auth/refresh
+Body: { refreshToken }
+  → validateToken(token) — signature + expiry
+    → invalid: isTokenExpired(token) ? ERROR_REFRESH_TOKEN_EXPIRED : ERROR_INVALID_REFRESH_TOKEN
+  → isRefreshToken(token) — must be a refresh-type token, not access
+    → false: ERROR_WRONG_TOKEN_TYPE
+  → userRepository.findById(sub claim) — not found: ERROR_INVALID_REFRESH_TOKEN
+  → assertAccountInGoodStanding(user) — same switch as UserLoginService.assertLoginEligible
+    (§13.3), duplicated rather than extracted (see §14.4)
+  → Issue a NEW access token + NEW refresh token, both re-reading status/aadhaarVerified fresh
+    from `user` — never copied from the old token's claims
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified, userId, status }
+
+No state transition, no account_status_history row, not @Transactional — refresh only reads.
+```
+
+`JwtTokenProvider` gained three boolean-getter methods for this (matching the existing
+`isAadhaarVerified(token)` convention): `isAccessToken`, `isRefreshToken`, `isTokenExpired`
+(catches `ExpiredJwtException` specifically, so a merely-tampered token isn't misreported as
+expired).
+
+**Validation order constraint:** every `JwtTokenProvider` claim getter goes through the private
+`parseClaims()`, which throws on bad signature/expiry — so the `type` claim cannot be read before
+signature+expiry is already implicitly checked. The achievable order is `validateToken` →
+`isRefreshToken` → user lookup → good-standing, not "type first."
+
+## 14.4 Good-Standing Check: Duplicated, Not Extracted
+
+`UserLoginService.assertLoginEligible` (§13.3/§13.4) is directly exercised by ~4 parameterized
+tests via `@InjectMocks`-over-mocks. Extracting it to a shared component would force those tests
+to add a new non-mocked collaborator — real churn to a passing file, for a 4-branch switch that
+isn't worth a new abstraction. `TokenRefreshService.assertAccountInGoodStanding` duplicates the
+same ~12 lines instead, matching this module's existing style (small duplication across
+sibling services is already the house pattern — see `UserLoginService`'s own header comment on
+why it isn't folded into `UserRegistrationService`). Same codes/messages: `NEW`/`OTP_PENDING` →
+`ERROR_INVALID_STATE`, `SUSPENDED` → `ERROR_ACCOUNT_SUSPENDED`, `BANNED`/`CLOSED` →
+`ERROR_ACCOUNT_RECOVERY_REQUIRED`, everything else allowed.
+
+## 14.5 ACs and Edge Cases NOT Satisfied by This Scope
+
+Documented explicitly, not silently dropped:
+
+1. **Old refresh token is not invalidated on use** — stays valid until its own 7-day expiry. The
+   single biggest gap from going stateless.
+2. **"Already used once (rotated out)" cannot be detected** — a still-unexpired refresh token can
+   be replayed indefinitely.
+3. **"Logout invalidates the refresh token" is unmeetable regardless of design choice** — US-104
+   (logout) doesn't exist in the codebase yet.
+4. **"Replayed rotated-out token → theft, invalidate token family"** — explicitly conditional in
+   the story text on session tracking existing; N/A here by the story's own qualification.
+5. **Two concurrent refresh calls near expiry both succeed independently** — no mutual exclusion,
+   a direct consequence of no rotation-invalidation.
+6. **Clock skew at the expiry boundary** — pre-existing, systemic JJWT default-tolerance property
+   of `JwtTokenProvider`, not newly introduced or newly fixed here.
+7. **An *expired* access token submitted to `/refresh`** surfaces as
+   `ERROR_INVALID_REFRESH_TOKEN`/`ERROR_REFRESH_TOKEN_EXPIRED` rather than `ERROR_WRONG_TOKEN_TYPE`
+   (type can only be read after a successful parse). Same end-user outcome either way (log in
+   again).
+8. **`authProvider` claim resets to `MOBILE_OTP` on every refresh**, regardless of the original
+   login method — currently inert, since nothing reads this claim downstream today.
+
+---
+
+# 15. Database Schema
 
 ## 8.1 Flyway Migration: V2__auth_schema.sql
 
@@ -1703,9 +1800,9 @@ CREATE INDEX idx_contact_change_user ON contact_change_attempts(user_id);
 
 ---
 
-# 15. API Design
+# 16. API Design
 
-## 15.1 Auth Endpoints
+## 16.1 Auth Endpoints
 
 ### POST /api/v1/auth/register/initiate
 **Request:**
@@ -1801,6 +1898,34 @@ home screen; anything short of `ACTIVE` (e.g. `EMAIL_VERIFICATION_PENDING`,
 `IDENTITY_VERIFICATION_PENDING`) resumes registration at that exact step. See §13.4.
 **Errors:** `ERROR_MOBILE_NOT_REGISTERED`, `ERROR_OTP_MAX_ATTEMPTS`, `ERROR_OTP_EXPIRED`,
 `ERROR_INVALID_OTP`, `ERROR_INVALID_STATE`, `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED`
+
+---
+
+### POST /api/v1/auth/refresh
+See §14 (US-107) for the full design, including which ACs this scope does **not** satisfy.
+**Request:**
+```json
+{ "refreshToken": "eyJ..." }
+```
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "aadhaarVerified": true,
+    "userId": "uuid",
+    "status": "ACTIVE"
+  }
+}
+```
+Note: a NEW refresh token is issued on every call, but the **old one is not invalidated** — it
+remains valid until its own natural expiry (no single-use rotation; stateless design, §14.2).
+`aadhaarVerified` and `status` are re-read fresh from the database, never copied from the
+submitted token's claims.
+**Errors:** `ERROR_INVALID_REFRESH_TOKEN`, `ERROR_REFRESH_TOKEN_EXPIRED`, `ERROR_WRONG_TOKEN_TYPE`,
+`ERROR_INVALID_STATE`, `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED`
 
 ---
 
@@ -1906,7 +2031,7 @@ blocks first transaction attempt.
 
 ---
 
-## 15.2 Social Login Endpoints
+## 16.2 Social Login Endpoints
 
 All three Google endpoints are **public** (no Bearer token required).
 
@@ -1998,7 +2123,7 @@ linking Google to an already-registered mobile number.
 
 ---
 
-## 15.3 User Profile Endpoints
+## 16.3 User Profile Endpoints
 
 ### GET /api/v1/users/me
 **Auth:** Bearer token required
@@ -2060,7 +2185,7 @@ linking Google to an already-registered mobile number.
 
 ---
 
-## 15.4 Notifications Endpoints
+## 16.4 Notifications Endpoints
 
 > **Not implemented.** US-077 hasn't been built — no `Notification` entity, table, or controller exists.
 > These endpoints are design only.
@@ -2078,7 +2203,7 @@ linking Google to an already-registered mobile number.
 
 ---
 
-## 15.5 Profile Hub Endpoint
+## 16.5 Profile Hub Endpoint
 
 ### GET /api/v1/users/me/menu-summary
 **Auth:** Bearer token required
@@ -2099,7 +2224,7 @@ Note: badge keys for menu items whose owning sprint hasn't shipped yet are simpl
 
 ---
 
-## 15.6 Logout Endpoint
+## 16.6 Logout Endpoint
 
 > **Not implemented.** US-104 hasn't been built — `grep`-confirmed zero "logout" references anywhere
 > in `src/main/java`. There is currently no way to invalidate a token before it naturally expires.
@@ -2118,7 +2243,7 @@ Idempotent — calling it again on an already-revoked session still returns 200.
 
 ---
 
-## 15.7 Account Security Endpoints
+## 16.7 Account Security Endpoints
 
 > **Not implemented.** US-105 hasn't been built — no `AccountSecurityController`/`AccountSecurityService`
 > exists. Mobile/email change, session listing, and "log out of other devices" are all design only.
@@ -2177,9 +2302,9 @@ Same contract as mobile change, against `newEmail`.
 
 ---
 
-# 16. Security Considerations
+# 17. Security Considerations
 
-## 16.1 Social Login Token Security
+## 17.1 Social Login Token Security
 
 | Rule | Detail |
 |---|---|
@@ -2190,7 +2315,7 @@ Same contract as mobile change, against `newEmail`.
 | No client-side shortcut | Flutter plugins return validated tokens — but backend must re-validate independently |
 | ~~Apple token validation~~ | ~~US-102 dropped~~ |
 
-## 16.2 Aadhaar Data Handling
+## 17.2 Aadhaar Data Handling
 
 | Data | Storage | Notes |
 |---|---|---|
@@ -2199,7 +2324,7 @@ Same contract as mobile change, against `newEmail`.
 | Aadhaar name | `users.aadhaar_name` | Masked (A**** K****) from provider |
 | Verification attempt | `aadhaar_verification_attempts` | Audit trail with hash, not plain number |
 
-## 16.3 OTP Security
+## 17.3 OTP Security
 
 - OTP is 6 digits, alphanumeric entropy optional (config)
 - Stored as `SHA-256(otp)` in Redis — never plain text
@@ -2207,7 +2332,7 @@ Same contract as mobile change, against `newEmail`.
 - OTP invalidated immediately after successful use
 - Max 5 failed OTP attempts before lockout (10-minute cooldown)
 
-## 16.4 JWT Claims
+## 17.4 JWT Claims
 
 **As actually implemented today** (`JwtTokenProvider.java`):
 
@@ -2228,14 +2353,20 @@ Same contract as mobile change, against `newEmail`.
 Note: `accountStatus` is **not** included in the JWT — state is always read from the database.
 The `type` claim distinguishes access tokens from refresh tokens (`"access"` | `"refresh"`).
 
+**US-107 update:** `JwtTokenProvider` gained `isAccessToken(token)`, `isRefreshToken(token)`, and
+`isTokenExpired(token)` boolean getters (matching the existing `isAadhaarVerified(token)`
+convention). `JwtAuthenticationFilter` now calls `isAccessToken(token)` before setting a
+`SecurityContext` authentication — a refresh token presented as a bearer token is rejected
+(logged as a warning, request still proceeds unauthenticated) instead of silently authenticating
+with a `role=null` / `ROLE_null` authority as it did before. See §14.3.
+
 > **`jti` is design-only, not implemented.** Section 2.5 designs a `jti` claim + `user_sessions` table
 > for US-104/US-105 (logout, session revocation) — but those stories haven't been built, and the real
-> `JwtTokenProvider` has no `jti` claim today. A refresh token issued right now is functionally
-> indistinguishable from an access token to `JwtAuthenticationFilter` except for the `type` claim
-> (which the filter also doesn't currently check — see US-107 in `user-stories.md` for this gap).
-> Don't assume `jti` exists anywhere in the real token until US-104 actually ships.
+> `JwtTokenProvider` has no `jti` claim today. Without it, a refresh token issued by US-107 cannot be
+> single-use — the old one stays valid until its own expiry (§14.2). Don't assume `jti` exists
+> anywhere in the real token until US-104 actually ships.
 
-## 16.5 Rate Limiting (via Redis)
+## 17.5 Rate Limiting (via Redis)
 
 | Endpoint | Limit | Window |
 |---|---|---|
@@ -2251,7 +2382,7 @@ The `type` claim distinguishes access tokens from refresh tokens (`"access"` | `
 | `/users/me/email/change/initiate` | 3 requests | per user per 10 min |
 | `/auth/logout` | 10 requests | per user per 10 min (abuse guard) |
 
-## 16.6 Session & Token Revocation (US-104 / US-105)
+## 17.6 Session & Token Revocation (US-104 / US-105)
 
 | Rule | Detail |
 |---|---|
@@ -2263,9 +2394,9 @@ The `type` claim distinguishes access tokens from refresh tokens (`"access"` | `
 
 ---
 
-# 17. Testing Strategy
+# 18. Testing Strategy
 
-## 17.1 Unit Tests
+## 18.1 Unit Tests
 
 ### UserRegistrationService Tests
 - `shouldSendOtpAndTransitionStateToOtpPending`
@@ -2347,6 +2478,33 @@ The `type` claim distinguishes access tokens from refresh tokens (`"access"` | `
 - `shouldReturnOkWhenLoginInitiated`
 - `shouldReturnJwtWhenLoginOtpVerified`
 
+### TokenRefreshService Tests (US-107) — implemented, real method names
+
+`TokenRefreshServiceTest`:
+- `shouldIssueNewTokenPairForValidRefreshToken`
+- `shouldBuildNewAccessTokenFromFreshDbStateNotOldTokenClaims` — verifies `generateAccessToken` is
+  called with the DB user's live `aadhaarVerified`/role, not anything copied from the old token
+- `shouldRejectExpiredRefreshToken`
+- `shouldRejectTamperedRefreshTokenThatIsNotExpired`
+- `shouldRejectAccessTokenSubmittedToRefreshEndpoint`
+- `shouldRejectWhenNoUserMatchesTheTokenSubject`
+- `shouldRejectWhenAccountNeverCompletedMobileVerification` — `@ParameterizedTest @EnumSource(names={"NEW","OTP_PENDING"})`
+- `shouldRejectWhenAccountSuspended`
+- `shouldRejectWhenAccountBannedOrClosed` — `@ParameterizedTest @EnumSource(names={"BANNED","CLOSED"})`
+- `shouldAllowRefreshForEveryOtherEligibleState` — `@ParameterizedTest @EnumSource(names={"EMAIL_VERIFICATION_PENDING","IDENTITY_VERIFICATION_PENDING","ACTIVE","UNDER_REVIEW","RESTRICTED"})`
+
+`AuthControllerTest`:
+- `shouldReturnNewTokensWhenRefreshSucceeds`
+
+`JwtTokenProviderTest` — additions for the new boolean getters:
+- `isAccessTokenDistinguishesTokenType`
+- `isRefreshTokenDistinguishesTokenType`
+- `isTokenExpiredTrueForExpiredToken`, `isTokenExpiredFalseForValidToken`, `isTokenExpiredFalseForGarbageString`
+
+`JwtAuthenticationFilterTest` — additions for the bearer-token type-check fix:
+- `shouldNotSetAuthenticationWhenTokenIsRefreshType` (new)
+- `shouldSetAuthenticationWhenTokenIsValid` and `shouldStillCallFilterChainWhenTokenExtractionFails` both updated to stub `isAccessToken(token)` → `true` — required once the filter started checking it, otherwise the unstubbed boolean mock defaults to `false` and silently breaks authentication under strict-stubs Mockito
+
 ### US-003 Tests — implemented, real method names
 
 `UserProfileServiceTest`:
@@ -2405,12 +2563,12 @@ The three names below (`shouldAggregateBadgesFromAllRegisteredProviders`, `shoul
 - `shouldRevokeAllSessionsExceptCaller`
 - `shouldRejectRevokeOthersWhenNoOtherSessionsExist`
 
-## 17.2 Integration Tests
+## 18.2 Integration Tests
 
 **Illustrative — `UserRegistrationIntegrationTest` below does not exist.** No `@AutoConfigureMockMvc`
 request-level integration test has been written for any flow yet (see Implementation Sequence, Step 22).
 The only integration-style tests that actually exist are `ValuexApplicationTests` (full app boot via
-Testcontainers, needs Docker) and `ProfileMenuServiceWiringIntegrationTest` (§17.1, Docker-free). This
+Testcontainers, needs Docker) and `ProfileMenuServiceWiringIntegrationTest` (§18.1, Docker-free). This
 snippet documents the intended shape for when request-level tests are eventually added.
 
 ```java
@@ -2462,7 +2620,7 @@ class UserRegistrationIntegrationTest {
 }
 ```
 
-## 17.3 Provider Switching Test
+## 18.3 Provider Switching Test
 
 A test profile (`application-providertest.yml`) verifies that swapping `valuex.aadhaar.provider` or `valuex.otp.provider` loads the correct adapter bean without any code changes. Same applies for `valuex.social.google.enabled` and `valuex.social.apple.enabled`.
 
@@ -2470,10 +2628,11 @@ A test profile (`application-providertest.yml`) verifies that swapping `valuex.a
 
 # Implementation Sequence
 
-Status as of v1.9. Task names in rows 3 and 10 were corrected in v1.7 — the original names
+Status as of v1.10. Task names in rows 3 and 10 were corrected in v1.7 — the original names
 (`SocialLoginPort`, `GoogleSocialLoginAdapter`) were superseded by the real `GoogleTokenPort`/
 `GoogleSignInService` design back in v1.2, but this table was never updated to match at the time.
-Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1.9.
+Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1.9; rows 24-24a
+(US-107) added in v1.10.
 
 | # | Task | Story | Depends On | Status |
 |---|---|---|---|---|
@@ -2493,16 +2652,18 @@ Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1
 | 13 | Notification entity + dispatcher + event listeners | US-077 | Step 5 | ⬜ Not started — `com.valuex.notification` is still the Sprint-0 state-machine scaffold only |
 | 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 | ⬜ Not started — no `@Scheduled` job exists anywhere in the codebase |
 | 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-104, US-105 | Step 1 | ⬜ Not started — next real migration is still V7, unclaimed |
-| 16 | Add `jti` claim to token issuance; `SessionService` (create/revoke/blocklist) | US-104 | Steps 5, 10, 15 | ⬜ Not started — real `JwtTokenProvider` has no `jti` claim (see §16.4) |
+| 16 | Add `jti` claim to token issuance; `SessionService` (create/revoke/blocklist) | US-104 | Steps 5, 10, 15 | ⬜ Not started — real `JwtTokenProvider` has no `jti` claim (see §17.4) |
 | 17 | Extend `JwtAuthenticationFilter` with blocklist check | US-104 | Step 16 | ⬜ Not started |
 | 18 | `AuthController` logout endpoint | US-104 | Step 16 | ⬜ Not started — zero "logout" references anywhere in `src/main/java` |
 | 19 | `ProfileMenuBadgeProvider` SPI + `ProfileMenuService` + menu-summary endpoint | US-103 | Step 13 | ✅ Done — **except** `NotificationsBadgeProvider`, correctly deferred until Step 13 lands (zero providers registered today, by design, not a bug) |
 | 19a | `ProfileMenuService` hardening: constructor-time duplicate-key validation, per-provider failure/negative-count isolation, unmodifiable `badges` map, full SPI Javadoc, Spring-wiring integration test | US-103 | Step 19 | ✅ Done — added during PR review, not part of the original plan |
 | 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 | ⬜ Not started |
-| 21 | Unit tests | US-001, US-002, US-003, US-101, US-103, US-106 | Steps 5-9, 12a, 19-19a, 23 | ✅ Done for every implemented story |
+| 21 | Unit tests | US-001, US-002, US-003, US-101, US-103, US-106, US-107 | Steps 5-9, 12a, 19-19a, 23, 24-24a | ✅ Done for every implemented story |
 | 22 | Integration tests | All | Steps 7-14, 17-20 | 🟡 Partial — `ValuexApplicationTests` (Testcontainers/Docker, boots the whole app) plus the narrow `ProfileMenuServiceWiringIntegrationTest` (Docker-free, proves `List<ProfileMenuBadgeProvider>` autowiring). No dedicated request-level `MockMvc` integration tests exist yet for any flow — everything implemented is verified at the unit level only. |
 | 23 | `InitiateLoginRequest`/`VerifyLoginOtpRequest` DTOs + `UserLoginService` (initiate + verify login OTP, reuses `OtpPurpose.LOGIN`) + `/auth/login/*` endpoints on `AuthController` + `SecurityConfig` `permitAll()` entries | US-106 | Steps 2, 5 | ✅ Done — see §13 |
 | 23a | `AuthResponse.status` field, populated in all 5 builder call sites (`UserLoginService`, `UserRegistrationService` x2, `AadhaarVerificationService`, `GoogleSignInService`) — closes the AC gap where the client couldn't tell which screen to route to after auth | US-106 | Step 23 | ✅ Done — added during US-106 AC audit, not part of the original plan |
+| 24 | `RefreshTokenRequest` DTO + `TokenRefreshService` (stateless refresh — signature/expiry/type/good-standing, reissues both tokens) + `/auth/refresh` on `AuthController` + `SecurityConfig` `permitAll()` entry | US-107 | Steps 2, 23 | ✅ Done — see §14. Single-use rotation and logout-invalidation explicitly deferred to US-104/US-105 (§14.5) |
+| 24a | `JwtTokenProvider.isAccessToken`/`isRefreshToken`/`isTokenExpired` + `JwtAuthenticationFilter` type-check fix (rejects refresh tokens used as bearer tokens, closing the `role=null` gap) | US-107 | Step 24 | ✅ Done — closes the design-note gap called out in US-107's `user-stories.md` entry |
 
 ---
 
