@@ -1095,77 +1095,99 @@ public class ProfileMenuSummaryResponse {
 
 # 9. US-104: Account Logout
 
-## 9.1 Logout Flow
+**Implemented.** The design below (§9.1–§9.4) was written before this story was built and
+proposed a `user_sessions` Postgres table + `SessionService` shared with US-105. The actual
+implementation intentionally narrowed that scope: pure logout correctness needs nothing beyond a
+`jti` claim and a Redis blocklist entry — no persisted session row. `user_sessions` is deferred to
+whenever US-105 actually needs to *enumerate* sessions/devices, which this story does not. See
+the corrected design below.
+
+## 9.1 Logout Flow (as built)
 
 ```
 POST /api/v1/auth/logout
   Auth: Bearer token required
-  → Extract jti + userId from access token claims
-  → SessionService.revoke(jti, userId, reason="USER_LOGOUT")
-      → user_sessions.revoked_at = now(), revoked_reason = "USER_LOGOUT"
-      → Redis SETEX blocklist:{jti} <remaining-ttl-seconds> "1"
+  → LogoutService.logout(accessToken)
+      → jti = JwtTokenProvider.getJtiFromToken(accessToken)
+      → expiry = JwtTokenProvider.getExpirationFromToken(accessToken)
+      → redisCache.set("blocklist:" + jti, "1", ttl = max(1s, expiry - now))
   → Return: { message: "Logged out successfully" }
 ```
 
-## 9.2 SessionService
+Every token-issuing flow (`UserRegistrationService`, `UserLoginService`, `GoogleSignInService`,
+`AadhaarVerificationService`, `TokenRefreshService`) now mints one shared `jti` per access+refresh
+pair, so a single blocklist entry invalidates both tokens from that login/registration event, not
+just the access token used to call `/logout`. `TokenRefreshService` reuses the *incoming* refresh
+token's `jti` in its reissued pair (rather than minting a new one) and checks the blocklist before
+honoring a refresh — so the session stays revocable by its original `jti` across any number of
+refreshes, and a refresh attempted after logout fails with `ERROR_REFRESH_TOKEN_EXPIRED`.
+
+## 9.2 LogoutService (as built)
 
 ```java
 package com.valuex.auth.application.service;
 
 @Service
 @RequiredArgsConstructor
-public class SessionService {
+@Slf4j
+public class LogoutService {
 
-    private final UserSessionRepository sessionRepository;
-    private final StringRedisTemplate redisTemplate;
+    private final RedisCacheService redisCache;
+    private final JwtTokenProvider jwtTokenProvider;
 
-    public void createSession(UUID userId, String jti, String refreshToken,
-                               String deviceInfo, String ipAddress) {
-        UserSession session = UserSession.builder()
-            .id(UUID.fromString(jti))
-            .userId(userId)
-            .refreshTokenHash(sha256(refreshToken))
-            .deviceInfo(deviceInfo)
-            .ipAddress(ipAddress)
-            .createdAt(Instant.now())
-            .lastActiveAt(Instant.now())
-            .build();
-        sessionRepository.save(session);
-    }
-
-    public void revoke(String jti, UUID userId, String reason) {
-        UserSession session = sessionRepository.findByIdAndUserId(UUID.fromString(jti), userId)
-            .orElseThrow(() -> new NotFoundException("Session not found"));
-        session.setRevokedAt(Instant.now());
-        session.setRevokedReason(reason);
-        sessionRepository.save(session);
-
-        long remainingTtl = extractRemainingTtlSeconds(jti);
-        redisTemplate.opsForValue().set("blocklist:" + jti, "1",
-            Duration.ofSeconds(Math.max(remainingTtl, 1)));
-    }
-
-    public boolean isBlocked(String jti) {
-        return Boolean.TRUE.equals(redisTemplate.hasKey("blocklist:" + jti));
+    public MessageResponse logout(String accessToken) {
+        String jti = jwtTokenProvider.getJtiFromToken(accessToken);
+        Instant expiry = jwtTokenProvider.getExpirationFromToken(accessToken);
+        long remainingSeconds = Math.max(1, Duration.between(Instant.now(), expiry).getSeconds());
+        redisCache.set(JwtTokenProvider.BLOCKLIST_PREFIX + jti, "1", Duration.ofSeconds(remainingSeconds));
+        return MessageResponse.of("Logged out successfully");
     }
 }
 ```
 
-`createSession` is called from every place a JWT is currently issued: `UserRegistrationService` (Steps 2/4a/5), `GoogleSignInService` (Flows A/B/C), and Aadhaar re-issue — each already has the `jti` available since it's generated at token-issuance time.
+No `UserSessionRepository`, no `user_sessions` table, no `createSession` call wired into the
+issuing services — those remain genuinely US-105 territory (device listing needs persisted rows;
+pure revocation does not).
 
-## 9.3 JwtAuthenticationFilter Extension
+## 9.3 JwtAuthenticationFilter Extension (as built)
 
-The existing filter (Sprint 0 Foundation LLD) adds one check after signature/expiry validation:
+`JwtAuthenticationFilter` now depends on `RedisCacheService` directly (no `SessionService`
+indirection) and adds one check after the existing signature/access-type validation:
 
 ```java
-if (sessionService.isBlocked(claims.getId())) {   // claims.getId() == jti
-    throw new InvalidTokenException("Session has been logged out");
+} else if (redisCache.exists(JwtTokenProvider.BLOCKLIST_PREFIX + jwtTokenProvider.getJtiFromToken(token))) {
+    log.warn("Rejected blocklisted (logged-out) token");
+} else {
+    // existing SecurityContext setup
 }
 ```
+
+One Redis `EXISTS` per authenticated request — no added DB round-trip, matching the original
+performance goal in §2.5.
 
 ## 9.4 Edge Case: In-Flight Requests
 
-Logout does not cancel requests already past the filter when it's called — only new requests bearing the blocklisted `jti` are rejected. The mobile client is responsible for warning the user and cancelling active uploads client-side before calling `/logout` (per user-stories.md US-104 edge cases).
+Logout does not cancel requests already past the filter when it's called — only new requests
+bearing the blocklisted `jti` are rejected. The mobile client is responsible for warning the user
+and cancelling active uploads client-side before calling `/logout` (per user-stories.md US-104
+edge cases).
+
+## 9.5 Idempotency Boundary (corrected from the original design)
+
+A retried `/logout` call using the same still-valid token (e.g. a client retry after a network
+blip, before the first call's Redis write is visible) succeeds both times — overwriting the same
+blocklist key is a safe no-op. But a **later** call using the same, now-blocklisted token is
+rejected by `JwtAuthenticationFilter` before it ever reaches the controller → `401 UNAUTHORIZED`,
+not `200`, because there is no valid session left to authenticate the request with. This is
+correct, security-relevant behavior — the original §9 draft's blanket "always 200" framing did not
+anticipate this, since it assumed a session-row lookup (which can't itself expire mid-flow) rather
+than filter-level jti authentication (which can).
+
+## 9.6 `ERROR_LOGOUT_FAILED` — Defined but Not Reachable
+
+`user-stories.md` defines this code, but nothing in the as-built design has a real failure path
+that should surface it — the only external call is a Redis write; an actual Redis outage
+propagates as a `500`, not a caught business error.
 
 ---
 
@@ -2226,8 +2248,8 @@ Note: badge keys for menu items whose owning sprint hasn't shipped yet are simpl
 
 ## 16.6 Logout Endpoint
 
-> **Not implemented.** US-104 hasn't been built — `grep`-confirmed zero "logout" references anywhere
-> in `src/main/java`. There is currently no way to invalidate a token before it naturally expires.
+**Implemented (US-104).** Blocklists the calling access token's `jti` (and, since access+refresh
+now share a `jti` per issuance, the paired refresh token too) — see §9.
 
 ### POST /api/v1/auth/logout
 **Auth:** Bearer token required
@@ -2238,8 +2260,9 @@ Note: badge keys for menu items whose owning sprint hasn't shipped yet are simpl
   "data": { "message": "Logged out successfully" }
 }
 ```
-Idempotent — calling it again on an already-revoked session still returns 200.
-**Errors:** `ERROR_LOGOUT_FAILED`
+Idempotent only within the token's validity — see §9.5 for why a later call with the same,
+now-blocklisted token returns `401` rather than a second `200`.
+**Errors:** `ERROR_LOGOUT_FAILED` (defined, not reachable in this design — see §9.6)
 
 ---
 
@@ -2360,11 +2383,13 @@ convention). `JwtAuthenticationFilter` now calls `isAccessToken(token)` before s
 (logged as a warning, request still proceeds unauthenticated) instead of silently authenticating
 with a `role=null` / `ROLE_null` authority as it did before. See §14.3.
 
-> **`jti` is design-only, not implemented.** Section 2.5 designs a `jti` claim + `user_sessions` table
-> for US-104/US-105 (logout, session revocation) — but those stories haven't been built, and the real
-> `JwtTokenProvider` has no `jti` claim today. Without it, a refresh token issued by US-107 cannot be
-> single-use — the old one stays valid until its own expiry (§14.2). Don't assume `jti` exists
-> anywhere in the real token until US-104 actually ships.
+**US-104 update:** `jti` is now real. Every access and refresh token carries a `jti` (JWT ID) claim,
+shared between an access token and its paired refresh token when minted together, and reused
+across refreshes by `TokenRefreshService` rather than rotated. `JwtTokenProvider` gained
+`getJtiFromToken(token)` and `getExpirationFromToken(token)`. This still does **not** make refresh
+tokens single-use — the old one stays valid until its own expiry (§14.2) — `jti` is used only for
+logout revocation (§9), not rotation. Don't assume single-use rotation exists anywhere in the real
+token flow until that's separately built.
 
 ## 17.5 Rate Limiting (via Redis)
 
@@ -2380,17 +2405,17 @@ with a `role=null` / `ROLE_null` authority as it did before. See §14.3.
 | `/social/google/initiate-mobile` | 3 requests | per social session per 10 min |
 | `/users/me/mobile/change/initiate` | 3 requests | per user per 10 min |
 | `/users/me/email/change/initiate` | 3 requests | per user per 10 min |
-| `/auth/logout` | 10 requests | per user per 10 min (abuse guard) |
+| `/auth/logout` | Not implemented | this row was a speculative abuse guard in the original design; not in US-104's AC/edge cases, and repeated logout calls are self-limiting (each blocklists the token used, so an attacker gains nothing by calling it repeatedly) — skipped as unneeded scope, not an oversight |
 
 ## 17.6 Session & Token Revocation (US-104 / US-105)
 
 | Rule | Detail |
 |---|---|
-| Refresh token storage | Only `SHA-256(refreshToken)` is stored in `user_sessions` — never plain text, same pattern as OTPs |
-| Revocation propagation | `blocklist:{jti}` TTL is set to the access token's *remaining* lifetime — never longer, so Redis never accumulates stale keys |
-| Blocklist check cost | One Redis `EXISTS` per authenticated request, added to the existing `JwtAuthenticationFilter` — no additional DB round-trip |
-| Mobile/email change security | New value must pass OTP verification before it replaces the old one; old value remains valid for login until then, preventing account lockout mid-change |
-| Session enumeration | `GET /users/me/sessions` never exposes another user's sessions — scoped by `userId` from the JWT, not a client-supplied ID |
+| Refresh token storage | `user_sessions` (and therefore this row) does not exist in the US-104 implementation — there is nothing to store. Will apply once US-105 adds persisted sessions. |
+| Revocation propagation | **Implemented as designed.** `blocklist:{jti}` TTL is set to the access token's *remaining* lifetime — never longer, so Redis never accumulates stale keys |
+| Blocklist check cost | **Implemented as designed.** One Redis `EXISTS` per authenticated request, added to the existing `JwtAuthenticationFilter` — no additional DB round-trip |
+| Mobile/email change security | US-105 territory — not implemented yet |
+| Session enumeration | US-105 territory — not implemented yet; `GET /users/me/sessions` doesn't exist |
 
 ---
 
@@ -2542,16 +2567,25 @@ The three names below (`shouldAggregateBadgesFromAllRegisteredProviders`, `shoul
 `ProfileMenuServiceWiringIntegrationTest` — added during PR review, a distinct kind of test from the rest of this list:
 - `shouldAutowireEveryRegisteredBadgeProviderBean` — a narrow, Docker-free Spring context test (own `@Configuration` registering two stub `ProfileMenuBadgeProvider` beans + a `@MockBean UserRepository`) proving Spring's `List<ProfileMenuBadgeProvider>` collection actually works end-to-end. Every other test in this document's "Unit Tests" section constructs its service directly with a hand-built `List.of(...)` or Mockito mocks — none of them touch the real Spring container, so none of them could have caught a wiring bug. This is the one test in the whole module that does.
 
-### SessionService Tests (US-104) — design only, not written (story not implemented)
-- `shouldCreateSessionOnSuccessfulLogin`
-- `shouldRevokeSessionAndBlocklistJti`
-- `shouldSetBlocklistTtlToRemainingTokenLifetime`
-- `shouldRejectRevokeForSessionBelongingToAnotherUser`
-- `shouldBeIdempotentWhenRevokingAlreadyRevokedSession`
+### LogoutService Tests (US-104) — implemented, real method names
 
-### JwtAuthenticationFilter Tests (US-104) — design only, not written (story not implemented)
-- `shouldRejectRequestWithBlocklistedJti`
-- `shouldAllowRequestWithNonBlocklistedJti`
+There is no `SessionService` in the as-built design (§9) — no persisted session row to create,
+revoke, or scope by owning user, since there's no `user_sessions` table. `LogoutService` only
+blocklists a jti; the names below replace this section's original `SessionService`-shaped guess.
+
+`LogoutServiceTest`:
+- `shouldBlocklistTheTokensJtiForItsRemainingLifetime`
+- `shouldFloorTtlAtOneSecondForAnAlmostExpiredToken`
+
+`TokenRefreshServiceTest` gained the US-104-relevant cases:
+- `shouldRejectRefreshWhenSessionHasBeenLoggedOut`
+- `shouldReuseIncomingTokensJtiInTheReissuedPair`
+
+### JwtAuthenticationFilter Tests (US-104) — implemented, real method names
+`JwtAuthenticationFilterTest`:
+- `shouldNotSetAuthenticationWhenTokenIsBlocklisted`
+- `shouldSetAuthenticationWhenTokenIsValid` — extended to also cover the non-blocklisted path
+  through the new check
 
 ### AccountSecurityService Tests (US-105) — design only, not written (story not implemented)
 - `shouldInitiateMobileChangeAndSendOtpToNewNumber`
@@ -2651,10 +2685,10 @@ Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1
 | 12a | `UserProfileService` (profile CRUD + avatar catalog/selection) + `UserProfileController` + `AvatarController` | US-003 | Steps 2, 12 | ✅ Done |
 | 13 | Notification entity + dispatcher + event listeners | US-077 | Step 5 | ⬜ Not started — `com.valuex.notification` is still the Sprint-0 state-machine scaffold only |
 | 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 | ⬜ Not started — no `@Scheduled` job exists anywhere in the codebase |
-| 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-104, US-105 | Step 1 | ⬜ Not started — next real migration is still V7, unclaimed |
-| 16 | Add `jti` claim to token issuance; `SessionService` (create/revoke/blocklist) | US-104 | Steps 5, 10, 15 | ⬜ Not started — real `JwtTokenProvider` has no `jti` claim (see §17.4) |
-| 17 | Extend `JwtAuthenticationFilter` with blocklist check | US-104 | Step 16 | ⬜ Not started |
-| 18 | `AuthController` logout endpoint | US-104 | Step 16 | ⬜ Not started — zero "logout" references anywhere in `src/main/java` |
+| 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-105 | Step 1 | ⬜ Not started — turned out to be US-105-only; US-104 needed no persisted table, see §9 |
+| 16 | Add `jti` claim to token issuance, shared per access+refresh pair; `LogoutService` (blocklist, no `SessionService`/table) | US-104 | Steps 5, 10 | ✅ Done — see §9 for the as-built design, narrower than this row's original plan |
+| 17 | Extend `JwtAuthenticationFilter` with blocklist check | US-104 | Step 16 | ✅ Done |
+| 18 | `AuthController` logout endpoint | US-104 | Step 16 | ✅ Done |
 | 19 | `ProfileMenuBadgeProvider` SPI + `ProfileMenuService` + menu-summary endpoint | US-103 | Step 13 | ✅ Done — **except** `NotificationsBadgeProvider`, correctly deferred until Step 13 lands (zero providers registered today, by design, not a bug) |
 | 19a | `ProfileMenuService` hardening: constructor-time duplicate-key validation, per-provider failure/negative-count isolation, unmodifiable `badges` map, full SPI Javadoc, Spring-wiring integration test | US-103 | Step 19 | ✅ Done — added during PR review, not part of the original plan |
 | 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 | ⬜ Not started |
