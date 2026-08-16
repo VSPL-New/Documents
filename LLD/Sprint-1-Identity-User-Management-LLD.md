@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 1: Identity & User Management
 
-**Document Version:** 1.10
+**Document Version:** 1.11
 **Product:** ValueX
 **Sprint:** Sprint 1 - Identity & User Management
 **Sprint Duration:** 2 Weeks
@@ -20,6 +20,7 @@
 | 1.8 | Aug 2026 | US-106 (Mobile OTP Login for Returning Users) implemented and documented: new §13 covers the login flow, the 10-state login-eligibility table, `UserLoginService` (reuses the long-dormant `OtpPurpose.LOGIN`, reuses the existing `ERROR_INVALID_STATE` convention rather than inventing a new error code — same pattern as `GoogleSignInService.initiateMobileForSocialLink`), and what login deliberately never touches (no state transition, no `User` row writes, no session/audit infrastructure — none of that exists yet). Old §13-16 renumbered to §14-17 (Database Schema, API Design, Security Considerations, Testing Strategy) to make room. §15.1 gained the two new `/auth/login/*` endpoint specs, §16.5 gained their rate-limit rows, §17.1 gained real `UserLoginServiceTest`/`AuthControllerTest` method names, §2.4 Package Structure updated with the new DTO/service classes, and Implementation Sequence gained row 23. |
 | 1.9 | Aug 2026 | US-106 AC audit found a real gap: neither the JWT nor `AuthResponse` ever returned the account's `status`, so the client had no way to satisfy the AC's "route to the appropriate screen for my account's current state" without an extra API call. Fixed by adding `status` to `AuthResponse` — populated in all five places it's built (`UserLoginService.verifyLogin`, `UserRegistrationService.verifyMobileOtp`/`.skipAadhaar`, `AadhaarVerificationService.completeVerification`, `GoogleSignInService.verifySocialMobileOtp`), so registration, login, Aadhaar, and Google sign-in all return it consistently, not just login. All affected JSON response examples in §15.1/§15.2 and the flow diagrams in §3.1/§4/§13.2/§13.4 updated to show it. `SocialSignInResponse` (Google Flow B, already-linked immediate JWT) is a separate DTO and was not touched — out of scope of this fix. Also fixed two Sonar `S5778` code smells in `ProfileMenuServiceTest` (lambdas with multiple throw-possible invocations) found during the first Sonar scan of the US-106 branch. |
 | 1.10 | Aug 2026 | US-107 (Access Token Refresh) implemented and documented: new §14 covers `POST /auth/refresh` (`TokenRefreshService`), the central stateless-vs-rotation scoping decision (session/`jti` tracking doesn't exist anywhere in the codebase, so single-use rotation and logout-invalidation are explicitly deferred to US-104/US-105 — matching the story's own documented fallback), and an explicit list of every AC/edge-case this leaves unmet (§14.5). Also closes a real pre-existing security gap the story's design note called out: `JwtAuthenticationFilter` now rejects refresh-type tokens used as bearer tokens (previously authenticated with `role=null`/`ROLE_null`) via new `JwtTokenProvider.isAccessToken`/`isRefreshToken`/`isTokenExpired` methods. Old §14-17 renumbered to §15-18 (Database Schema, API Design, Security Considerations, Testing Strategy). §16.1 gained the `/auth/refresh` endpoint spec, §17.4 JWT Claims updated to describe the new token-type-check behavior, §18.1 gained real `TokenRefreshServiceTest`/`AuthControllerTest`/`JwtTokenProviderTest`/`JwtAuthenticationFilterTest` method names, §2.4 Package Structure updated, and Implementation Sequence gained rows 24-24a. Two Sonar issues (one `S6068` redundant-matcher smell x2, seven `S5778` multi-throw-lambda smells) found and fixed in `TokenRefreshServiceTest` during the first scan of the US-107 branch. |
+| 1.11 | Aug 2026 | US-088 (Lifecycle State - User Account) implemented and documented: §12 gained §12.6-§12.9. `UserStateService` adds the moderation half of `UserAccountStateMachine` that had no caller since S0-008 (`flagForReview`/`clearReview`/`restrict`/`liftRestriction`/`suspend`/`liftSuspension`/`ban`/`close`) — same `account_status_history` write pattern as `UserRegistrationService`, plus the codebase's first concrete `DomainEvent`, `UserStateChangedEvent`, published on every transition (closing the gap flagged in coding-standard §2.4 point 4, previously unmet by all four existing call sites). `SuspendedAccountAutoLiftJob` implements the `@Scheduled` job §7.5 had specified but marked "Not started" — hourly cron, `UserRepository.findByStatusAndSuspensionLiftedAtBefore`, per-user try/catch so one bad row can't block the batch. `User.suspensionLiftedAt` mapped to the `suspension_lifted_at` column that migration V2 had already added but no entity field ever used. Deliberately **not** built: a REST controller (no admin authentication/RBAC exists yet — Sprint 10 owns that surface; an unauthenticated moderation endpoint would be a security hole), active-order blocking on `close()` (order module doesn't exist until Sprint 5), and a user-facing appeal workflow for SUSPENDED/BANNED (no story anywhere defines one — user-stories.md's "appeals allowed within 30 days" is a validation-rule line, not a built flow). BANNED Aadhaar-blacklisting needs no new code — the pre-existing `users.aadhaar_hash` unique constraint already blocks reuse as long as banned rows aren't deleted, which `close()`/`ban()` never do. `UserAccountStateMachineTest` written from scratch — no test for the S0-008 state machine existed before this story despite it being live in 4 registration-flow services since US-001. |
 
 **Reference Documents:**
 - PRD v1.4
@@ -1193,61 +1194,102 @@ propagates as a `500`, not a caught business error.
 
 # 10. US-105: Account Security Settings
 
-## 10.1 Mobile / Email Change Flow
+**Implemented.** The design below reflects the as-built code; see the callouts where it corrects
+this section's original pre-implementation draft.
 
-Reuses the exact OTP mechanics from US-001 (`OtpPort`, `EmailVerificationService`) against the **new** value, not the existing one:
+## 10.1 Mobile / Email Change Flow (as built)
+
+A new, self-contained `AccountSecurityService` — **not** a reuse of `EmailVerificationService`
+(that service is registration-scoped: asserts `EMAIL_VERIFICATION_PENDING`, drives state-machine
+transitions; a change on an already-`ACTIVE` account does neither). Same OTP mechanics
+(`RedisCacheService`, `HashUtils.sha256Hex`, the shared `otp.*` rate-limit config), separate
+service, matching this module's one-service-per-concern convention:
 
 ```
 POST /api/v1/users/me/mobile/change/initiate
   Auth: Bearer token required
   Body: { newMobile }
-  → Validate format; check newMobile not already ACTIVE for another user
+  → Validate format; reject if newMobile already belongs to another user (existsByMobileAndIdNot)
+  → Rate-limited (otp.max-send-attempts-per-window, shared config)
   → Generate OTP, store SHA-256(otp) in Redis: otp:{newMobile}:MOBILE_CHANGE  TTL=300s
-  → OtpPort.sendOtp(newMobile, otp, MOBILE_CHANGE)
+  → OtpPort.sendOtp(newMobile, otp, OtpPurpose.MOBILE_CHANGE)
+  → Log a contact_change_attempts row (status=INITIATED)
   → Return: { message, otpExpiresInSeconds: 300 }
 
 POST /api/v1/users/me/mobile/change/verify
   Body: { newMobile, otp }
-  → Validate OTP
+  → Validate OTP (rate-limited failure count too)
   → user.mobile = newMobile; save
-  → Publish MobileNumberChangedEvent → US-077 notifies old + new mobile
+  → Log a contact_change_attempts row (status=SUCCESS, or FAILED on a rejected attempt)
   → Return: { message: "Mobile number updated" }
 ```
 
-Email change mirrors this exactly against `POST /api/v1/users/me/email/change/initiate|verify`, reusing `EmailVerificationService` with a new `EmailOtpPurpose.EMAIL_CHANGE`.
+Email change mirrors this exactly against `POST /api/v1/users/me/email/change/initiate|verify`,
+using the same `OtpPurpose` enum (`EMAIL_CHANGE` value added alongside `MOBILE_CHANGE` — no
+separate `EmailOtpPurpose` type; this codebase has one shared purpose enum for both OTP ports).
 
-**The old value stays active until the new one is verified** — if the user abandons the flow mid-way, nothing changes (matches user-stories.md US-105 validation rule).
+**Correction from the original draft:** no domain event is published on a successful change (no
+`MobileNumberChangedEvent`). US-077 (notifications) doesn't exist as more than a lifecycle-state
+skeleton yet (see Roadmap Step 13), so there is nothing to publish to — deferred until that
+infrastructure exists, not an oversight here.
 
-## 10.2 Active Sessions
+**The old value stays active until the new one is verified** — if the user abandons the flow
+mid-way, nothing changes (matches user-stories.md US-105 validation rule; confirmed by
+`shouldKeepOldMobileActiveUntilVerified`).
+
+## 10.2 Active Sessions (as built)
 
 ```
 GET /api/v1/users/me/sessions
   Auth: Bearer token required
-  → List up to 10 most-recent non-revoked user_sessions rows for this user
-  → Mark the row matching the caller's own jti as "isCurrent": true
+  → SessionService.listActive(userId): top 10 non-revoked user_sessions rows, most recent first
+  → Mark the row matching SecurityContext.getCurrentJti() as isCurrent: true
   → Return: [{ sessionId, deviceInfo, ipAddress, createdAt, lastActiveAt, isCurrent }, ...]
 
 POST /api/v1/users/me/sessions/revoke-others
   Auth: Bearer token required
   → SessionService.revokeAllExcept(userId, callerJti, reason="REVOKE_OTHER_DEVICES")
+  → 0 revoked → ERROR_NO_OTHER_SESSIONS (400); otherwise:
   → Return: { message: "Logged out of N other device(s)" }
 ```
 
+**Correction from the original draft:** `revoke`'s Redis blocklist TTL cannot be read from a raw
+JWT for someone else's session — nothing persists the original token string, only a hash of the
+refresh token. It's reconstructed as `session.lastActiveAt + accessTokenExpiry`, which stays
+correct across any number of refreshes since `TokenRefreshService.touchSession` bumps
+`lastActiveAt` at the exact moment a session's current access token is actually (re)issued:
+
 ```java
-public void revokeAllExcept(UUID userId, String keepJti, String reason) {
-    List<UserSession> active = sessionRepository.findByUserIdAndRevokedAtIsNull(userId);
-    for (UserSession session : active) {
-        if (session.getId().equals(UUID.fromString(keepJti))) continue;
-        revoke(session.getId().toString(), userId, reason);
+public void revoke(String jti, String reason) {
+    UserSession session = sessionRepository.findById(UUID.fromString(jti)).orElse(null);
+    if (session == null) {
+        blocklistOnly(jti, Instant.now().plusMillis(accessTokenExpiry));  // no row -- Redis-only
+        return;
     }
+    blocklist(jti, session.getLastActiveAt().plusMillis(accessTokenExpiry));
+    session.setRevokedAt(Instant.now());
+    session.setRevokedReason(reason);
+    sessionRepository.save(session);
 }
 ```
 
-## 10.3 Delete Account Entry Point — Out of Scope for Sprint 1
+`SessionService` also owns `createSession` (called from every token-issuing flow: registration,
+login, Google sign-in, Aadhaar re-issue) and `touchSession` (called from `TokenRefreshService` —
+**updates** the existing row rather than inserting a second one, since US-104 made refresh reuse
+its incoming jti rather than mint a new one). `LogoutService` (US-104) now also marks a session's
+row revoked on single-session logout, so a logged-out session correctly disappears from this list
+too — see §9.6.
 
-`GET /api/v1/users/me/account-security` includes a `deleteAccountUrl` pointing at the deletion flow, but the deletion flow itself (eligibility checks against active orders/disputes, 30-day grace period) is **US-063 / US-098, built in Sprint 14** — those domains (orders, disputes) don't exist yet in Sprint 1. The mobile Account Security screen renders the "Delete My Account" row from day one; tapping it before Sprint 14 ships shows "This feature is coming soon."
+## 10.3 Delete Account Entry Point — Still Out of Scope for Sprint 1
 
-## 10.4 AccountSecurityController
+Unchanged from the original design: `GET /api/v1/users/me/account-security` returns a static
+`deleteAccountUrl` (`/api/v1/users/me/deletion-request`) pointing at the deletion flow, but the
+deletion flow itself (eligibility checks against active orders/disputes, 30-day grace period) is
+**US-063 / US-098, built in Sprint 14** — those domains don't exist yet. The mobile Account
+Security screen renders the "Delete My Account" row from day one; tapping it before Sprint 14
+ships shows "This feature is coming soon."
+
+## 10.4 AccountSecurityController (as built)
 
 ```java
 package com.valuex.auth.api;
@@ -1258,34 +1300,42 @@ package com.valuex.auth.api;
 public class AccountSecurityController {
 
     private final AccountSecurityService accountSecurityService;
-    private final SessionService sessionService;
 
     @GetMapping("/account-security")
-    public ResponseEntity<?> getAccountSecurity(@AuthenticationPrincipal UUID userId) { ... }
+    public ResponseEntity<ApiResponse<AccountSecurityResponse>> getAccountSecurity() { ... }
 
     @PostMapping("/mobile/change/initiate")
-    public ResponseEntity<?> initiateMobileChange(@AuthenticationPrincipal UUID userId,
+    public ResponseEntity<ApiResponse<MessageResponse>> initiateMobileChange(
             @Valid @RequestBody ChangeMobileRequest request) { ... }
 
     @PostMapping("/mobile/change/verify")
-    public ResponseEntity<?> verifyMobileChange(@AuthenticationPrincipal UUID userId,
+    public ResponseEntity<ApiResponse<MessageResponse>> verifyMobileChange(
             @Valid @RequestBody VerifyMobileChangeRequest request) { ... }
 
     @PostMapping("/email/change/initiate")
-    public ResponseEntity<?> initiateEmailChange(@AuthenticationPrincipal UUID userId,
+    public ResponseEntity<ApiResponse<MessageResponse>> initiateEmailChange(
             @Valid @RequestBody ChangeEmailRequest request) { ... }
 
     @PostMapping("/email/change/verify")
-    public ResponseEntity<?> verifyEmailChange(@AuthenticationPrincipal UUID userId,
+    public ResponseEntity<ApiResponse<MessageResponse>> verifyEmailChange(
             @Valid @RequestBody VerifyEmailChangeRequest request) { ... }
 
     @GetMapping("/sessions")
-    public ResponseEntity<?> listSessions(@AuthenticationPrincipal UUID userId) { ... }
+    public ResponseEntity<ApiResponse<List<SessionResponse>>> listSessions() { ... }
 
     @PostMapping("/sessions/revoke-others")
-    public ResponseEntity<?> revokeOtherSessions(@AuthenticationPrincipal UUID userId) { ... }
+    public ResponseEntity<ApiResponse<MessageResponse>> revokeOtherSessions() { ... }
 }
 ```
+
+**Correction from the original draft:** no `@AuthenticationPrincipal UUID userId` parameter
+injection anywhere in this codebase — every controller reads identity via
+`SecurityContext.getCurrentUserId()` (an established, enforced convention: "the ONLY acceptable
+way to get the current user's identity"). This story extended that same class with
+`getCurrentJti()` for the two endpoints that need session identity, not just user identity.
+`SessionService` was also dropped from this controller's dependencies — every session operation
+routes through `AccountSecurityService`, matching the controller-calls-one-service pattern used
+everywhere else in this module.
 
 ---
 
@@ -1463,6 +1513,72 @@ public void liftExpiredSuspensions() {
     // Publish STATE_CHANGED event
 }
 ```
+
+## 7.6 `UserStateService` — As Built
+
+`UserAccountStateMachine` (S0-008) had exactly one consumer before this story: the NEW→ACTIVE
+registration flow inside `UserRegistrationService`/`EmailVerificationService`/
+`AadhaarVerificationService`/`GoogleSignInService`. Everything past ACTIVE — `FLAG_FOR_REVIEW`,
+`CLEAR_REVIEW`, `RESTRICT`, `LIFT_RESTRICTION`, `SUSPEND`, `LIFT_SUSPENSION`, `BAN`, `CLOSE` — was
+registered in the state machine but had no caller anywhere in the codebase. `UserStateService`
+(`com.valuex.auth.application.service`) is that caller, one `@Transactional` method per action,
+each following the same three-step contract as the existing registration-flow call sites:
+
+```
+1. stateMachine.transition(user.getStatus(), target, action)   -- throws ValidationException if illegal
+2. user.setStatus(target); userRepository.save(user)
+3. INSERT INTO account_status_history (...)                    -- same SQL/columns as UserRegistrationService
+4. eventPublisher.publish(new UserStateChangedEvent(...))       -- new: see §7.7
+```
+
+`suspend()` additionally sets `user.suspensionLiftedAt = now + 7 days`; `liftSuspension()` and
+`ban()` clear it back to `null`. No REST controller exists for this service — see §12.9 for why.
+
+## 7.7 `UserStateChangedEvent` — First Concrete `DomainEvent`
+
+Coding standard §2.4 point 4 requires every state-machine transition to publish a domain event.
+Before this story, `com.valuex.common.events` (`DomainEvent`/`DomainEventPublisher`, both from
+S0-008) had zero concrete subclasses and zero publishers anywhere in `src/main/java` — including
+the 4 existing registration-flow transitions, which is a pre-existing gap this story does not
+retroactively fix (see §12.9). `UserStateChangedEvent extends DomainEvent` carries `userId`,
+`fromState`, `toState`, `action`, `actorId` (nullable — `null` means system-triggered, e.g. the
+auto-lift job), and `reason`. Published by every `UserStateService` method; no listener consumes
+it yet (there is nothing to notify — US-077 notification delivery doesn't exist, §11).
+
+## 7.8 `SuspendedAccountAutoLiftJob` — As Built
+
+Matches the §7.5 sketch exactly, with one addition: each user is lifted inside its own try/catch
+so a single unexpected failure doesn't abort the rest of the hourly batch (logged as `ERROR` and
+skipped, retried on the next hourly run since `suspensionLiftedAt` stays in the past). Requires
+`@EnableScheduling` on `ValuexApplication` — added by this story; nothing in the codebase used
+`@Scheduled` before it, so the annotation was previously absent entirely.
+
+## 7.9 What US-088 Deliberately Does Not Build
+
+Documented rather than silently dropped, matching this LLD's established convention (§13.6, §14.5):
+
+1. **No REST controller / admin endpoint.** `FLAG_FOR_REVIEW`/`RESTRICT`/`SUSPEND`/`BAN`/`CLOSE`
+   are real, callable, tested service methods — but exposing them over HTTP today would mean
+   either no authorization check (a live account-takeover/ban vector reachable by any bearer
+   token) or a `@PreAuthorize("hasRole('ADMIN')")` check that nothing can ever satisfy, since
+   admin authentication doesn't exist (`com.valuex.admin` is still the Sprint-0 empty
+   `package-info.java` stub). Sprint 10 (US-053 Admin User Management) is the natural, correctly
+   RBAC-guarded home for this surface; `UserStateService` is ready for it to call.
+2. **`close()` does not check for active orders**, despite the AC's "Active orders must complete
+   before account closure." The order module doesn't exist until Sprint 5 — there is no table to
+   check against yet. Not a bug; there is genuinely nothing to validate.
+3. **No appeal submission workflow** for the AC's "Appeals allowed for SUSPENDED/BANNED within 30
+   days." No user story anywhere (Sprint 0-15, `Sprint-plan.md`) defines an account-level appeal
+   flow — the phrase in `user-stories.md` is a validation-rule line, not a scoped feature. Building
+   one now would be speculative scope invented ahead of a story that names it.
+4. **No notification delivery on state change**, despite the AC's "User notified of all state
+   changes." `com.valuex.notification` is still the Sprint-0 state-machine scaffold (§11) — US-077
+   isn't built. `UserStateChangedEvent` (§7.7) is the hook a future `NotificationDispatcher` would
+   subscribe to; nothing consumes it yet.
+5. **BANNED Aadhaar-blacklisting needed no new code.** `users.aadhaar_hash` already carries a
+   `UNIQUE` constraint (V1) and `UserRepository.existsByAadhaarHash` already enforces it at
+   registration (US-002). Since `ban()`/`close()` never delete the user row, a banned identity's
+   hash stays permanently claimed — reuse is already impossible without any US-088-specific code.
 
 ---
 
@@ -2411,11 +2527,11 @@ token flow until that's separately built.
 
 | Rule | Detail |
 |---|---|
-| Refresh token storage | `user_sessions` (and therefore this row) does not exist in the US-104 implementation — there is nothing to store. Will apply once US-105 adds persisted sessions. |
+| Refresh token storage | **Implemented (US-105).** `user_sessions.refresh_token_hash` stores `SHA-256(refreshToken)` — never plain text, same pattern as OTPs |
 | Revocation propagation | **Implemented as designed.** `blocklist:{jti}` TTL is set to the access token's *remaining* lifetime — never longer, so Redis never accumulates stale keys |
 | Blocklist check cost | **Implemented as designed.** One Redis `EXISTS` per authenticated request, added to the existing `JwtAuthenticationFilter` — no additional DB round-trip |
-| Mobile/email change security | US-105 territory — not implemented yet |
-| Session enumeration | US-105 territory — not implemented yet; `GET /users/me/sessions` doesn't exist |
+| Mobile/email change security | **Implemented (US-105).** New value must pass OTP verification before it replaces the old one; old value remains valid for login until then, preventing account lockout mid-change |
+| Session enumeration | **Implemented (US-105).** `GET /users/me/sessions` scoped by `userId` from `SecurityContext.getCurrentUserId()`, never a client-supplied ID — never exposes another user's sessions |
 
 ---
 
@@ -2439,9 +2555,27 @@ token flow until that's separately built.
 - `shouldHandleProviderUnavailable`
 
 ### UserAccountStateMachine Tests (US-088)
-- `shouldAllowValidTransitions`
-- `shouldRejectInvalidTransition`
-- `shouldAllowSkipAadhaarTransition`
+- `shouldAllowEveryDocumentedTransition` (parameterized, all 18 registered transitions)
+- `shouldRejectAnUndocumentedTransition`
+- `shouldRejectTransitioningOutOfATerminalState`
+- `shouldRejectTheRightActionWithTheWrongFromState`
+- `shouldExposeAvailableActionsForAGivenState`
+
+### UserStateService Tests (US-088)
+- `shouldFlagAnActiveAccountForReview`
+- `shouldClearReviewBackToActive`
+- `shouldRestrictAndLiftRestriction`
+- `shouldSuspendForSevenDaysAndSetSuspensionLiftedAt`
+- `shouldLiftSuspensionAndClearSuspensionLiftedAt`
+- `shouldBanFromAnyModeratedStateAndClearSuspensionLiftedAt`
+- `shouldCloseAnActiveAccount`
+- `shouldRejectAnInvalidTransitionAndNotPersistOrPublish`
+- `shouldThrowNotFoundWhenUserDoesNotExist`
+
+### SuspendedAccountAutoLiftJob Tests (US-088)
+- `shouldLiftEveryExpiredSuspension`
+- `shouldDoNothingWhenNoSuspensionsHaveExpired`
+- `shouldContinueLiftingRemainingUsersWhenOneFails`
 
 ### AadhaarGatingInterceptor Tests
 - `shouldAllowRequestWhenAadhaarVerified`
@@ -2587,15 +2721,29 @@ blocklists a jti; the names below replace this section's original `SessionServic
 - `shouldSetAuthenticationWhenTokenIsValid` — extended to also cover the non-blocklisted path
   through the new check
 
-### AccountSecurityService Tests (US-105) — design only, not written (story not implemented)
-- `shouldInitiateMobileChangeAndSendOtpToNewNumber`
-- `shouldRejectMobileChangeWhenNewNumberAlreadyRegistered`
-- `shouldVerifyMobileChangeAndUpdateUser`
-- `shouldKeepOldMobileActiveUntilNewOneVerified`
-- `shouldMirrorFlowForEmailChange`
-- `shouldListActiveSessionsWithCurrentSessionFlagged`
-- `shouldRevokeAllSessionsExceptCaller`
-- `shouldRejectRevokeOthersWhenNoOtherSessionsExist`
+### AccountSecurityService Tests (US-105) — implemented, real method names
+
+`AccountSecurityServiceTest`:
+- `shouldReturnMaskedSummary`, `shouldThrowNotFoundWhenUserMissing`
+- `shouldInitiateMobileChangeAndSendOtp`, `shouldRejectMobileChangeWhenNewNumberAlreadyRegistered`
+- `shouldVerifyMobileChangeAndUpdateUser`, `shouldRejectMobileChangeVerifyWithWrongOtp`,
+  `shouldRejectMobileChangeVerifyWhenOtpExpired`, `shouldKeepOldMobileActiveUntilVerified`
+- `shouldRejectMobileChangeInitiateWhenRateLimitExceeded`,
+  `shouldRejectMobileChangeVerifyWhenFailLimitExceeded`
+- `shouldMirrorFlowForEmailChange`, `shouldRejectEmailChangeWhenAlreadyRegistered`,
+  `shouldRejectEmailChangeVerifyWithWrongOtp`, `shouldRejectEmailChangeVerifyWhenOtpExpired`
+- `shouldListActiveSessionsWithCurrentSessionFlagged`, `shouldRevokeAllSessionsExceptCaller`,
+  `shouldRejectRevokeOthersWhenNoOtherSessionsExist`
+
+`SessionServiceTest` (new class this section's original draft didn't anticipate, since
+`SessionService` ended up owned by US-104/US-105 jointly, see §9/§10.2):
+- `shouldCreateSessionRowWithHashedRefreshToken`, `shouldUpdateLastActiveAtWhenTouchingAnExistingSession`,
+  `shouldCreateSessionWhenTouchingAJtiWithNoExistingRow`, `shouldBlocklistAndRevokeWhenSessionRowExists`,
+  `shouldOnlyBlocklistWhenNoSessionRowExists`, `shouldRevokeAllExceptTheCallersSession`,
+  `shouldReturnZeroWhenNoOtherSessionsExist`, `shouldListTop10ActiveSessionsMostRecentFirst`
+
+`AccountSecurityControllerTest` — routing/wiring tests mirroring `AuthControllerTest` conventions,
+covering all 7 endpoints in §10.4.
 
 ## 18.2 Integration Tests
 
@@ -2684,15 +2832,16 @@ Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1
 | 12 | `V6__replace_profile_photo_with_avatar.sql` migration | US-003 | Step 1 | ✅ Done |
 | 12a | `UserProfileService` (profile CRUD + avatar catalog/selection) + `UserProfileController` + `AvatarController` | US-003 | Steps 2, 12 | ✅ Done |
 | 13 | Notification entity + dispatcher + event listeners | US-077 | Step 5 | ⬜ Not started — `com.valuex.notification` is still the Sprint-0 state-machine scaffold only |
-| 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 | ⬜ Not started — no `@Scheduled` job exists anywhere in the codebase |
-| 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-105 | Step 1 | ⬜ Not started — turned out to be US-105-only; US-104 needed no persisted table, see §9 |
+| 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 | ✅ Done — see §7.8 |
+| 14a | `UserStateService` (moderation transitions) + `UserStateChangedEvent` (first concrete `DomainEvent`) + `User.suspensionLiftedAt` mapping + `UserAccountStateMachineTest` | US-088 | Step 2 | ✅ Done — see §7.6-§7.7. No REST controller (§7.9) |
+| 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-105 | Step 1 | ✅ Done — turned out to be US-105-only; US-104 needed no persisted table, see §9 |
 | 16 | Add `jti` claim to token issuance, shared per access+refresh pair; `LogoutService` (blocklist, no `SessionService`/table) | US-104 | Steps 5, 10 | ✅ Done — see §9 for the as-built design, narrower than this row's original plan |
 | 17 | Extend `JwtAuthenticationFilter` with blocklist check | US-104 | Step 16 | ✅ Done |
 | 18 | `AuthController` logout endpoint | US-104 | Step 16 | ✅ Done |
 | 19 | `ProfileMenuBadgeProvider` SPI + `ProfileMenuService` + menu-summary endpoint | US-103 | Step 13 | ✅ Done — **except** `NotificationsBadgeProvider`, correctly deferred until Step 13 lands (zero providers registered today, by design, not a bug) |
 | 19a | `ProfileMenuService` hardening: constructor-time duplicate-key validation, per-provider failure/negative-count isolation, unmodifiable `badges` map, full SPI Javadoc, Spring-wiring integration test | US-103 | Step 19 | ✅ Done — added during PR review, not part of the original plan |
-| 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 | ⬜ Not started |
-| 21 | Unit tests | US-001, US-002, US-003, US-101, US-103, US-106, US-107 | Steps 5-9, 12a, 19-19a, 23, 24-24a | ✅ Done for every implemented story |
+| 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 | ✅ Done |
+| 21 | Unit tests | US-001, US-002, US-003, US-088, US-101, US-103, US-106, US-107 | Steps 5-9, 12a, 14-14a, 19-19a, 23, 24-24a | ✅ Done for every implemented story |
 | 22 | Integration tests | All | Steps 7-14, 17-20 | 🟡 Partial — `ValuexApplicationTests` (Testcontainers/Docker, boots the whole app) plus the narrow `ProfileMenuServiceWiringIntegrationTest` (Docker-free, proves `List<ProfileMenuBadgeProvider>` autowiring). No dedicated request-level `MockMvc` integration tests exist yet for any flow — everything implemented is verified at the unit level only. |
 | 23 | `InitiateLoginRequest`/`VerifyLoginOtpRequest` DTOs + `UserLoginService` (initiate + verify login OTP, reuses `OtpPurpose.LOGIN`) + `/auth/login/*` endpoints on `AuthController` + `SecurityConfig` `permitAll()` entries | US-106 | Steps 2, 5 | ✅ Done — see §13 |
 | 23a | `AuthResponse.status` field, populated in all 5 builder call sites (`UserLoginService`, `UserRegistrationService` x2, `AadhaarVerificationService`, `GoogleSignInService`) — closes the AC gap where the client couldn't tell which screen to route to after auth | US-106 | Step 23 | ✅ Done — added during US-106 AC audit, not part of the original plan |
