@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 1: Identity & User Management
 
-**Document Version:** 1.11
+**Document Version:** 1.12
 **Product:** ValueX
 **Sprint:** Sprint 1 - Identity & User Management
 **Sprint Duration:** 2 Weeks
@@ -20,6 +20,7 @@
 | 1.8 | Aug 2026 | US-106 (Mobile OTP Login for Returning Users) implemented and documented: new §13 covers the login flow, the 10-state login-eligibility table, `UserLoginService` (reuses the long-dormant `OtpPurpose.LOGIN`, reuses the existing `ERROR_INVALID_STATE` convention rather than inventing a new error code — same pattern as `GoogleSignInService.initiateMobileForSocialLink`), and what login deliberately never touches (no state transition, no `User` row writes, no session/audit infrastructure — none of that exists yet). Old §13-16 renumbered to §14-17 (Database Schema, API Design, Security Considerations, Testing Strategy) to make room. §15.1 gained the two new `/auth/login/*` endpoint specs, §16.5 gained their rate-limit rows, §17.1 gained real `UserLoginServiceTest`/`AuthControllerTest` method names, §2.4 Package Structure updated with the new DTO/service classes, and Implementation Sequence gained row 23. |
 | 1.9 | Aug 2026 | US-106 AC audit found a real gap: neither the JWT nor `AuthResponse` ever returned the account's `status`, so the client had no way to satisfy the AC's "route to the appropriate screen for my account's current state" without an extra API call. Fixed by adding `status` to `AuthResponse` — populated in all five places it's built (`UserLoginService.verifyLogin`, `UserRegistrationService.verifyMobileOtp`/`.skipAadhaar`, `AadhaarVerificationService.completeVerification`, `GoogleSignInService.verifySocialMobileOtp`), so registration, login, Aadhaar, and Google sign-in all return it consistently, not just login. All affected JSON response examples in §15.1/§15.2 and the flow diagrams in §3.1/§4/§13.2/§13.4 updated to show it. `SocialSignInResponse` (Google Flow B, already-linked immediate JWT) is a separate DTO and was not touched — out of scope of this fix. Also fixed two Sonar `S5778` code smells in `ProfileMenuServiceTest` (lambdas with multiple throw-possible invocations) found during the first Sonar scan of the US-106 branch. |
 | 1.10 | Aug 2026 | US-107 (Access Token Refresh) implemented and documented: new §14 covers `POST /auth/refresh` (`TokenRefreshService`), the central stateless-vs-rotation scoping decision (session/`jti` tracking doesn't exist anywhere in the codebase, so single-use rotation and logout-invalidation are explicitly deferred to US-104/US-105 — matching the story's own documented fallback), and an explicit list of every AC/edge-case this leaves unmet (§14.5). Also closes a real pre-existing security gap the story's design note called out: `JwtAuthenticationFilter` now rejects refresh-type tokens used as bearer tokens (previously authenticated with `role=null`/`ROLE_null`) via new `JwtTokenProvider.isAccessToken`/`isRefreshToken`/`isTokenExpired` methods. Old §14-17 renumbered to §15-18 (Database Schema, API Design, Security Considerations, Testing Strategy). §16.1 gained the `/auth/refresh` endpoint spec, §17.4 JWT Claims updated to describe the new token-type-check behavior, §18.1 gained real `TokenRefreshServiceTest`/`AuthControllerTest`/`JwtTokenProviderTest`/`JwtAuthenticationFilterTest` method names, §2.4 Package Structure updated, and Implementation Sequence gained rows 24-24a. Two Sonar issues (one `S6068` redundant-matcher smell x2, seven `S5778` multi-throw-lambda smells) found and fixed in `TokenRefreshServiceTest` during the first scan of the US-107 branch. |
+| 1.12 | Aug 2026 | US-077 (Critical Event Notifications) implemented and documented, scoped to §6.1's original Sprint-1 boundary (account lifecycle events only — order/payment/cart/dispute/message events remain out of scope until their modules exist). §11 gained §6.6-§6.9. `com.valuex.notification` went from bare `NotificationState`/`NotificationStateMachine` (S0-008 scaffolding, zero consumers) to a full vertical slice: `Notification` entity + `V8` migration, `NotificationRepository`, `SmsNotificationPort`/`EmailNotificationPort` with mock adapters (mirrors `OtpPort`'s plug-and-play `@ConditionalOnProperty` pattern), `NotificationDispatcher` (persists the row — that *is* in-app delivery — then attempts SMS/email per event, failures logged not fatal, matching the AC's `ERROR_NOTIFICATION_FAILED` scenario), `AccountEventNotificationListener` (`@TransactionalEventListener(AFTER_COMMIT)`), `NotificationQueryService` + `NotificationController` (`GET /api/v1/notifications` paginated, `X-Unread-Notifications` header, `PATCH /{id}/read`), and `NotificationRetentionCleanupJob` (90-day purge, daily cron). Two new domain events added to `auth`: `AccountCreatedEvent` (published from both ACTIVE-transition points — `UserRegistrationService.skipAadhaar` and `AadhaarVerificationService.completeVerification`, since "account created" per §6.1 means reaching ACTIVE, not just registering) and `AadhaarVerifiedEvent` (published only from the latter). A new cross-module read-only contract, `AccountContactLookupService` (in `auth`), lets the notification module resolve mobile/email for `UserStateChangedEvent` — which, being a US-088 event, carries no contact info — without depending on `auth`'s persistence layer directly; this is the codebase's first real inter-module dependency, exercising the "domain events or defined service interfaces only" rule for the first time. Of `UserStateChangedEvent`'s transitions, only `toState` ∈ {UNDER_REVIEW, SUSPENDED, BANNED} notify — CLOSED, RESTRICTED, and the various "back to ACTIVE" transitions are not in the AC's critical-event list. Deliberately not built: a push channel (no push infrastructure/device-token registration exists anywhere), notification preferences (that's US-087, which the sprint plan itself makes dependent on US-077), and server-side notification grouping (a client-side display concern). Sprint-plan's general priority-by-severity table (SMS+Push+Email+In-app for HIGH, etc.) is superseded for Sprint-1 events by §6.3's narrower, already-documented per-event channel list — no Sprint-1 event actually needs push. |
 | 1.11 | Aug 2026 | US-088 (Lifecycle State - User Account) implemented and documented: §12 gained §12.6-§12.9. `UserStateService` adds the moderation half of `UserAccountStateMachine` that had no caller since S0-008 (`flagForReview`/`clearReview`/`restrict`/`liftRestriction`/`suspend`/`liftSuspension`/`ban`/`close`) — same `account_status_history` write pattern as `UserRegistrationService`, plus the codebase's first concrete `DomainEvent`, `UserStateChangedEvent`, published on every transition (closing the gap flagged in coding-standard §2.4 point 4, previously unmet by all four existing call sites). `SuspendedAccountAutoLiftJob` implements the `@Scheduled` job §7.5 had specified but marked "Not started" — hourly cron, `UserRepository.findByStatusAndSuspensionLiftedAtBefore`, per-user try/catch so one bad row can't block the batch. `User.suspensionLiftedAt` mapped to the `suspension_lifted_at` column that migration V2 had already added but no entity field ever used. Deliberately **not** built: a REST controller (no admin authentication/RBAC exists yet — Sprint 10 owns that surface; an unauthenticated moderation endpoint would be a security hole), active-order blocking on `close()` (order module doesn't exist until Sprint 5), and a user-facing appeal workflow for SUSPENDED/BANNED (no story anywhere defines one — user-stories.md's "appeals allowed within 30 days" is a validation-rule line, not a built flow). BANNED Aadhaar-blacklisting needs no new code — the pre-existing `users.aadhaar_hash` unique constraint already blocks reuse as long as banned rows aren't deleted, which `close()`/`ban()` never do. `UserAccountStateMachineTest` written from scratch — no test for the S0-008 state machine existed before this story despite it being live in 4 registration-flow services since US-001. |
 
 **Reference Documents:**
@@ -1406,6 +1407,83 @@ public class Notification {
 - `GET /api/v1/notifications` returns paginated list (default page size: 20)
 - Unread count returned in response header: `X-Unread-Notifications: 3`
 
+## 6.6 Event Sources — As Built
+
+Before this story, `UserRegistrationService` and `AadhaarVerificationService` published no domain
+events at all — both only wrote `account_status_history` via raw JDBC. Two new events were added
+so the notification module has something to subscribe to:
+
+- **`AccountCreatedEvent`** (userId, mobile, email) — published from **both** places a user
+  actually reaches ACTIVE: `UserRegistrationService.skipAadhaar()` (SKIP_AADHAAR) and
+  `AadhaarVerificationService.completeVerification()` (VERIFY_IDENTITY). "Account created" per
+  §6.1 means the account is fully onboarded, not merely that the registration record exists —
+  registration's earlier steps (OTP verify, email verify) do not publish this.
+- **`AadhaarVerifiedEvent`** (userId, mobile, email) — published only from `completeVerification()`,
+  alongside `AccountCreatedEvent` (both fire in that one call, since Aadhaar completion and account
+  activation happen atomically in the current registration flow — there is no separate moment where
+  Aadhaar is verified but the account isn't yet ACTIVE).
+- **`UserStateChangedEvent`** (US-088, already existed) — reused as-is. It carries no mobile/email,
+  so the listener resolves contact details via a new `AccountContactLookupService` (in `auth`) —
+  a small read-only cross-module contract, the first real one in this codebase, matching the "no
+  cross-module calls except via domain events or defined service interfaces" architecture rule
+  literally for the first time.
+
+## 6.7 `NotificationDispatcher` — As Built
+
+```
+1. Drive NotificationState through EVENT_TRIGGERED -> NOTIFICATION_QUEUED -> CHANNEL_SELECTED -> SENT
+   (all three transitions validated via NotificationStateMachine, in one synchronous call —
+   no intermediate persistence, no async/queue infrastructure; mock adapters return instantly)
+2. Persist the Notification row with status=SENT
+   -- this row's existence IS "in-app delivery"; there is no separate in-app channel adapter
+3. If SMS requested and mobile known: smsNotificationPort.sendSms(...), caught + logged on failure
+4. If EMAIL requested and email known: emailNotificationPort.sendEmail(...), caught + logged on failure
+```
+
+A channel failure never fails the whole dispatch or rolls back the persisted row — matches the
+AC's `ERROR_NOTIFICATION_FAILED: Logged but user not aware` error scenario exactly. `DELIVERED`
+and `READ` are reached later, via `NotificationQueryService.markAsRead` (§6.8), not by the
+dispatcher — there is no delivery-receipt webhook from either mock provider.
+
+## 6.8 `AccountEventNotificationListener` — Per-Event Channel Mix (As Built)
+
+| Event | eventType | Channels | Priority |
+|---|---|---|---|
+| `AccountCreatedEvent` | ACCOUNT_CREATED | In-app + SMS | HIGH |
+| `AadhaarVerifiedEvent` | AADHAAR_VERIFIED | In-app | MEDIUM |
+| `UserStateChangedEvent`, toState=UNDER_REVIEW | ACCOUNT_UNDER_REVIEW | In-app + SMS | HIGH |
+| `UserStateChangedEvent`, toState=SUSPENDED | ACCOUNT_SUSPENDED | In-app + SMS + Email | HIGH |
+| `UserStateChangedEvent`, toState=BANNED | ACCOUNT_BANNED | In-app + SMS + Email | HIGH |
+| `UserStateChangedEvent`, any other toState | *(no notification)* | — | — |
+
+Exactly matches §6.3's table — this is that table's actual implementation, not a reinterpretation.
+`UserStateChangedEvent`'s other transitions (CLOSED, RESTRICTED, ACTIVE via clear-review/lift-
+restriction/lift-suspension) are silent — none of them appear in the AC's critical-event list
+("Account suspended/banned" is the only state-change item named), and firing a notification for
+every single transition would be scope invented beyond what was asked. All three listener methods
+use `@TransactionalEventListener(phase = AFTER_COMMIT)` directly rather than implementing the
+`EventListener<E>` marker interface from `common.events` — that interface is generic over exactly
+one event type, and this listener intentionally handles three, so implementing it three times on
+one class isn't possible in Java. This is the first real usage of the event-listener framework;
+the interface's shape may need revisiting once a second multi-event listener exists.
+
+## 6.9 What US-077 Deliberately Does Not Build
+
+1. **Push notifications** — no push channel, no device-token registration, no FCM/APNs adapter.
+   No Sprint-1 event actually requires push per §6.3's table; building the infrastructure now would
+   be speculative ahead of any story that defines it.
+2. **Notification preferences** ("User can configure notification preferences") — that's US-087,
+   which the sprint plan makes explicitly dependent on US-077. Every Sprint-1 event notifies
+   unconditionally; there is no opt-out yet.
+3. **Client-side grouping of rapid-fire notifications** — a display concern for the notification
+   list screen, not a backend API shape decision.
+4. **Password-changed notifications** — not applicable to this auth model; there is no password
+   anywhere in mobile-OTP/social-sign-in authentication.
+5. **Unknown-device-login notifications** — explicitly deferred by §6.1 itself ("future sprint —
+   noted here for architecture alignment"), predating this implementation pass.
+6. **Order/payment/cart/dispute/message notifications** — their modules don't exist until Sprint
+   4 onward; §6.1 scoped Sprint 1 to account-lifecycle events only.
+
 ---
 
 # 12. US-088: Lifecycle State - User Account
@@ -1885,7 +1963,19 @@ CREATE TABLE notifications (
 );
 
 CREATE INDEX idx_notifications_user ON notifications(user_id, read, created_at DESC);
+```
 
+**As built (`V8__notifications_schema.sql`, US-077):** differs from the sketch above the same way
+`user_state_history` above differs from the real V1 `account_status_history` — this whole section
+predates implementation. Real differences: `status` is a native `notification_status` Postgres
+enum (matching `User.status`'s `user_status` enum convention), not `VARCHAR` with no `expires_at`
+column (90-day retention is enforced by `NotificationRetentionCleanupJob` deleting rows outright,
+not by a per-row expiry timestamp), `body` is `VARCHAR(1000)` not unbounded `TEXT`, and indexing
+is two separate indexes (`idx_notifications_user_created` for the paginated list,
+`idx_notifications_unread` a partial index on `read = FALSE`) rather than one combined index. See
+§6.6-§6.9 for the real design.
+
+```sql
 -- Social login accounts (Google, Apple)
 -- (See US-101/US-102 sections for full DDL)
 -- user_social_accounts table defined in Section 4.3
@@ -2745,6 +2835,42 @@ blocklists a jti; the names below replace this section's original `SessionServic
 `AccountSecurityControllerTest` — routing/wiring tests mirroring `AuthControllerTest` conventions,
 covering all 7 endpoints in §10.4.
 
+### Notification Tests (US-077) — implemented, real method names
+
+`AccountContactLookupServiceTest`: `shouldReturnMobileAndEmailWhenUserExists`,
+`shouldReturnEmptyWhenUserDoesNotExist`
+
+`NotificationDispatcherTest`: `shouldPersistNotificationWithSentStatus`,
+`shouldSendSmsWhenChannelRequestedAndMobileKnown`, `shouldNotSendSmsWhenMobileIsNull`,
+`shouldSendEmailWhenChannelRequestedAndEmailKnown`, `shouldNotInvokeChannelsNotInRequestedSet`,
+`shouldPersistNotificationEvenWhenSmsChannelThrows`, `shouldStillSendEmailWhenSmsChannelFails`,
+`shouldPersistCorrectFieldsOnTheSavedEntity`
+
+`AccountEventNotificationListenerTest`: `shouldDispatchAccountCreatedNotification`,
+`shouldDispatchAadhaarVerifiedNotificationInAppOnly`,
+`shouldDispatchNotificationForCriticalStateChanges` (parameterized: UNDER_REVIEW/SUSPENDED/BANNED),
+`shouldNotDispatchForNonCriticalStateChanges` (parameterized: CLOSED/RESTRICTED/ACTIVE),
+`shouldSkipStateChangeNotificationWhenContactNotFound`, `shouldRequestAllThreeChannelsForSuspension`
+
+`NotificationQueryServiceTest`: `shouldListNotificationsForUser`, `shouldReturnUnreadCount`,
+`shouldMarkSentNotificationAsReadThroughDeliveredState`,
+`shouldMarkDeliveredNotificationAsReadDirectly`, `shouldBeIdempotentWhenAlreadyRead`,
+`shouldThrowNotFoundWhenNotificationDoesNotBelongToUser`
+
+`NotificationControllerTest`: `shouldReturnPagedNotificationsWithUnreadHeader`,
+`shouldMarkNotificationAsRead`
+
+`NotificationRetentionCleanupJobTest`: `shouldDeleteNotificationsOlderThanNinetyDays`,
+`shouldNotThrowWhenNothingToDelete`
+
+Not covered by a dedicated test class (consistent with `MockOtpAdapter`/`MockEmailOtpAdapter`/
+`OtpProviderConfig` having none either): `MockSmsNotificationAdapter`, `MockEmailNotificationAdapter`,
+`NotificationProviderConfig` — trivial log-only adapters and `@ConditionalOnProperty` wiring.
+
+`UserRegistrationServiceTest`/`AadhaarVerificationServiceTest` each gained an assertion that
+`skipAadhaar()`/`completeVerification()` publish the expected event(s) via a new
+`@Mock DomainEventPublisher eventPublisher` field.
+
 ## 18.2 Integration Tests
 
 **Illustrative — `UserRegistrationIntegrationTest` below does not exist.** No `@AutoConfigureMockMvc`
@@ -2831,7 +2957,8 @@ Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1
 | 11 | ~~Apple Sign-In adapter + `/auth/social/apple`~~ | US-102 | Step 10 | ❌ Dropped from scope |
 | 12 | `V6__replace_profile_photo_with_avatar.sql` migration | US-003 | Step 1 | ✅ Done |
 | 12a | `UserProfileService` (profile CRUD + avatar catalog/selection) + `UserProfileController` + `AvatarController` | US-003 | Steps 2, 12 | ✅ Done |
-| 13 | Notification entity + dispatcher + event listeners | US-077 | Step 5 | ⬜ Not started — `com.valuex.notification` is still the Sprint-0 state-machine scaffold only |
+| 13 | `Notification` entity + `V8` migration + `NotificationRepository` + `NotificationDispatcher` + `AccountEventNotificationListener` + `NotificationQueryService`/`NotificationController` + `NotificationRetentionCleanupJob` | US-077 | Step 5 | ✅ Done — scoped to account-lifecycle events only, see §6.6-§6.9 |
+| 13a | `AccountCreatedEvent` + `AadhaarVerifiedEvent` (new `auth` domain events) + `AccountContactLookupService` (cross-module contract) | US-077 | Steps 5-6 | ✅ Done — see §6.6 |
 | 14 | Suspended account auto-lift scheduled job | US-088 | Step 5 | ✅ Done — see §7.8 |
 | 14a | `UserStateService` (moderation transitions) + `UserStateChangedEvent` (first concrete `DomainEvent`) + `User.suspensionLiftedAt` mapping + `UserAccountStateMachineTest` | US-088 | Step 2 | ✅ Done — see §7.6-§7.7. No REST controller (§7.9) |
 | 15 | `user_sessions` + `contact_change_attempts` migration (V7) | US-105 | Step 1 | ✅ Done — turned out to be US-105-only; US-104 needed no persisted table, see §9 |
@@ -2841,7 +2968,7 @@ Row 23 (US-106) added in v1.8; row 23a (AuthResponse `status` field) added in v1
 | 19 | `ProfileMenuBadgeProvider` SPI + `ProfileMenuService` + menu-summary endpoint | US-103 | Step 13 | ✅ Done — **except** `NotificationsBadgeProvider`, correctly deferred until Step 13 lands (zero providers registered today, by design, not a bug) |
 | 19a | `ProfileMenuService` hardening: constructor-time duplicate-key validation, per-provider failure/negative-count isolation, unmodifiable `badges` map, full SPI Javadoc, Spring-wiring integration test | US-103 | Step 19 | ✅ Done — added during PR review, not part of the original plan |
 | 20 | `AccountSecurityService` + `AccountSecurityController` (mobile/email change, sessions) | US-105 | Steps 12, 16 | ✅ Done |
-| 21 | Unit tests | US-001, US-002, US-003, US-088, US-101, US-103, US-106, US-107 | Steps 5-9, 12a, 14-14a, 19-19a, 23, 24-24a | ✅ Done for every implemented story |
+| 21 | Unit tests | US-001, US-002, US-003, US-077, US-088, US-101, US-103, US-106, US-107 | Steps 5-9, 12a, 13-13a, 14-14a, 19-19a, 23, 24-24a | ✅ Done for every implemented story |
 | 22 | Integration tests | All | Steps 7-14, 17-20 | 🟡 Partial — `ValuexApplicationTests` (Testcontainers/Docker, boots the whole app) plus the narrow `ProfileMenuServiceWiringIntegrationTest` (Docker-free, proves `List<ProfileMenuBadgeProvider>` autowiring). No dedicated request-level `MockMvc` integration tests exist yet for any flow — everything implemented is verified at the unit level only. |
 | 23 | `InitiateLoginRequest`/`VerifyLoginOtpRequest` DTOs + `UserLoginService` (initiate + verify login OTP, reuses `OtpPurpose.LOGIN`) + `/auth/login/*` endpoints on `AuthController` + `SecurityConfig` `permitAll()` entries | US-106 | Steps 2, 5 | ✅ Done — see §13 |
 | 23a | `AuthResponse.status` field, populated in all 5 builder call sites (`UserLoginService`, `UserRegistrationService` x2, `AadhaarVerificationService`, `GoogleSignInService`) — closes the AC gap where the client couldn't tell which screen to route to after auth | US-106 | Step 23 | ✅ Done — added during US-106 AC audit, not part of the original plan |
