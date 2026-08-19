@@ -383,6 +383,27 @@ new token.
 **200 OK:** new token pair, `aadhaarVerified: true`, account now `ACTIVE`. Re-authorize with the
 new token — required for marketplace transaction endpoints.
 
+### Step 5c — Completing Aadhaar Later, After Skipping (Bug-001, fixed)
+
+**Goal:** confirm a user who took the Step 5a skip path can come back later and finish Aadhaar
+verification. This was broken (GitHub issue #158, `Documents` repo) until it was fixed — the
+account is `ACTIVE` at this point, but `POST /aadhaar/initiate` used to reject anything except
+`IDENTITY_VERIFICATION_PENDING`, leaving skip-path users with no way back in.
+
+**Steps:** with the `ACTIVE`, `aadhaarVerified: false` token from Step 5a still authorized, run
+Steps 5b and 6 exactly as written above — same request shape, just starting from `ACTIVE` instead
+of `IDENTITY_VERIFICATION_PENDING`.
+
+**Expected:** both calls succeed. The final response shows `status: "ACTIVE"` (unchanged — the
+account was already `ACTIVE`, there was no state to transition) and `aadhaarVerified: true`.
+
+```sql
+SELECT from_status, to_status, action, changed_at FROM account_status_history
+WHERE user_id = '<the test user id>' ORDER BY changed_at DESC LIMIT 1;
+-- Expect: from_status=ACTIVE, to_status=ACTIVE, action=VERIFY_IDENTITY
+-- (an audit row still gets written for continuity, even though nothing state-wise changed)
+```
+
 ### US-001 Error Reference
 
 | HTTP | Error Code | Cause & Fix |

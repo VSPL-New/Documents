@@ -190,6 +190,30 @@ No request body required.
 
 ---
 
+## Step 5c — Completing Aadhaar Later, After Skipping (Bug-001, fixed)
+
+**Goal:** confirm a user who took the Step 5a skip path can still come back later and complete
+Aadhaar verification — this was broken (GitHub issue #158 / Bug-001) until it was fixed: the
+account is `ACTIVE` at this point, but `POST /aadhaar/initiate` used to reject anything other than
+`IDENTITY_VERIFICATION_PENDING`, leaving skip-path users with no way back in.
+
+**Steps:** with the `ACTIVE`, `aadhaarVerified: false` token from Step 5a still authorized, run
+Steps 5b and 6 exactly as written below — no different request shape, just a different starting
+account state than the normal flow.
+
+**Expected:** both calls succeed exactly as documented in Steps 5b/6. The final `GET /users/me`
+(or the `AuthResponse` from Step 6) shows `status: "ACTIVE"` (unchanged — there was no state to
+transition, the account was already `ACTIVE`) and `aadhaarVerified: true`.
+
+```sql
+-- Confirm the audit trail recorded it even though from_status = to_status = ACTIVE:
+SELECT from_status, to_status, action, changed_at FROM account_status_history
+WHERE user_id = '<the test user id>' ORDER BY changed_at DESC LIMIT 1;
+-- Expect: from_status=ACTIVE, to_status=ACTIVE, action=VERIFY_IDENTITY
+```
+
+---
+
 ## Step 5b — Initiate Aadhaar Verification
 
 **Endpoint:** `POST /api/v1/auth/aadhaar/initiate` *(requires JWT)*
