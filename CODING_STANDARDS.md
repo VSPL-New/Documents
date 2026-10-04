@@ -29,16 +29,15 @@ These rules apply to every repository without exception.
 
 | Branch | Purpose | Protection |
 |--------|---------|-----------|
-| `main` | Production-ready code | Protected — requires PR + approval |
-| `develop` | Integration branch | Protected — requires PR |
+| `main` | Production-ready code and integration branch | Protected — requires PR + approval |
 | `feature/*` | Feature development | e.g. `feature/user-registration` |
 | `fix/*` | Bug fixes | e.g. `fix/otp-expiry-bug` |
 | `hotfix/*` | Production hotfixes | e.g. `hotfix/payment-webhook-crash` |
 | `chore/*` | Dependency / config updates | e.g. `chore/upgrade-spring-boot` |
 
 **Rules:**
-- Never commit directly to `main` or `develop`.
-- Feature branches must be rebased on `develop` before PR.
+- Never commit directly to `main`.
+- Feature branches are created from `main` and must be rebased on `main` before PR.
 - Branch names use lowercase kebab-case.
 
 ---
@@ -919,12 +918,12 @@ valuex-infra/
 
 **Rules:**
 - All secrets via GitHub Secrets — never hardcoded in YAML.
-- Workflows triggered by `pull_request` (CI) and `push` to `develop`/`main` (CD).
+- Workflows triggered by `pull_request` (CI) and `push` to `main` (CD).
 - Use `paths:` filter so workflows only run when relevant files change.
 - Pin all action versions to a specific SHA or version tag (e.g. `actions/checkout@v4`) — no `@main` or `@latest`.
 - Every CI pipeline runs in this order: lint/format check → compile → unit tests → security scan → build artifact.
 - Security scan (SAST + dependency vulnerability) is mandatory on every PR.
-- Docker image builds only happen on merge to `develop` or `main` (not on every PR).
+- Docker image builds only happen on merge to `main` (not on every PR).
 
 ---
 
@@ -967,12 +966,12 @@ Checkout → Setup Terraform → terraform fmt --check → terraform validate �
 
 ## 6.4 Deployment Pipeline Structure
 
-**Staging (auto on `develop` merge):**
+**Staging (auto on `main` merge):**
 ```
 Download artifact → Run smoke tests → Build Docker image → Push to registry → kubectl rollout (rolling update) → Health check
 ```
 
-**Production (on `main` merge, requires manual approval):**
+**Production (after staging succeeds on `main` merge, requires manual approval):**
 ```
 Download artifact → Manual approval gate → Build Docker image → Push to registry → Blue/Green or Canary deploy → Health check → Smoke tests → Promote or rollback
 ```
@@ -1008,9 +1007,9 @@ Download artifact → Manual approval gate → Build Docker image → Push to re
 
 | Environment | Deploy Trigger | Approval Required |
 |-------------|---------------|-------------------|
-| dev | On PR merge to `develop` | No |
-| staging | On PR merge to `develop` | No |
-| prod | On PR merge to `main` | Yes — senior engineer |
+| dev | On PR merge to `main` | No |
+| staging | On PR merge to `main` | No |
+| prod | After staging succeeds on PR merge to `main` | Yes — senior engineer |
 
 - `dev` may use cheaper instance sizes and single replicas.
 - `staging` must be a production replica (same config, scaled down).
