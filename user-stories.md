@@ -25,6 +25,8 @@
 16. [Compliance & Accessibility](#compliance--accessibility)
 17. [Profile Management Extensions](#profile-management-extensions)
 18. [Authentication Extensions](#authentication-extensions)
+19. [Address Management](#address-management)
+20. [Mobile App Security](#mobile-app-security)
 
 ---
 
@@ -38,16 +40,19 @@
 **Related User Stories:**
 - This story covers first-time registration only. Returning-user login: US-106
 - Session renewal after the token issued here expires: US-107
+- Avatar catalog and later profile edits: US-003
+- Address entry with Google Places and verification (replaces the manual address fields of the Sign Up step): US-108
 
 **Registration Flow:**
 1. Verify mobile (SMS OTP) → account: `EMAIL_VERIFICATION_PENDING`
 2. Verify email (email OTP) → account: `IDENTITY_VERIFICATION_PENDING`
-3a. Complete Aadhaar verification → account: `ACTIVE` (`aadhaarVerified = true`)
-3b. Skip Aadhaar → account: `ACTIVE` (`aadhaarVerified = false`, limited until Aadhaar done)
+3a. Complete Aadhaar verification → account: `SIGNUP_PENDING` (`aadhaarVerified = true`)
+3b. Skip Aadhaar → account: `SIGNUP_PENDING` (`aadhaarVerified = false`, limited until Aadhaar done)
+4. Sign Up: provide profile details and address, accept terms and consent → account: `ACTIVE`
 
 **Acceptance Criteria:**
 - Given I am on the registration page
-- When I enter my mobile number and accept terms & conditions
+- When I enter my mobile number
 - Then I receive a 6-digit OTP via SMS
 - When I enter the correct OTP within 5 minutes
 - Then my account moves to `EMAIL_VERIFICATION_PENDING` state
@@ -58,13 +63,27 @@
 - Then my email is verified and account moves to `IDENTITY_VERIFICATION_PENDING` state
 - When I choose to complete Aadhaar verification immediately
 - Then I am prompted to enter my Aadhaar number and consent
-- And after successful Aadhaar OTP verification, my account transitions to `ACTIVE` with `aadhaarVerified = true`
+- And after successful Aadhaar OTP verification, my account transitions to `SIGNUP_PENDING` with `aadhaarVerified = true`
 - When I choose to skip Aadhaar verification
-- Then I receive a new JWT and my account transitions to `ACTIVE`
+- Then I receive a new JWT and my account transitions to `SIGNUP_PENDING`
+- And I am told that Aadhaar verification is required before any transaction (buy, sell, contact seller or buyer)
+- Given my account is `SIGNUP_PENDING`
+- When I am shown the Sign Up form
+- Then I provide my name, gender, date of birth, avatar (optional), state, city, address and pincode
+- And my verified mobile number and email are shown and cannot be edited
+- When I open the Terms and Conditions and then accept them with the single terms and consent toggle
+- And I submit the form
+- Then my profile is saved, I receive a new JWT and my account transitions to `ACTIVE`
 - And I can browse and use most platform features
 - But I must complete Aadhaar verification before my first buy or sell transaction
+- When I close or lose the app at any point during registration and reopen it later
+- Then I am taken to the registration step that matches my current account state, without repeating steps I already completed
+- And I am never shown a step that my account state does not allow
 
 **Edge Cases:**
+- App is closed, killed or restarted mid-registration (resume from the server-side account state)
+- Access token is missing or no longer valid when the app is reopened mid-registration
+- User started registration but never verified the mobile OTP (no token yet; registration restarts at mobile entry)
 - Mobile number already linked to another account
 - Email address already linked to another account
 - User enters email OTP before mobile OTP is verified
@@ -74,9 +93,13 @@
 - Network interruption during any OTP or Aadhaar verification step
 - Third-party Aadhaar service downtime
 - User requests OTP too many times on mobile or email (rate limiting applies)
+- App is closed on the Sign Up step (resume at Sign Up; email and mobile stay verified)
+- User tries to accept terms without having opened the Terms and Conditions page
+- Date of birth in the future or not a real calendar date
 
 **Validation Rules:**
 - Mobile number must be 10 digits, Indian format; unique per account
+- Registration progress is resumed from the server-side account state, never from locally cached screen state alone
 - Mobile OTP is 6 digits, expires after 5 minutes
 - Email must be a valid format; unique per account
 - Email OTP is 6 digits, expires after 5 minutes
@@ -85,7 +108,13 @@
 - Email verification must be completed before Aadhaar verification can begin
 - Aadhaar must be valid 12-digit number (when provided)
 - One Aadhaar can link to only one account across all states
-- User must accept terms & conditions and provide consent for data processing
+- Terms & conditions and data-processing consent are accepted on the Sign Up step with one toggle, enabled only after the user has opened the Terms and Conditions page; the accepted terms version is stored
+- Name: 3-50 characters, letters, spaces and `. ' -`
+- Gender: `MALE`, `FEMALE` or `OTHERS`
+- Date of birth: a valid date, not in the future (no minimum age)
+- State: one of the supported Indian states or union territories; city: 2-100 letters; address: 10-255 characters; pincode: 6 digits, first digit not 0
+- Avatar: optional, from the published catalog; otherwise a default avatar chosen by gender (male-looking, female-looking, or neutral for `OTHERS`)
+- Accounts in `SIGNUP_PENDING` can still complete Aadhaar verification
 
 **Error Scenarios:**
 - `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered"
@@ -99,6 +128,9 @@
 - `ERROR_AADHAAR_VERIFICATION_FAILED`: "Unable to verify Aadhaar. Please try again"
 - `ERROR_AADHAAR_SERVICE_UNAVAILABLE`: "Verification service temporarily unavailable"
 - `ERROR_AADHAAR_VERIFICATION_REQUIRED`: "Please complete Aadhaar verification to proceed"
+- `ERROR_TERMS_NOT_ACCEPTED`: "Please accept the terms and conditions to continue"
+- `ERROR_CONSENT_REQUIRED`: "Consent for data processing is required"
+- `ERROR_INVALID_AVATAR`: "Selected avatar is not available. Please choose another"
 
 ---
 
@@ -4445,11 +4477,127 @@
 
 ---
 
+## Address Management
+
+### US-108: Address Entry with Google Places Autocomplete and Address Verification
+**As a** user entering my address (during sign-up now, and later for delivery or pickup)  
+**I want to** search for my address with suggestions and have it verified  
+**So that** my address is accurate and deliveries and pickups can be completed
+
+**Related User Stories:**
+- US-001: the Sign Up step collects State, City, Address and Pincode with **manual entry and basic format validation** until this story ships; this story replaces the manual entry with search plus verification
+- US-020: delivery address selection (Google Maps address picker); US-027: pickup address; both should reuse this story's component and verification
+- US-003: profile address editing
+
+**Acceptance Criteria:**
+- Given I am entering an address
+- When I type at least 3 characters in the address search field
+- Then I see address suggestions from Google Places Autocomplete, restricted to India
+- When I select a suggestion
+- Then State, City, Pincode and the address line are filled in from the selected place
+- And I can still edit the details (house or flat number, landmark)
+- When I submit the address
+- Then the backend verifies it through the address verification API
+- And I see whether the address is verified
+- Given verification fails
+- Then I can correct the address and try again
+- Given location permission is denied, Places is unavailable, or I am offline
+- Then I can still enter the address manually using the same fields
+
+**Edge Cases:**
+- Google Places quota exceeded or service down
+- Address outside India or outside the serviceable area
+- Pincode does not match the selected city or state
+- User edits fields after selecting a suggestion (verify the edited result, not the suggestion)
+- Ambiguous or partial results; PO box; very long addresses
+- Address typed in Hindi or another Indian language
+- Offline or slow network while typing (debounce, show last results, fall back to manual)
+- Verification provider downtime
+
+**Validation Rules:**
+- Pincode is 6 digits; state must be one of the supported Indian states or union territories
+- Address line is 10 to 255 characters
+- The verification result (verified or not) and the verified timestamp are stored with the address
+- The verification provider is behind a port with a sandbox adapter for development, the same pattern as the OTP and Aadhaar providers
+- Full addresses are never written to logs
+
+**Error Scenarios:**
+- `ERROR_ADDRESS_INVALID`: "Please enter a complete address"
+- `ERROR_ADDRESS_NOT_VERIFIED`: "We could not verify this address. Please check and try again"
+- `ERROR_ADDRESS_SERVICE_UNAVAILABLE`: "Address verification is temporarily unavailable"
+- `ERROR_PINCODE_MISMATCH`: "The pincode does not match the selected city or state"
+
+**Flutter Implementation Notes:**
+- Google Places Autocomplete with a 300 ms debounce, India-only restriction and session tokens to control billing
+- API keys restricted per platform (Android package and SHA-1, iOS bundle ID); keys supplied through the environment config, never committed
+- One reusable address component used by Sign Up, delivery and pickup screens
+- Manual-entry fallback always available; accessible labels on suggestions
+
+**Backend Notes:**
+- Dedicated address verification API (provider-agnostic port) and storage of structured address components, place ID and verification status; design to be written in the LLD
+
+---
+
+## Mobile App Security
+
+### US-109: Mobile App Security Hardening
+**As a** user of the ValueX mobile app  
+**I want** the app to protect my session, my traffic and my sensitive screens  
+**So that** my account and personal data are safe even on a compromised network or device
+
+**Design Note:** CODING_STANDARDS section 3.7 requires SSL pinning for production builds, root and jailbreak detection, and a device ID kept in secure storage. These are app-wide controls, not part of any single feature story. Secure token storage, log redaction and screenshot protection for the Aadhaar screens are delivered with US-001; this story covers the remaining items. Later Payment, Escrow and Bank Details screens enable the screenshot protection service in their own stories.
+
+**Related User Stories:**
+- US-001: delivers secure token storage, log redaction and the screenshot protection service (Aadhaar screens)
+- US-104, US-105: sessions and logout can use the device ID
+- US-021, US-072: Payment and Bank Details screens must enable screenshot protection
+
+**Acceptance Criteria:**
+- Given a production build
+- When the app connects to the ValueX API
+- Then the connection is accepted only if the server certificate matches the pinned certificates or public keys
+- And a mismatch fails the request with a "Connection not secure" message and no data is sent
+- Given a production build runs on a rooted or jailbroken device
+- Then the user sees a security warning
+- And Aadhaar, payment and bank detail flows are blocked
+- Given the app starts for the first time
+- Then a random device ID is generated and stored in secure storage
+- And it is sent with API requests so sessions can be tied to a device
+- Given the user logs out or reinstalls the app
+- Then the device ID behaviour is consistent with the platform's secure-storage rules
+- Given a development or staging build
+- Then pinning and root detection can be disabled by the environment config without code changes
+
+**Edge Cases:**
+- Certificate rotation (pins must include a backup pin; app update path when pins change)
+- Corporate proxy or antivirus intercepting TLS on the user's network
+- Emulators and simulators in development builds
+- False positives of root detection on custom ROMs
+- Device ID retained across reinstall on iOS Keychain
+- Secure storage unavailable or corrupted
+
+**Validation Rules:**
+- Pinning applies to production builds only and is configured per environment
+- The device ID is a random UUID and contains no hardware identifiers
+- No security check result or device ID is written to logs or analytics
+- Behaviour on a rooted or jailbroken device (warn and block sensitive flows, or block the app) is a product decision to be confirmed before implementation
+
+**Error Scenarios:**
+- `ERROR_CONNECTION_NOT_SECURE`: "Connection not secure. Please check your network and try again"
+- `ERROR_DEVICE_NOT_SUPPORTED`: "This feature is not available on this device for security reasons"
+
+**Flutter Implementation Notes:**
+- Pinning through the Dio HTTP client adapter, pins supplied by environment config
+- Root and jailbreak detection through a maintained package or native checks, chosen in the implementation plan
+- Device ID service in `core/security` backed by `FlutterSecureStorage`
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 107  
+**Total User Stories:** 109  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.4 (Updated 2026-08-12) — Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.6 (Updated 2026-10-05) — Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4474,6 +4622,8 @@
 - **Social Login (US-101 to US-102):** 2 stories - Google & Apple Sign-In
 - **Profile Management Extensions (US-103 to US-105):** 3 stories - Gap-fill identified when auditing US-003: Profile Hub navigation tying together My Orders/Listings/Payments/Payouts/Notifications/Language/Support/Dispute, plus Logout and Account Security (mobile/email change, sessions, delete account entry point)
 - **Authentication Extensions (US-106 to US-107):** 2 stories - Gap-fill identified when tracing the backend's returning-user API flow: mobile-OTP login (US-001 only covers first-time registration and blocks already-registered mobiles) and access-token refresh (refresh tokens are issued by every auth flow but no endpoint ever consumes one)
+- **Address Management (US-108):** 1 story - Address entry with Google Places Autocomplete and a dedicated address verification API; Sign Up (US-001) uses manual entry until it ships
+- **Mobile App Security (US-109):** 1 story - SSL pinning, root and jailbreak detection, device ID (CODING_STANDARDS 3.7)
 
 ---
 
