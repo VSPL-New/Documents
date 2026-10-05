@@ -28,11 +28,12 @@ Step 1 (Initiate) → Step 2 (Verify Mobile) → Authorize → Step 3 (Send Emai
 | 2 | `POST /register/verify-mobile` | None | `EMAIL_VERIFICATION_PENDING` |
 | 3 | `POST /email/send-otp` | JWT | `EMAIL_VERIFICATION_PENDING` |
 | 4 | `POST /email/verify-otp` | JWT | `IDENTITY_VERIFICATION_PENDING` |
-| 5a | `POST /register/skip-aadhaar` | JWT | `ACTIVE` (`aadhaarVerified=false`) |
+| 5a | `POST /register/skip-aadhaar` | JWT | `SIGNUP_PENDING` (`aadhaarVerified=false`) |
 | 5b | `POST /aadhaar/initiate` | JWT | `IDENTITY_VERIFICATION_PENDING` |
-| 6 | `POST /aadhaar/verify` | JWT | `ACTIVE` (`aadhaarVerified=true`) |
+| 6 | `POST /aadhaar/verify` | JWT | `SIGNUP_PENDING` (`aadhaarVerified=true`) |
+| 7 | `POST /register/complete` | JWT | `ACTIVE` |
 
-> **Aadhaar is optional at registration.** A user who skips Aadhaar (Step 5a) reaches `ACTIVE` but cannot complete transactions until Aadhaar is verified.
+> **Aadhaar is optional at registration.** A user who skips Aadhaar (Step 5a) still completes Sign Up (Step 7) and reaches `ACTIVE`, but cannot complete transactions until Aadhaar is verified.
 
 ---
 
@@ -43,11 +44,11 @@ Step 1 (Initiate) → Step 2 (Verify Mobile) → Authorize → Step 3 (Send Emai
 **Request body:**
 ```json
 {
-  "mobile": "9876543210",
-  "termsAccepted": true,
-  "consentGiven": true
+  "mobile": "9876543210"
 }
 ```
+
+> Terms and consent are no longer sent here; they are accepted in Step 7.
 
 After executing, check the **application console log** for the OTP:
 ```
@@ -184,7 +185,7 @@ No request body required.
 }
 ```
 
-> Account state is now `ACTIVE`. The user can browse the marketplace but **cannot complete transactions** until Aadhaar is verified.
+> Account state is now `SIGNUP_PENDING`. Continue with Step 7 to finish registration. After Sign Up the user can browse the marketplace but **cannot complete transactions** until Aadhaar is verified.
 >
 > Re-authorize in Swagger UI (Step 2b) with the new `accessToken` if you plan to test more endpoints.
 
@@ -268,7 +269,41 @@ WHERE user_id = '<the test user id>' ORDER BY changed_at DESC LIMIT 1;
 }
 ```
 
-> Account state is now `ACTIVE` with `aadhaarVerified: true`. Re-authorize in Swagger UI with the new token — this token is required for marketplace transaction endpoints.
+> Account state is now `SIGNUP_PENDING` with `aadhaarVerified: true`. Re-authorize in Swagger UI with the new token and continue with Step 7.
+
+---
+
+## Step 7 — Complete Sign Up
+
+**Endpoint:** `POST /api/v1/auth/register/complete` *(requires JWT; account must be `SIGNUP_PENDING`)*
+
+**Request body:**
+```json
+{
+  "displayName": "Asha Verma",
+  "gender": "FEMALE",
+  "dateOfBirth": "1995-05-17",
+  "state": "Karnataka",
+  "city": "Bengaluru",
+  "address": "12 MG Road, Indiranagar",
+  "pincode": "560038",
+  "termsAccepted": true,
+  "consentGiven": true,
+  "termsVersion": "template-0"
+}
+```
+`avatarId` is optional. Without it the default for the gender is stored (`avatar-01` male, `avatar-05` female, `avatar-09` others).
+
+**Expected response (200 OK):** `AuthResponse` with `"status": "ACTIVE"` and fresh tokens. Re-authorize with the new token.
+
+**Checks:**
+- `GET /api/v1/users/me` now returns `gender`, `dateOfBirth`, `state`, `address`, `pincode` and `status: ACTIVE`.
+- `GET /api/v1/avatars` returns `groups` and `defaultAvatarIdByGender`.
+- Calling Step 7 again returns `ERROR_INVALID_STATE` (the account is already `ACTIVE`).
+- `termsAccepted: false` returns `ERROR_TERMS_NOT_ACCEPTED`; `consentGiven: false` returns `ERROR_CONSENT_REQUIRED`.
+- `"state": "Atlantis"` returns `ERROR_INVALID_ADDRESS_STATE`; a pincode like `012345` returns `VALIDATION_ERROR` with `details.pincode`.
+- A date of birth in the future returns `VALIDATION_ERROR`; there is no minimum age.
+- Resume: stop after Step 5a, call `GET /users/me` and confirm `status: SIGNUP_PENDING`, then finish with Step 7.
 
 ---
 
@@ -277,6 +312,8 @@ WHERE user_id = '<the test user id>' ORDER BY changed_at DESC LIMIT 1;
 | HTTP | Error Code | Cause & Fix |
 |---|---|---|
 | 401 | `UNAUTHORIZED` | Missing or expired JWT on a protected endpoint. Repeat Steps 2–2b to get a fresh token. |
+| 400 | `ERROR_INVALID_ADDRESS_STATE` / `ERROR_INVALID_DATE_OF_BIRTH` / `ERROR_INVALID_AVATAR` | Sign Up (Step 7) field not accepted. Use a listed Indian state or union territory, a real past date, and a catalog avatar id. |
+| 400 | `ERROR_TERMS_NOT_ACCEPTED` / `ERROR_CONSENT_REQUIRED` | Step 7 sent `false` for terms or consent. |
 | 400 | `ERROR_INVALID_STATE` | Endpoint called out of order (e.g., Aadhaar before email, or email OTP before mobile verify). Follow the flow above. |
 | 400 | `ERROR_OTP_EXPIRED` | OTP TTL is 300 s. Re-run Step 1 (mobile) or Step 3 (email) to generate a new one. |
 | 400 | `ERROR_INVALID_OTP` | Wrong OTP value. Check the console log for the correct 6-digit code. |

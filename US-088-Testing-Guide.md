@@ -52,8 +52,9 @@ FROM account_status_history
 WHERE user_id = '<the test user's id>'
 ORDER BY changed_at;
 ```
-Expect the same four rows as before this story (`NEW→OTP_PENDING`, `OTP_PENDING→EMAIL_VERIFICATION_PENDING`,
-`EMAIL_VERIFICATION_PENDING→IDENTITY_VERIFICATION_PENDING`, `IDENTITY_VERIFICATION_PENDING→ACTIVE`),
+Expect the same registration rows as before this story (`NEW→OTP_PENDING`, `OTP_PENDING→EMAIL_VERIFICATION_PENDING`,
+`EMAIL_VERIFICATION_PENDING→IDENTITY_VERIFICATION_PENDING`, `IDENTITY_VERIFICATION_PENDING→SIGNUP_PENDING`,
+`SIGNUP_PENDING→ACTIVE`),
 each with `reason IS NULL` (registration-flow history writes don't pass a reason — only
 `UserStateService`'s do).
 

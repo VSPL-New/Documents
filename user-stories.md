@@ -3588,14 +3588,15 @@
   - NEW: Registration started, not completed
   - OTP_PENDING: Awaiting mobile verification
   - IDENTITY_VERIFICATION_PENDING: Aadhaar verification in progress
-  - ACTIVE: Fully verified, can transact
+  - SIGNUP_PENDING: Aadhaar done or skipped, Sign Up form (profile, address, terms) not yet submitted
+  - ACTIVE: Registration complete, can use the platform (transactions need Aadhaar)
   - UNDER_REVIEW: Flagged for investigation
   - RESTRICTED: Limited access during review
   - SUSPENDED: Temporarily banned (7 days)
   - BANNED: Permanently banned
   - CLOSED: User-requested account deletion
 - State transitions:
-  - NEW → OTP_PENDING → IDENTITY_VERIFICATION_PENDING → ACTIVE
+  - NEW → OTP_PENDING → EMAIL_VERIFICATION_PENDING → IDENTITY_VERIFICATION_PENDING → SIGNUP_PENDING → ACTIVE
   - ACTIVE → UNDER_REVIEW → RESTRICTED → SUSPENDED → BANNED
   - ACTIVE → CLOSED
 - Business rules:
