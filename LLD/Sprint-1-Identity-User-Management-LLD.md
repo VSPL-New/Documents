@@ -23,6 +23,7 @@
 | 1.13 | Aug 2026 | **Bug-001 fixed:** a user who skipped Aadhaar at registration (reaching `ACTIVE`, `aadhaarVerified: false`) had no way to complete it afterward — `AadhaarVerificationService.initiateVerification()` only accepted `IDENTITY_VERIFICATION_PENDING`, and no state-machine edge existed to get an `ACTIVE` account back into a verifiable state. This directly broke §2.3's own designed deep-link-back-to-verification flow, and wasn't caught earlier because no endpoint uses `@RequiresIdentityVerification` yet (no listing/buy endpoints exist this sprint), so nothing drove traffic down the 403 → redirect path that would have exposed it. Fixed per the issue's option (a): `initiateVerification()` now also accepts `status == ACTIVE && aadhaarVerified == false`; `completeVerification()` branches on whether the account is entering from `IDENTITY_VERIFICATION_PENDING` (real transition, unchanged from before) or already `ACTIVE` (no state-machine call — status doesn't change, so there's nothing to validate through it — but `account_status_history` still gets a `from=ACTIVE to=ACTIVE action=VERIFY_IDENTITY` row for audit continuity, and `AadhaarVerifiedEvent` still publishes). One additional fix bundled in: `AccountCreatedEvent` was being republished on this second path even though the account was already created when it first skipped — now only published on true first-time activation. Reported as GitHub issue #158 (`Documents` repo), fixed on `fix/bug-001-aadhaar-verification-after-skip`. |
 | 1.12 | Aug 2026 | US-077 (Critical Event Notifications) implemented and documented, scoped to §6.1's original Sprint-1 boundary (account lifecycle events only — order/payment/cart/dispute/message events remain out of scope until their modules exist). §11 gained §6.6-§6.9. `com.valuex.notification` went from bare `NotificationState`/`NotificationStateMachine` (S0-008 scaffolding, zero consumers) to a full vertical slice: `Notification` entity + `V8` migration, `NotificationRepository`, `SmsNotificationPort`/`EmailNotificationPort` with mock adapters (mirrors `OtpPort`'s plug-and-play `@ConditionalOnProperty` pattern), `NotificationDispatcher` (persists the row — that *is* in-app delivery — then attempts SMS/email per event, failures logged not fatal, matching the AC's `ERROR_NOTIFICATION_FAILED` scenario), `AccountEventNotificationListener` (`@TransactionalEventListener(AFTER_COMMIT)`), `NotificationQueryService` + `NotificationController` (`GET /api/v1/notifications` paginated, `X-Unread-Notifications` header, `PATCH /{id}/read`), and `NotificationRetentionCleanupJob` (90-day purge, daily cron). Two new domain events added to `auth`: `AccountCreatedEvent` (published from both ACTIVE-transition points — `UserRegistrationService.skipAadhaar` and `AadhaarVerificationService.completeVerification`, since "account created" per §6.1 means reaching ACTIVE, not just registering) and `AadhaarVerifiedEvent` (published only from the latter). A new cross-module read-only contract, `AccountContactLookupService` (in `auth`), lets the notification module resolve mobile/email for `UserStateChangedEvent` — which, being a US-088 event, carries no contact info — without depending on `auth`'s persistence layer directly; this is the codebase's first real inter-module dependency, exercising the "domain events or defined service interfaces only" rule for the first time. Of `UserStateChangedEvent`'s transitions, only `toState` ∈ {UNDER_REVIEW, SUSPENDED, BANNED} notify — CLOSED, RESTRICTED, and the various "back to ACTIVE" transitions are not in the AC's critical-event list. Deliberately not built: a push channel (no push infrastructure/device-token registration exists anywhere), notification preferences (that's US-087, which the sprint plan itself makes dependent on US-077), and server-side notification grouping (a client-side display concern). Sprint-plan's general priority-by-severity table (SMS+Push+Email+In-app for HIGH, etc.) is superseded for Sprint-1 events by §6.3's narrower, already-documented per-event channel list — no Sprint-1 event actually needs push. |
 | 1.11 | Aug 2026 | US-088 (Lifecycle State - User Account) implemented and documented: §12 gained §12.6-§12.9. `UserStateService` adds the moderation half of `UserAccountStateMachine` that had no caller since S0-008 (`flagForReview`/`clearReview`/`restrict`/`liftRestriction`/`suspend`/`liftSuspension`/`ban`/`close`) — same `account_status_history` write pattern as `UserRegistrationService`, plus the codebase's first concrete `DomainEvent`, `UserStateChangedEvent`, published on every transition (closing the gap flagged in coding-standard §2.4 point 4, previously unmet by all four existing call sites). `SuspendedAccountAutoLiftJob` implements the `@Scheduled` job §7.5 had specified but marked "Not started" — hourly cron, `UserRepository.findByStatusAndSuspensionLiftedAtBefore`, per-user try/catch so one bad row can't block the batch. `User.suspensionLiftedAt` mapped to the `suspension_lifted_at` column that migration V2 had already added but no entity field ever used. Deliberately **not** built: a REST controller (no admin authentication/RBAC exists yet — Sprint 10 owns that surface; an unauthenticated moderation endpoint would be a security hole), active-order blocking on `close()` (order module doesn't exist until Sprint 5), and a user-facing appeal workflow for SUSPENDED/BANNED (no story anywhere defines one — user-stories.md's "appeals allowed within 30 days" is a validation-rule line, not a built flow). BANNED Aadhaar-blacklisting needs no new code — the pre-existing `users.aadhaar_hash` unique constraint already blocks reuse as long as banned rows aren't deleted, which `close()`/`ban()` never do. `UserAccountStateMachineTest` written from scratch — no test for the S0-008 state machine existed before this story despite it being live in 4 registration-flow services since US-001. |
+| 1.14 | Oct 2026 | **Sign Up step added at the end of registration (US-001):** new `SIGNUP_PENDING` state between `IDENTITY_VERIFICATION_PENDING` and `ACTIVE` — `skip-aadhaar` and `aadhaar/verify` now land in `SIGNUP_PENDING`, and the new `POST /register/complete` (profile, gender, date of birth, address, terms and consent) moves the account to `ACTIVE` and fires `AccountCreatedEvent`. `POST /register/initiate` no longer takes terms or consent. New `users` columns (Flyway V9), `GET /users/me` returns them, avatar catalog gains gender groups and per-gender defaults. |
 
 **Reference Documents:**
 - PRD v1.4
@@ -181,7 +182,7 @@ public interface AadhaarVerificationPort {
 
 **Decision:**
 
-- After mobile OTP, account state = `IDENTITY_VERIFICATION_PENDING`
+- After mobile and email OTP, account state = `IDENTITY_VERIFICATION_PENDING`; skipping or completing Aadhaar moves it to `SIGNUP_PENDING`, and the Sign Up form (§3.1 step 6) moves it to `ACTIVE`
 - A JWT is issued with `aadhaarVerified: false` claim
 - User can browse, view listings, and use the app freely
 - `@RequiresIdentityVerification` annotation on listing creation and buy endpoints
@@ -199,7 +200,8 @@ User hits POST /api/v1/listings
 > `POST /aadhaar/initiate` would accept an `ACTIVE`, unverified account — it didn't, until this
 > fix. `AadhaarVerificationService` now explicitly accepts entry from both
 > `IDENTITY_VERIFICATION_PENDING` (registration path) and `ACTIVE && !aadhaarVerified`
-> (post-skip path). See the v1.13 changelog entry for the full fix.
+> (post-skip path). See the v1.13 changelog entry for the full fix. Since v1.14 the post-skip
+> path also covers `SIGNUP_PENDING && !aadhaarVerified` (Aadhaar can be done before Sign Up).
 
 ---
 
@@ -319,7 +321,7 @@ This keeps normal request handling stateless (no DB hit per request — just a R
 ```
 Step 1: Initiate Registration
   POST /api/v1/auth/register/initiate
-  Body: { mobile, termsAccepted, consentGiven }
+  Body: { mobile }          ← terms and consent are collected at Sign Up (step 6)
   → Validate mobile format (10 digits, starts with 6-9)
   → Check mobile not already registered
   → Create user record (state = NEW)
@@ -356,9 +358,10 @@ Step 3: Email Verification  ← added during development
 
 Step 4a: Skip Aadhaar (User chooses to skip)
   POST /api/v1/auth/register/skip-aadhaar
-  → Transition state: IDENTITY_VERIFICATION_PENDING → ACTIVE  ← actual behaviour
+  → Transition state: IDENTITY_VERIFICATION_PENDING → SIGNUP_PENDING  (action SKIP_AADHAAR)
   → Reissue JWT
-  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId, status=ACTIVE }
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=false, userId,
+                            status=SIGNUP_PENDING }
   Note: aadhaarVerified stays false; Aadhaar gate blocks first transaction
 
 Step 4b: Initiate Aadhaar Verification
@@ -379,10 +382,34 @@ Step 5: Complete Aadhaar Verification
   → On success: store SHA-256(aadhaarNumber) on user record
   → Set aadhaarVerified=true, store masked name from Aadhaar
   → Update attempt log: status=SUCCESS
-  → Transition state: IDENTITY_VERIFICATION_PENDING → ACTIVE
+  → Transition state: IDENTITY_VERIFICATION_PENDING → SIGNUP_PENDING  (action VERIFY_IDENTITY)
+     (an account already in SIGNUP_PENDING or ACTIVE only gets the identity update, no transition)
   → Reissue JWT (aadhaarVerified=true)
-  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=true, userId, status=ACTIVE }
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified=true, userId,
+                            status=SIGNUP_PENDING }
+
+Step 6: Complete Sign Up  (JWT, account must be SIGNUP_PENDING)
+  POST /api/v1/auth/register/complete
+  Body: { displayName, gender (MALE|FEMALE|OTHERS), dateOfBirth (yyyy-MM-dd), state, city,
+          address, pincode, avatarId?, termsAccepted, consentGiven, termsVersion }
+  → Reject unless status = SIGNUP_PENDING            (ERROR_INVALID_STATE)
+  → termsAccepted and consentGiven must be true      (ERROR_TERMS_NOT_ACCEPTED, ERROR_CONSENT_REQUIRED)
+  → state must be one of the 36 states and union territories in IndianStates
+                                                      (ERROR_INVALID_ADDRESS_STATE)
+  → dateOfBirth: not in the future, not before 1900-01-01; no minimum age
+                                                      (ERROR_INVALID_DATE_OF_BIRTH)
+  → avatarId must be in the catalog, otherwise the default for the gender is used
+                                                      (ERROR_INVALID_AVATAR)
+  → Store profile, address, termsAcceptedAt, consentGivenAt, termsVersion
+  → Transition state: SIGNUP_PENDING → ACTIVE  (action COMPLETE_SIGNUP)
+  → Publish AccountCreatedEvent (moved here from skip-aadhaar and aadhaar/verify)
+  → Reissue JWT (aadhaarVerified from the account)
+  → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified, userId, status=ACTIVE }
 ```
+
+Field rules (Bean Validation): `displayName` 3-50 letters, spaces and `. ' -`; `city` 2-100 letters;
+`address` 10-255 characters; `pincode` `^[1-9]\d{5}$`; the new `users` columns are all nullable so
+accounts that registered before Flyway V9 are unaffected.
 
 ## 3.2 User Entity
 
@@ -425,6 +452,24 @@ public class User {
 
     @Column(length = 255)
     private String city;
+
+    @Enumerated(EnumType.STRING)
+    private Gender gender;              // MALE, FEMALE, OTHERS (Sign Up, v1.14)
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(length = 100)
+    private String state;
+
+    @Column(length = 255)
+    private String address;
+
+    @Column(length = 6)
+    private String pincode;
+
+    @Column(name = "terms_version", length = 50)
+    private String termsVersion;
 
     @Column(name = "terms_accepted_at")
     private Instant termsAcceptedAt;
@@ -1519,6 +1564,7 @@ user.setStatus(UserAccountState.OTP_PENDING);   // no validation, no audit
 | NEW | No | No | No |
 | OTP_PENDING | No | No | No |
 | IDENTITY_VERIFICATION_PENDING | Yes | Yes | No (Aadhaar gate) |
+| SIGNUP_PENDING | Yes | Yes | No (Sign Up not finished, plus Aadhaar gate) |
 | ACTIVE | Yes | Yes | Yes |
 | UNDER_REVIEW | Yes | Yes | No |
 | RESTRICTED | Yes | Yes (limited) | No |
@@ -1713,6 +1759,7 @@ Cross-checked against the actual `UserAccountState` enum and §12.2's Access Con
 | NEW, OTP_PENDING | No | `ERROR_INVALID_STATE` — mobile was never verified, nothing to log into yet |
 | EMAIL_VERIFICATION_PENDING | **Yes** | resumes at the email step |
 | IDENTITY_VERIFICATION_PENDING | **Yes** | resumes at the Aadhaar step |
+| SIGNUP_PENDING | **Yes** | resumes at the Sign Up form |
 | ACTIVE | **Yes** | home |
 | UNDER_REVIEW, RESTRICTED | **Yes** | per §12.2 — these states can log in, just can't list/buy |
 | SUSPENDED | No | `ERROR_ACCOUNT_SUSPENDED` |
@@ -2033,6 +2080,26 @@ CREATE TABLE contact_change_attempts (
 CREATE INDEX idx_contact_change_user ON contact_change_attempts(user_id);
 ```
 
+## 8.4 Flyway Migration: V9__signup_profile_fields.sql
+
+```sql
+-- Sign Up step at the end of registration (US-001, v1.14)
+ALTER TYPE user_status ADD VALUE IF NOT EXISTS 'SIGNUP_PENDING' BEFORE 'ACTIVE';
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS gender        VARCHAR(10);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS state         VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS address       VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode       VARCHAR(6);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version VARCHAR(50);
+
+ALTER TABLE users ADD CONSTRAINT chk_users_gender
+    CHECK (gender IS NULL OR gender IN ('MALE', 'FEMALE', 'OTHERS'));
+```
+
+All new columns are nullable, so accounts created before V9 keep working and `GET /users/me`
+returns them as absent. Avatar grouping lives in configuration (`valuex.avatar.*`), not in the database.
+
 ---
 
 # 16. API Design
@@ -2043,11 +2110,12 @@ CREATE INDEX idx_contact_change_user ON contact_change_attempts(user_id);
 **Request:**
 ```json
 {
-  "mobile": "9876543210",
-  "termsAccepted": true,
-  "consentGiven": true
+  "mobile": "9876543210"
 }
 ```
+Terms and consent are no longer sent here; they are accepted on the Sign Up form
+(`POST /auth/register/complete`).
+
 **Response 200:**
 ```json
 {
@@ -2209,12 +2277,51 @@ submitted token's claims.
     "refreshToken": "eyJ...",
     "aadhaarVerified": false,
     "userId": "uuid",
+    "status": "SIGNUP_PENDING"
+  }
+}
+```
+Note: Account transitions to `SIGNUP_PENDING`; the client continues with the Sign Up form.
+`aadhaarVerified` remains `false` — Aadhaar gate blocks first transaction attempt.
+
+---
+
+### POST /api/v1/auth/register/complete
+**Auth:** Bearer token required; account must be `SIGNUP_PENDING`
+**Request:**
+```json
+{
+  "displayName": "Asha Verma",
+  "gender": "FEMALE",
+  "dateOfBirth": "1995-05-17",
+  "state": "Karnataka",
+  "city": "Bengaluru",
+  "address": "12 MG Road, Indiranagar",
+  "pincode": "560038",
+  "avatarId": "avatar-06",
+  "termsAccepted": true,
+  "consentGiven": true,
+  "termsVersion": "template-0"
+}
+```
+`avatarId` is optional; without it the default avatar for the gender is stored.
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJ...",
+    "refreshToken": "eyJ...",
+    "aadhaarVerified": false,
+    "userId": "uuid",
     "status": "ACTIVE"
   }
 }
 ```
-Note: Account transitions to `ACTIVE`. `aadhaarVerified` remains `false` — Aadhaar gate
-blocks first transaction attempt.
+**Errors:** `VALIDATION_ERROR` (with per-field `details`), `ERROR_INVALID_STATE`,
+`ERROR_TERMS_NOT_ACCEPTED`, `ERROR_CONSENT_REQUIRED`, `ERROR_INVALID_ADDRESS_STATE`,
+`ERROR_INVALID_DATE_OF_BIRTH`, `ERROR_INVALID_AVATAR`, `ERROR_USER_NOT_FOUND`
 
 ---
 
@@ -2259,10 +2366,12 @@ blocks first transaction attempt.
     "refreshToken": "eyJ...",
     "aadhaarVerified": true,
     "verifiedName": "A**** K****",
-    "status": "ACTIVE"
+    "status": "SIGNUP_PENDING"
   }
 }
 ```
+Note: `status` is `SIGNUP_PENDING` when verification completes during registration; an account
+that already finished Sign Up keeps `ACTIVE`.
 
 ---
 
@@ -2374,11 +2483,19 @@ linking Google to an already-registered mobile number.
     "aadhaarVerified": true,
     "avatarId": "avatar-01",
     "city": "Bengaluru",
+    "gender": "MALE",
+    "dateOfBirth": "1995-05-17",
+    "state": "Karnataka",
+    "address": "12 MG Road, Indiranagar",
+    "pincode": "560038",
     "status": "ACTIVE",
     "memberSince": "2026-07-09T00:00:00Z"
   }
 }
 ```
+`gender`, `dateOfBirth`, `state`, `address` and `pincode` are filled by the Sign Up step (v1.14) and
+absent for accounts that registered before it. The endpoint works for every account state, which is
+what lets the app resume registration from `status`. Date of birth and address are never logged.
 
 ---
 
@@ -2402,10 +2519,18 @@ linking Google to an already-registered mobile number.
   "success": true,
   "data": {
     "avatarIds": ["avatar-01", "avatar-02", "avatar-03", "..."],
-    "defaultAvatarId": "avatar-01"
+    "defaultAvatarId": "avatar-01",
+    "groups": {
+      "MALE": ["avatar-01", "avatar-02", "avatar-03", "avatar-04"],
+      "FEMALE": ["avatar-05", "avatar-06", "avatar-07", "avatar-08"],
+      "NEUTRAL": ["avatar-09", "avatar-10", "avatar-11", "avatar-12"]
+    },
+    "defaultAvatarIdByGender": { "MALE": "avatar-01", "FEMALE": "avatar-05", "OTHERS": "avatar-09" }
   }
 }
 ```
+`groups` and `defaultAvatarIdByGender` were added in v1.14 (additive); any avatar can be chosen
+regardless of gender, the groups only drive how the picker is organised and the default at Sign Up.
 
 ---
 
