@@ -4594,11 +4594,68 @@
 
 ---
 
+## UI Quality
+
+### US-110: Registration UI Accessibility and Readability Review
+**As a** user of the ValueX mobile app, including users with low vision, motor difficulty or a screen reader, or who read in bright light or at a large text size  
+**I want** every registration screen to be easy to see, read, understand and tap  
+**So that** I can create my account without help
+
+**Design Note:** An audit of the screens delivered by US-001 (onboarding, create account, mobile and email entry and OTP, Aadhaar, Sign Up, Terms, blocked, Home placeholder) found 20 gaps against WCAG 2.2 AA and Material and Apple touch guidance. The gaps, measurements and proposed fixes are in `valuex-mobile/docs/App UI review findings.md`. This story fixes them screen by screen. For each screen the before and after design is reviewed and approved by the product owner before the code changes. The result is written into `valuex-mobile/docs/Flutter-Design-System.md` so later screens are compliant from the start.
+
+**Related User Stories:**
+- US-001: delivers the screens reviewed here
+- US-099: app-wide accessibility story; this story applies the same standard to the registration screens first and raises the touch target minimum to 48
+- US-108: the Address step replaces the manual address fields; it must follow the same standards
+
+**Acceptance Criteria:**
+- Given any text on a registration screen
+- Then its contrast against its background is at least 4.5:1
+- And borders and edges of inputs, selectors and cards are at least 3:1 against their surroundings
+- Given any tappable control
+- Then its tap area is at least 48 by 48 dp, without changing how it looks where the design is smaller
+- Given a screen reader (TalkBack, VoiceOver) is on
+- Then every tappable control has a label, screen titles are announced as headings, loading states are announced, and onboarding can be completed
+- Given the system text size is set to 200%
+- Then no registration screen clips or overlaps text, in English and Hindi
+- Given an input is invalid
+- Then the error is shown under the field in text that stays on screen until it is fixed
+- And a disabled primary button shows why it is disabled
+- Given the system "reduce motion" setting is on
+- Then animated elements are replaced by static ones
+- Given a new screen is added
+- Then automated checks for tap target size, labels and text contrast run on it and must pass
+- And the design system document lists the colour, type, spacing and touch rules the screen must follow
+
+**Edge Cases:**
+- Hindi text, which needs more line height than English
+- Text size at 200% on a small phone
+- Colours defined in Figma that fail contrast (onboarding): the design owner approves a compliant replacement
+- Controls that look smaller than 48 dp but have a larger tap area
+- Bright sunlight on a low-contrast display
+
+**Validation Rules:**
+- WCAG 2.2 AA: text 4.5:1, non-text 3:1
+- Touch target minimum 48 dp (Material); this also satisfies the 44 pt iOS minimum
+- Body and helper text at least 14 px; 12 px only for non-essential captions
+- Every change is shown as a before and after design and approved before implementation
+- Colour and type values come from design tokens only, never literals in widgets
+
+**Error Scenarios:**
+- `N/A`: No new error codes; this story changes how existing errors are shown
+
+**Flutter Implementation Notes:**
+- Colour, type and size changes go through the tokens in `lib/core/theme`
+- Flutter's accessibility guideline checks (`androidTapTargetGuideline`, `iOSTapTargetGuideline`, `labeledTapTargetGuideline`, `textContrastGuideline`) run in widget tests on every screen
+- Large text is tested at 1.5x and 2x in English and Hindi with the real brand fonts
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 109  
+**Total User Stories:** 110  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.6 (Updated 2026-10-05) — Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.7 (Updated 2026-10-07) — Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4625,6 +4682,7 @@
 - **Authentication Extensions (US-106 to US-107):** 2 stories - Gap-fill identified when tracing the backend's returning-user API flow: mobile-OTP login (US-001 only covers first-time registration and blocks already-registered mobiles) and access-token refresh (refresh tokens are issued by every auth flow but no endpoint ever consumes one)
 - **Address Management (US-108):** 1 story - Address entry with Google Places Autocomplete and a dedicated address verification API; Sign Up (US-001) uses manual entry until it ships
 - **Mobile App Security (US-109):** 1 story - SSL pinning, root and jailbreak detection, device ID (CODING_STANDARDS 3.7)
+- **UI Quality (US-110):** 1 story - Contrast, touch target, text size and screen reader fixes for the registration screens, and the design system rules for later screens
 
 ---
 
