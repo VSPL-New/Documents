@@ -67,6 +67,7 @@ Allow users to register and login via multiple auth methods, verify identity, an
 | US-088 | Lifecycle State - User Account              | backend         | 3  | US-001     |
 | US-108 | Address Entry with Google Places Autocomplete and Address Verification | backend, mobile | 3 | US-001 |
 | US-109 | Mobile App Security Hardening | mobile | 5 | US-001 |
+| US-110 | Registration UI Accessibility and Readability Review | mobile | 8 | US-001 |
 
 ## Exit Criteria
 
@@ -80,6 +81,7 @@ Allow users to register and login via multiple auth methods, verify identity, an
 * Profile hub navigation, logout, and account security settings operational (menu items to not-yet-built sections show empty/coming-soon states until their sprints land)
 * Address entry with Places autocomplete and verification operational (US-108)
 * Mobile app security controls in place: SSL pinning, root/jailbreak detection, device ID (US-109)
+* Registration screens meet the contrast, touch target, text size and screen reader standards in the design system (US-110)
 
 ---
 
@@ -472,7 +474,7 @@ Add advanced features and optimize platform.
 | Sprint | Focus Area                          | Stories | SP  | Duration |
 | ------ | ----------------------------------- | ------- | --- | -------- |
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
-| S1     | Identity & User Management          | 12      | 54* | 2 weeks  |
+| S1     | Identity & User Management          | 13      | 62* | 2 weeks  |
 | S2     | Seller Listing Creation             | 10      | 52  | 2 weeks  |
 | S3     | Discovery & Search                  | 4       | 21  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
@@ -487,13 +489,13 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **112** | **595*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **113** | **603*** | **32 weeks** |
 
-\* Sprint 1 and total points add US-108 (3) and US-109 (5, proposed) to the previous figures.
+\* Sprint 1 and total points add US-108 (3), US-109 (5, proposed) and US-110 (8, proposed) to the previous figures.
 
 ## Coverage
 
-### Stories Planned: 112 / 109 total user stories
+### Stories Planned: 113 / 110 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -506,6 +508,7 @@ Add advanced features and optimize platform.
 - Authentication Extensions (US-106 to US-107): ✅ 2 stories
 - Address Management (US-108): ✅ 1 story (Sprint 1)
 - Mobile App Security (US-109): ✅ 1 story (Sprint 1)
+- UI Quality (US-110): ✅ 1 story (Sprint 1)
 
 **Not Yet Planned (Future Backlog):**
 - US-061: Screen Reader Compatibility (merged into US-099)

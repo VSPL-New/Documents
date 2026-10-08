@@ -489,7 +489,7 @@ core/
 - No direct API calls or repository calls inside widgets — always go through a provider.
 - Reusable UI components live in `core/widgets/` or `features/<name>/presentation/widgets/`.
 - Every `Text` widget displaying user-facing content must use a localization key — no hardcoded strings.
-- Touch targets: minimum 44×44 logical pixels for all interactive elements.
+- Touch targets: minimum 48×48 logical pixels for all interactive elements (Material's 48 dp, which also covers iOS's 44 pt). A smaller drawing keeps its size inside the larger tap area.
 - Color contrast must meet WCAG 2.1 AA (4.5:1 for text).
 
 ---
