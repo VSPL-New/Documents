@@ -2638,11 +2638,14 @@ AADHAAR_API_KEY=dev_key_xxxxx
 PAYMENT_GATEWAY_URL=https://sandbox.payment.com
 PAYMENT_GATEWAY_KEY=dev_key_xxxxx
 
-# AWS/S3
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=dev_access_key
-AWS_SECRET_ACCESS_KEY=dev_secret_key
-S3_BUCKET_NAME=valuex-dev-media
+# Object Storage (provider selected by configuration; MVP provider: Cloudflare R2)
+OBJECT_STORAGE_PROVIDER=r2
+OBJECT_STORAGE_ENDPOINT=https://<dev-account-id>.r2.cloudflarestorage.com
+OBJECT_STORAGE_REGION=auto
+OBJECT_STORAGE_ACCESS_KEY_ID=dev_access_key
+OBJECT_STORAGE_SECRET_ACCESS_KEY=dev_secret_key
+OBJECT_STORAGE_BUCKET_PREFIX=valuex-dev
+MEDIA_CDN_BASE_URL=https://media-dev.valuex.com
 ```
 
 ### Staging (.env.staging)
@@ -2671,9 +2674,14 @@ AADHAAR_API_KEY=${STAGING_AADHAAR_API_KEY}
 PAYMENT_GATEWAY_URL=https://api.payment.com
 PAYMENT_GATEWAY_KEY=${STAGING_PAYMENT_KEY}
 
-# AWS/S3
-AWS_REGION=ap-south-1
-S3_BUCKET_NAME=valuex-staging-media
+# Object Storage (provider selected by configuration; MVP provider: Cloudflare R2)
+OBJECT_STORAGE_PROVIDER=r2
+OBJECT_STORAGE_ENDPOINT=https://<staging-account-id>.r2.cloudflarestorage.com
+OBJECT_STORAGE_REGION=auto
+OBJECT_STORAGE_ACCESS_KEY_ID=${STAGING_OBJECT_STORAGE_ACCESS_KEY_ID}
+OBJECT_STORAGE_SECRET_ACCESS_KEY=${STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY}
+OBJECT_STORAGE_BUCKET_PREFIX=valuex-staging
+MEDIA_CDN_BASE_URL=https://media-staging.valuex.com
 ```
 
 ### Production (.env.prod)
@@ -2702,9 +2710,14 @@ AADHAAR_API_KEY=${PROD_AADHAAR_API_KEY}
 PAYMENT_GATEWAY_URL=https://api.payment.com
 PAYMENT_GATEWAY_KEY=${PROD_PAYMENT_KEY}
 
-# AWS/S3
-AWS_REGION=ap-south-1
-S3_BUCKET_NAME=valuex-prod-media
+# Object Storage (provider selected by configuration; MVP provider: Cloudflare R2)
+OBJECT_STORAGE_PROVIDER=r2
+OBJECT_STORAGE_ENDPOINT=https://<prod-account-id>.r2.cloudflarestorage.com
+OBJECT_STORAGE_REGION=auto
+OBJECT_STORAGE_ACCESS_KEY_ID=${PROD_OBJECT_STORAGE_ACCESS_KEY_ID}
+OBJECT_STORAGE_SECRET_ACCESS_KEY=${PROD_OBJECT_STORAGE_SECRET_ACCESS_KEY}
+OBJECT_STORAGE_BUCKET_PREFIX=valuex-prod
+MEDIA_CDN_BASE_URL=https://media.valuex.com
 ```
 
 ---

@@ -60,7 +60,7 @@ graph TB
 
     ListingAI --> ModelStore[(Model Store)]
     VisualAI --> VectorDB[(pgvector)]
-    VisualAI --> ObjectStorage[(S3 Media Storage)]
+    VisualAI --> ObjectStorage[(Cloudflare R2 Media)]
     EmbeddingWorker --> VectorDB
     EmbeddingWorker --> ObjectStorage
 
@@ -152,7 +152,9 @@ Uvicorn/Gunicorn
 ```http
 POST /ai/v1/listings/suggest
 POST /ai/v1/images/embed
-POST /ai/v1/search/photo
+POST /internal/v1/visual-search
+POST /internal/v1/embeddings/images
+POST /internal/v1/visual-index/reindex
 POST /ai/v1/fraud/listing-score
 POST /ai/v1/moderation/restricted-item-check
 POST /ai/v1/support/respond
@@ -186,7 +188,7 @@ POST /ai/v1/support/respond
 {
   "listingId": "uuid",
   "sellerId": "uuid",
-  "imageUrls": ["s3://valuex-listings/image1.jpg"],
+  "mediaIds": ["uuid-media-1"],
   "sellerLocation": "Bengaluru",
   "optionalText": "iPhone used 1 year"
 }
@@ -254,19 +256,22 @@ sequenceDiagram
     participant Mobile
     participant Backend
     participant Plan as Entitlement Module
+    participant Media as Media API / R2 Search Input
     participant AI as Python Visual AI
     participant Vector as pgvector
     participant Search as OpenSearch
 
     Buyer->>Mobile: Tap Photo Search
     Mobile->>Backend: POST /api/v1/search/photo
-    Backend->>Plan: Check entitlement and quota
+    Backend->>Plan: Check account state, entitlement, quota, rate limit
     Plan-->>Backend: Entitled
-    Backend->>AI: Generate query embedding
-    AI->>Vector: Find nearest listing embeddings
-    Vector-->>AI: Candidate listing IDs + scores
-    AI-->>Backend: Ranked candidate list
-    Backend->>Search: Apply filters and listing visibility rules
+    Backend->>Media: Store temporary private query image in R2
+    Backend->>AI: Generate query embedding using mediaId
+    AI->>Vector: Find top-K nearest listing image embeddings
+    Vector-->>AI: Candidate media/listing IDs + raw scores
+    AI-->>Backend: Aggregated candidates + calibrated scores
+    Backend->>Backend: Validate authoritative listing eligibility
+    Backend->>Search: Apply filters/facets and marketplace metadata
     Search-->>Backend: Filtered results
     Backend-->>Mobile: Ranked photo search results
 ```
@@ -277,11 +282,11 @@ sequenceDiagram
 
 ### Listing Image Embeddings
 
-Generated when:
+Generated asynchronously when:
 
-- seller uploads listing images
-- listing is approved
-- listing image is changed
+- seller listing media processing reaches `MediaAsset.status = READY`
+- listing is approved or becomes searchable
+- listing image is changed or replaced
 
 ### Buyer Query Embedding
 
@@ -295,7 +300,7 @@ Generated when:
 MVP:
 
 ```text
-CLIP-like image embedding model
+Provider-neutral image embedding provider, initially CLIP-like
 ```
 
 Vector size:
@@ -310,30 +315,39 @@ Storage:
 PostgreSQL pgvector
 ```
 
+Every embedding stores `model_name`, `model_version`, `embedding_version`, and `dimensions`. Never compare vectors from incompatible embedding spaces.
+
 ---
 
 ## 5.4 Visual Search Ranking
 
-Ranking formula:
+Photo search uses a two-stage ranking model. Stage 1 retrieves a configured pgvector candidate pool (`topK`, initially benchmarked around 200-500). Stage 2 re-ranks candidates with visual similarity, inferred attributes, listing metadata, filters, seller trust, and availability.
+
+Illustrative ranking formula only:
 
 ```text
-Final Score =
-Visual Similarity Score
-+ Listing Plan Boost
-+ Seller Rating Boost
-+ Recency Boost
-+ Location Proximity Boost
-- Fraud Risk Penalty
+finalScore =
+    visualSimilarity * 0.60
+  + categoryMatch    * 0.15
+  + brandModelMatch  * 0.10
+  + conditionMatch   * 0.05
+  + locationScore    * 0.05
+  + listingQuality   * 0.03
+  + sellerTrust      * 0.02
 ```
+
+Paid listing promotion must not cause a weak visual result to appear as the strongest organic photo-search match.
 
 ### Match Bands
 
-| Similarity | Label | Handling |
+| Calibrated Match Score | Label | Handling |
 |---|---|---|
-| >= 85% | High Match | Show first |
-| 70-84% | Good Match | Show normally |
-| 60-69% | Partial Match | Show with label |
-| < 60% | Low Match | Hide by default |
+| calibrated high band | Best Match | Show first |
+| calibrated middle band | Good Match | Show normally |
+| calibrated partial band | Partial Match | Show with label |
+| below configured threshold | Low Match | Hide by default unless user broadens search |
+
+Do not expose raw cosine similarity as a user-facing percentage. Match bands must be calibrated on a labeled ValueX evaluation dataset.
 
 ---
 
@@ -587,7 +601,7 @@ POST /ai/v1/listings/suggest
 ```json
 {
   "listingId": "uuid",
-  "imageUrls": ["s3://bucket/image.jpg"],
+  "mediaIds": ["uuid-media-1"],
   "sellerLocation": "Bengaluru",
   "textHint": "used phone"
 }
@@ -608,23 +622,25 @@ POST /ai/v1/listings/suggest
 
 ---
 
-## 10.2 Photo Search API
+## 10.2 Internal Visual Search API
 
 ```http
-POST /ai/v1/search/photo
+POST /internal/v1/visual-search
 ```
 
 ### Request
 
 ```json
 {
+  "searchId": "uuid",
   "userId": "uuid",
-  "imageUrl": "s3://query/image.jpg",
+  "queryMediaId": "uuid-media-query",
   "filters": {
     "priceMin": 1000,
     "priceMax": 50000,
     "location": "Mumbai"
-  }
+  },
+  "topK": 300
 }
 ```
 
@@ -635,12 +651,16 @@ POST /ai/v1/search/photo
   "results": [
     {
       "listingId": "uuid",
-      "similarityScore": 0.87,
-      "matchType": "HIGH_MATCH"
+      "mediaId": "uuid-listing-media",
+      "rawSimilarity": 0.87,
+      "normalizedMatchScore": 0.91,
+      "matchLabel": "Best Match"
     }
   ]
 }
 ```
+
+Clients call `POST /api/v1/search/photo` on Spring Boot, never this internal endpoint directly.
 
 ---
 
@@ -708,10 +728,12 @@ Stores:
 Stores:
 
 - listing images
-- query images
+- temporary private photo-search query images
 - proof images
 - dispute evidence
 - moderation snapshots
+
+AI services consume media through the shared media contract (`mediaId`, authorized access, object references). Python services must not invent independent bucket/key conventions or persist signed URLs.
 
 ---
 
@@ -727,7 +749,7 @@ Stores:
 MVP options:
 
 ```text
-S3 folder structure
+Cloudflare R2 object namespace through the shared S3-compatible storage abstraction
 ```
 
 Scale options:
@@ -918,8 +940,8 @@ graph TB
     Worker1 --> Vector[(pgvector)]
     Worker2 --> Postgres[(PostgreSQL)]
 
-    AI1 --> S3[(S3)]
-    AI2 --> S3
+    AI1 --> R2[(Cloudflare R2)]
+    AI2 --> R2
 ```
 
 ---

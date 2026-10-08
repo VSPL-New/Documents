@@ -51,6 +51,7 @@ graph TB
     Gateway --> User[User Profile Module]
     Gateway --> Listing[Listing Module]
     Gateway --> Search[Search Module]
+    Gateway --> Media[Media Module]
     Gateway --> Plan[Plan & Entitlement Module]
     Gateway --> Communication[Communication Module]
     Gateway --> Negotiation[Negotiation Module]
@@ -75,6 +76,7 @@ graph TB
     Gateway --> Redis[(Redis)]
     Search --> OpenSearch[(OpenSearch)]
     Search --> VectorDB[(pgvector)]
+    Media --> ObjectStorage[(Cloudflare R2 + CDN)]
 ```
 
 ---
@@ -292,6 +294,43 @@ POST /api/v1/search/saved
 GET  /api/v1/search/saved
 POST /api/v1/search/photo
 ```
+
+Photo search is orchestrated by Spring Boot: account-state, entitlement/quota and rate-limit checks happen before a temporary private R2 query image is passed to Python Visual AI. pgvector returns visual candidates; OpenSearch applies marketplace filters/facets; PostgreSQL remains authoritative for listing eligibility.
+
+---
+
+## 4.4.1 Media Module
+
+### Responsibilities
+
+* Vendor-neutral object storage abstraction
+* Cloudflare R2 upload/download authorization
+* Media metadata and lifecycle states
+* Image derivative generation coordination
+* Private evidence access control
+* Photo-search temporary input lifecycle
+
+### Owns
+
+* media_assets
+* media_variants
+
+### APIs
+
+```http
+POST   /api/v1/media/uploads
+POST   /api/v1/media/{id}/complete
+GET    /api/v1/media/{id}
+DELETE /api/v1/media/{id}
+POST   /api/v1/media/{id}/access
+```
+
+### Critical Rules
+
+* Clients never receive permanent storage credentials
+* Signed upload/download URLs are short-lived and never persisted as canonical values
+* Business modules reference media IDs, not provider-specific URLs
+* Evidence and photo-search inputs are private by default
 
 ---
 
