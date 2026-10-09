@@ -604,7 +604,8 @@ VPC
 Kubernetes
 PostgreSQL
 Redis
-S3
+Cloudflare R2 buckets
+Cloudflare CDN/cache rules
 Load Balancer
 DNS
 Monitoring
@@ -1071,8 +1072,12 @@ Daily
 ### Replication
 
 ```text
-Cross Region
+Cloudflare R2 environment-isolated buckets with replication/DR configuration where supported
 ```
+
+Object storage is private by default. Active listing derivatives are delivered through Cloudflare CDN using controlled, versioned variant URLs. Transaction, return, support, dispute, and photo-search input objects require authorization and short-lived signed access.
+
+Infrastructure as code must manage R2 buckets, access policies, CORS, lifecycle rules, custom media delivery domain, secret references, monitoring, and cache configuration for dev/staging/prod. No Flutter or React client receives permanent storage credentials.
 
 ---
 

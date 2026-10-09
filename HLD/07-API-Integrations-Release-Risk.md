@@ -302,7 +302,31 @@ GET  /api/v1/search/saved
 POST /api/v1/search/photo
 ```
 
-Premium feature.
+Premium feature. Request is orchestrated by Spring Boot: account-state check, server-side entitlement/quota/rate limit, temporary private R2 query media, Python visual-search call, authoritative listing eligibility filtering, OpenSearch filters/facets, and ranked response assembly.
+
+```http
+GET /api/v1/search/photo/{searchId}
+```
+
+Returns asynchronous search state/result where the client needs to poll or resume a search.
+
+Example result item:
+
+```json
+{
+	"listingId": "uuid",
+	"title": "Apple iPhone 14 128GB",
+	"price": 42000,
+	"condition": "GOOD",
+	"location": "Pune",
+	"matchScore": 0.91,
+	"matchLabel": "Best Match",
+	"image": {
+		"thumbnail": "https://media.valuex.com/...",
+		"card": "https://media.valuex.com/..."
+	}
+}
+```
 
 ---
 
@@ -961,9 +985,49 @@ Generate Pricing
 ## Visual Search
 
 ```text
-Image Embedding
-Vector Search
+Image preprocessing
+Embedding generation
+pgvector candidate retrieval
+Listing aggregation
+OpenSearch filtering
+Hybrid re-ranking
 ```
+
+Internal AI endpoints:
+
+```http
+POST /internal/v1/visual-search
+POST /internal/v1/embeddings/images
+POST /internal/v1/visual-index/reindex
+```
+
+Clients never call AI services or pgvector directly.
+
+---
+
+# 28. Media APIs
+
+Media APIs expose media resources, not provider internals.
+
+```http
+POST   /api/v1/media/uploads
+POST   /api/v1/media/{mediaId}/complete
+GET    /api/v1/media/{mediaId}
+DELETE /api/v1/media/{mediaId}
+POST   /api/v1/media/{mediaId}/access
+```
+
+Upload authorization response:
+
+```json
+{
+	"mediaId": "uuid",
+	"uploadUrl": "<short-lived-presigned-url>",
+	"expiresAt": "2026-08-31T18:30:00Z"
+}
+```
+
+Signed URLs are never persisted as canonical database values. Evidence and photo-search input access must be authorized before a short-lived access URL is issued.
 
 ---
 
@@ -976,7 +1040,7 @@ Restricted Item Detection
 
 ---
 
-# 28. Release Architecture
+# 29. Release Architecture
 
 ## Release Types
 
@@ -1025,7 +1089,7 @@ Security Fixes
 
 ---
 
-# 29. MVP Release Plan
+# 30. MVP Release Plan
 
 ## MVP Scope
 
@@ -1055,7 +1119,7 @@ Tracking
 
 ---
 
-# 30. Production Release Plan
+# 31. Production Release Plan
 
 ## Phase 2
 
@@ -1077,7 +1141,7 @@ Admin Tools
 
 ---
 
-# 31. Premium Release Plan
+# 32. Premium Release Plan
 
 ## Phase 3
 
@@ -1098,7 +1162,7 @@ Compliance
 
 ---
 
-# 32. Rollout Strategy
+# 33. Rollout Strategy
 
 ## Internal Testing
 
@@ -1132,7 +1196,7 @@ All Users
 
 ---
 
-# 33. Feature Flag Strategy
+# 34. Feature Flag Strategy
 
 ## Controlled Rollout
 
@@ -1148,7 +1212,7 @@ Enabled gradually.
 
 ---
 
-# 34. Risk Analysis
+# 35. Risk Analysis
 
 ## Technical Risks
 
@@ -1183,7 +1247,7 @@ Enabled gradually.
 
 ---
 
-# 35. Capacity Planning
+# 36. Capacity Planning
 
 ## Year 1 Targets
 
@@ -1219,7 +1283,7 @@ Enabled gradually.
 
 ---
 
-# 36. Future Architecture Evolution
+# 37. Future Architecture Evolution
 
 ## Phase 2
 
@@ -1253,7 +1317,7 @@ Kafka
 
 ---
 
-# 37. HLD Completion Summary
+# 38. HLD Completion Summary
 
 Generated Documents:
 
@@ -1303,7 +1367,7 @@ PostgreSQL
 Redis
 OpenSearch
 pgvector
-S3
+Cloudflare R2 + CDN
 ```
 
 ---

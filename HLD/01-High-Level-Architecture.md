@@ -290,7 +290,7 @@ Postgres[(PostgreSQL)]
 Redis[(Redis)]
 OpenSearch[(OpenSearch)]
 VectorDB[(pgvector)]
-ObjectStorage[(S3 Storage)]
+ObjectStorage[(Cloudflare R2 + CDN)]
 
 end
 
@@ -502,7 +502,7 @@ Responsible for:
 | --------------- | --------------- |
 | AI Services     | Python          |
 | Framework       | FastAPI         |
-| Visual Search   | CLIP Embeddings |
+| Visual Search   | Provider-neutral image embeddings + pgvector |
 | Fraud Detection | ML Models       |
 | Listing AI      | LLM Integration |
 
@@ -516,7 +516,7 @@ Responsible for:
 | Cache            | Redis                 |
 | Search           | OpenSearch            |
 | Vector Search    | pgvector              |
-| Object Storage   | S3 Compatible Storage |
+| Object Storage   | Cloudflare R2 Standard via S3-compatible abstraction |
 
 ---
 
@@ -617,7 +617,7 @@ if scale requires.
 | Database       | PostgreSQL    | ACID compliance                  |
 | Search         | OpenSearch    | Marketplace search               |
 | Vector Search  | pgvector      | Cost-effective MVP               |
-| Storage        | S3            | Scalable media storage           |
+| Storage        | Cloudflare R2 + CDN | Active media, private evidence, photo-search inputs |
 | Messaging      | Event Driven  | Async processing                 |
 | Authentication | JWT           | Stateless architecture           |
 | Deployment     | Kubernetes    | Future scalability               |

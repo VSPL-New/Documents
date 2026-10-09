@@ -1,6 +1,6 @@
 # ValueX High Level Design (HLD)
 
-# Part 3 – Data Architecture, ERD, PostgreSQL Design, Redis, OpenSearch, pgvector & Object Storage
+# Part 3 – Data Architecture, ERD, PostgreSQL Design, Redis, OpenSearch, pgvector & Cloudflare R2 Object Storage
 
 **Document Version:** 1.0
 **Product:** ValueX
@@ -8,7 +8,7 @@
 **Cache:** Redis 7
 **Search:** OpenSearch
 **Vector Search:** pgvector
-**Object Storage:** S3 Compatible Storage
+**Object Storage:** Cloudflare R2 Standard through a vendor-neutral S3-compatible abstraction
 
 ---
 
@@ -24,7 +24,7 @@ ValueX requires multiple storage technologies because a single database is not s
 | Sessions                 | Redis             |
 | Search Index             | OpenSearch        |
 | Visual Search Embeddings | pgvector          |
-| Images & Videos          | S3 Object Storage |
+| Images & Videos          | Cloudflare R2 + Cloudflare CDN |
 | Audit Logs               | PostgreSQL        |
 | Notifications            | PostgreSQL        |
 | Analytics (MVP)          | PostgreSQL        |
@@ -54,7 +54,7 @@ Backend --> OpenSearch[(OpenSearch)]
 
 Backend --> VectorDB[(pgvector)]
 
-Backend --> Storage[(S3 Storage)]
+Backend --> Storage[(Cloudflare R2 + CDN)]
 
 AI[Python AI Services]
 
@@ -815,31 +815,43 @@ Stores image embeddings.
 
 ---
 
-### image_embeddings
+### listing_image_embeddings
 
 ```sql
-CREATE TABLE image_embeddings (
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE listing_image_embeddings (
     id UUID PRIMARY KEY,
-    listing_id UUID,
-    image_id UUID,
-    embedding VECTOR(768)
+    listing_id UUID NOT NULL,
+    media_id UUID NOT NULL,
+    model_name VARCHAR(100) NOT NULL,
+    model_version VARCHAR(100) NOT NULL,
+    embedding_version VARCHAR(100) NOT NULL,
+    dimensions INTEGER NOT NULL,
+    embedding VECTOR(768) NOT NULL,
+    index_status VARCHAR(30) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    UNIQUE(media_id, embedding_version)
 );
 ```
+
+The actual vector dimension is finalized with the selected embedding model. HNSW is the initial approximate-nearest-neighbor index candidate and must be benchmarked against representative marketplace images before production tuning.
 
 ---
 
 ## Search Flow
 
 ```text
-Buyer uploads image
+Buyer uploads temporary private search image to R2
  ↓
 Python AI generates embedding
  ↓
-Store embedding
+Nearest-neighbor search in pgvector (topK configured, initially 200-500)
  ↓
-Nearest Neighbor Search
+Backend validates listing eligibility and applies OpenSearch filters/facets
  ↓
-Return top matches
+Return calibrated, ranked listing results
 ```
 
 ---
@@ -849,46 +861,97 @@ Return top matches
 ## Storage Provider
 
 ```text
-AWS S3
-or
-MinIO
-or
-Cloud Storage
+Cloudflare R2 Standard for MVP and early growth
+Cloudflare CDN for active marketplace image delivery
+Vendor-neutral S3-compatible Spring Boot abstraction
+Backblaze B2 + Cloudflare CDN review trigger at approximately 10-20 TB active media
 ```
+
+Business modules depend on a shared `ObjectStoragePort`; provider SDK calls are isolated in media infrastructure adapters. Domain tables store media IDs/object references, never signed URLs or provider-specific identifiers.
 
 ---
 
 ## Buckets
 
-### Listing Images
-
 ```text
-valuex-listings
+valuex-{env}-listing-media
+valuex-{env}-evidence
+valuex-{env}-profile-media
+valuex-{env}-search-input
+valuex-{env}-support-media
+
+{env} = dev | staging | prod
+```
+
+Object keys use opaque IDs and must not contain Aadhaar, mobile number, email, bank details, or other PII.
+
+---
+
+## Media Metadata Model
+
+Use reusable media metadata instead of raw URLs in domain tables.
+
+### media_assets
+
+```sql
+CREATE TABLE media_assets (
+    id UUID PRIMARY KEY,
+    owner_type VARCHAR(50) NOT NULL,
+    owner_id UUID NOT NULL,
+    media_purpose VARCHAR(50) NOT NULL,
+    storage_provider VARCHAR(50) NOT NULL,
+    bucket VARCHAR(255) NOT NULL,
+    object_key TEXT NOT NULL,
+    original_filename VARCHAR(255),
+    detected_content_type VARCHAR(100),
+    size_bytes BIGINT,
+    width INTEGER,
+    height INTEGER,
+    checksum VARCHAR(255),
+    perceptual_hash VARCHAR(255),
+    status VARCHAR(30) NOT NULL,
+    visibility VARCHAR(30) NOT NULL,
+    created_by UUID,
+    created_at TIMESTAMPTZ NOT NULL,
+    processed_at TIMESTAMPTZ,
+    retention_until TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
+);
+```
+
+Purposes include `LISTING_IMAGE`, `PROFILE_IMAGE`, `SELLER_PRE_SHIPMENT_EVIDENCE`, `BUYER_DELIVERY_EVIDENCE`, `RETURN_EVIDENCE`, `DISPUTE_EVIDENCE`, `PHOTO_SEARCH_INPUT`, and `SUPPORT_ATTACHMENT`.
+
+Statuses: `PENDING_UPLOAD`, `UPLOADED`, `VALIDATING`, `PROCESSING`, `READY`, `REJECTED`, `QUARANTINED`, `DELETION_PENDING`, `DELETED`.
+
+### media_variants
+
+```sql
+CREATE TABLE media_variants (
+    id UUID PRIMARY KEY,
+    media_asset_id UUID NOT NULL REFERENCES media_assets(id),
+    variant_type VARCHAR(30) NOT NULL,
+    object_key TEXT NOT NULL,
+    content_type VARCHAR(100) NOT NULL,
+    size_bytes BIGINT,
+    width INTEGER,
+    height INTEGER,
+    created_at TIMESTAMPTZ NOT NULL
+);
 ```
 
 ---
 
-### Proof Images
+## Image Variant Strategy
 
-```text
-valuex-proof-images
-```
+| Variant | Use | Approx. Dimension | Target Payload |
+|---|---|---:|---:|
+| Thumbnail | compact grid/search | 200-300 px | 20-50 KB |
+| Card | feed/listing card | 500-600 px | 60-120 KB |
+| Detail | listing detail | 1000-1200 px | 150-300 KB |
+| Zoom | enlarged view | ~1600 px | 300-600 KB |
+| Original | evidence/AI/reprocessing | source | not routine delivery |
 
----
-
-### Dispute Evidence
-
-```text
-valuex-disputes
-```
-
----
-
-### Video Recordings
-
-```text
-valuex-video-recordings
-```
+Preferred delivery negotiation is AVIF, then WebP, then JPEG. Public derivatives strip unnecessary metadata and never expose EXIF geolocation.
 
 ---
 
@@ -896,13 +959,16 @@ valuex-video-recordings
 
 | Media               | Retention                         |
 | ------------------- | --------------------------------- |
-| Listing Images      | Until listing deleted             |
+| Active Listing Images | Until listing deletion, subject to order/dispute/investigation holds |
 | Seller Proof Images | 2 years                           |
 | Buyer Proof Images  | 2 years                           |
 | Dispute Evidence    | 7 years                           |
+| Photo Search Inputs | short configurable retention with automatic cleanup |
 | Video Recordings    | 30 days after transaction closure |
 | Chat Messages       | 6 months                          |
 | Call Logs           | 6 months                          |
+
+Deletion is lifecycle-controlled. Listing deletion must not destroy evidence required by an active order, return, dispute, fraud investigation, or retention/legal hold.
 
 ---
 
@@ -1003,7 +1069,7 @@ Cross Region Replication
 ## Encryption At Rest
 
 * PostgreSQL TDE
-* S3 Encryption
+* Cloudflare R2 encryption
 * Redis Encryption
 
 ---

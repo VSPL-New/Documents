@@ -428,6 +428,10 @@ Subscription Management
 Photo Search
 ```
 
+Photo and evidence uploads use the backend Media API to obtain short-lived direct upload authorization. Clients never receive permanent Cloudflare R2 credentials and never construct provider bucket/key names directly.
+
+Photo Search supports camera capture or gallery selection, preview/retake, upload progress, entitlement/paywall feedback, no-result recovery, and filters for price, location/distance, condition, and seller rating. Query images are uploaded as private temporary media and are not displayed through public URLs.
+
 ---
 
 ## Support
@@ -730,8 +734,10 @@ Revenue
 
 * Lazy Loading
 * Pagination
-* Image Compression
+* Client-side pre-upload validation and optional compression
+* CDN-backed AVIF/WebP image variants (thumbnail/card/detail/zoom)
 * Cached Network Images
+* Upload progress and retry for direct media uploads
 
 ---
 
