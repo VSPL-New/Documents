@@ -27,6 +27,8 @@
 18. [Authentication Extensions](#authentication-extensions)
 19. [Address Management](#address-management)
 20. [Mobile App Security](#mobile-app-security)
+21. [UI Quality](#ui-quality)
+22. [Home](#home)
 
 ---
 
@@ -4651,11 +4653,125 @@
 
 ---
 
+## Home
+
+### US-111: Home Page
+**As a** logged-in buyer  
+**I want** a home page that shows items near me, lets me search, browse categories and reach the main areas of the app  
+**So that** I can find something to buy quickly and start from one familiar place
+
+**Design Note:** Built from the Figma design file frame "Home Page" (node `2017:635`), the "Location & Notification Row" (`2019:2022`) and the bottom navigation (`2021:2850`). Where the Figma frame differs from `valuex-mobile/docs/Flutter-Design-System.md`, the design system wins (colours, type sizes, 48 dp tap targets, the single brand gradient, the 428 px base frame). The promo card and the listing cards in Figma are sample content.
+
+**Related User Stories:**
+- US-011: search, category browsing and filters; the Home search bar, category tiles and "See All" open its results
+- US-012: tapping a listing card opens listing details
+- US-038, US-039: the camera icon in the search bar starts photo search; non-premium users see the paywall
+- US-008, US-078: Boosted and Priority listings are ranked first and carry the "BOOSTED" or "Featured" badge
+- US-019: cart; US-077: notifications; US-004: Sell; US-013: Chats; US-103: Profile
+- US-108: address entry when location permission is not given
+- US-110, US-099: accessibility and design system rules the screen must meet
+
+**Acceptance Criteria:**
+- Given my account is `ACTIVE`
+- When I open the app or tap the Home tab
+- Then I see, from top to bottom: a gradient header, a promo card, a "Browse" category row, "Featured Deals Near You", and the bottom navigation
+- And the header shows my current area and city, a cart icon and a notifications bell, with a search bar and a camera icon below
+- Given I have allowed location access
+- When Home loads
+- Then the area and city are taken from my live location and the listings near me are shown
+- Given I have not allowed location access or it is unavailable
+- Then I am asked to enter an address (US-108) and listings near that address are shown
+- When I tap the location in the header
+- Then I can change it by live location or by entering an address, and Home refreshes for the new place
+- When I tap the bell
+- Then I open my notifications (US-077), and an unread badge shows when there are unread items
+- When I tap the cart
+- Then I open my cart (US-019), and a badge shows when the cart has items
+- When I tap the search bar
+- Then I go to search (US-011)
+- When I tap the camera icon
+- Then photo search starts if I am a premium buyer, otherwise I see the upgrade paywall (US-038)
+- When a promo is active
+- Then I see a promo card with its title, short text and a call-to-action button, and tapping it opens the promo's target
+- And when there is no active promo, the promo section is not shown
+- When I look at "Browse"
+- Then I see the first five categories from the backend, each with its image and name, and a "More" tile
+- When I tap a category
+- Then I see listings in that category (US-011)
+- When I tap "More"
+- Then I see a category selection page that lists all categories from the backend, and tapping one opens its listings
+- When I look at "Featured Deals Near You"
+- Then I see listing cards in two columns, each with an image, title, price in INR, city, seller rating and condition
+- And Boosted and Priority listings come first and show their badge
+- When I tap a listing card
+- Then I open its details (US-012)
+- When I tap "See All"
+- Then I see the full list of listings near me in the same order, with pagination (US-011)
+- When I pull down on Home
+- Then the page refreshes
+- When I tap a bottom navigation item
+- Then I go to Home, Search, Sell (US-004), Chats (US-013) or Profile (US-103), and the current item is marked
+- Given I skipped Aadhaar verification
+- When I tap Sell
+- Then I am told Aadhaar verification is required before my first sell transaction (US-001)
+- Given the network is down
+- When I open Home
+- Then I see the last loaded content with a message and a Retry button, or an error state with Retry when nothing was loaded before
+
+**Edge Cases:**
+- Location permission denied once, denied permanently, or turned off in the device settings
+- Location takes long to resolve or is outside India
+- No address chosen and no location permission
+- No listings near the chosen place
+- Fewer than five categories returned by the backend
+- Promo expired or removed while the user is on Home
+- A listing image fails to load (a placeholder is shown)
+- A listing is sold or removed while it is on screen
+- Very long listing titles or city names; Hindi text; text size at 200%
+- Cart or notification counts above 99
+- Slow network, partial responses (promo loads but listings fail, or the reverse)
+- User changes location while a refresh is in progress
+
+**Validation Rules:**
+- Only published, non-expired listings are shown
+- Featured Deals shows at most 20 listings, Boosted and Priority first, then newest or nearest (US-078, US-011 ranking)
+- Listing prices are shown in INR with Indian digit grouping (for example ₹1,85,000)
+- Seller rating is shown with one decimal on a 0 to 5 scale; a seller with no rating shows no rating
+- Condition is one of the listing condition values (for example Good, Like New, Excellent)
+- Categories, their order, names and images come from the backend and are not hard-coded in the app
+- Promo content (text, image, target, start and end date) comes from the backend; the app shows at most the active promos
+- Location permission is requested on Home with a short explanation of why, not at app start
+- Only the area and city are used for listings; exact coordinates are not logged, and are not stored without consent
+- Every control has a tap area of at least 48 by 48 dp, every control has a label, titles are headings, text is at least 14 px for anything important and passes 4.5:1 contrast (US-110)
+- The screen is added to the automated accessibility and heading tests
+
+**Error Scenarios:**
+- `ERROR_LOCATION_PERMISSION_DENIED`: "Location access is off. Enter your address to see items near you"
+- `ERROR_LOCATION_UNAVAILABLE`: "Unable to detect your location. Enter your address instead"
+- `ERROR_HOME_LOAD_FAILED`: "Unable to load Home. Pull down or tap Retry"
+- `NO_LISTINGS_NEAR_YOU`: "No items near you yet. Try another address"
+- `ERROR_CATEGORIES_UNAVAILABLE`: "Unable to load categories. Try again"
+
+**Flutter Implementation Notes:**
+- Page built from Figma node `2017:635` with the design system tokens only; the header uses `AppGradients.brand`; Figma values that conflict with the design system are resolved to the design system (decision A)
+- Reuses existing components where they fit (`BrandGradientButton` for the promo button, `FieldError` and the loading and error views); new shared pieces: listing card, category tile, promo card, bottom navigation with a raised Sell button, location header
+- Bell and cart are separate icon buttons with 48 dp tap areas and count badges
+- Location through the device location and permission packages; reverse geocoding gives the area and city; manual address uses the US-108 component
+- Data comes through repository interfaces; until the backend endpoints exist, a mock repository supplies listings, categories and a sample promo
+- The category selection page is its own route reached from the "More" tile
+- Pull to refresh, loading skeletons, empty and error states; all strings in the English and Hindi ARB files
+
+**Backend Notes:**
+- Needs endpoints for the categories list, the home feed (featured and nearby listings by area or coordinates, ranked by plan) and active promos; none exist yet
+- Promo content is managed by the product team and loaded before launch
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 110  
+**Total User Stories:** 111  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.7 (Updated 2026-10-07) — Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.8 (Updated 2026-10-08) — Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4683,6 +4799,7 @@
 - **Address Management (US-108):** 1 story - Address entry with Google Places Autocomplete and a dedicated address verification API; Sign Up (US-001) uses manual entry until it ships
 - **Mobile App Security (US-109):** 1 story - SSL pinning, root and jailbreak detection, device ID (CODING_STANDARDS 3.7)
 - **UI Quality (US-110):** 1 story - Contrast, touch target, text size and screen reader fixes for the registration screens, and the design system rules for later screens
+- **Home (US-111):** 1 story - Home page: location header, search with photo search, promo card, category browsing, featured deals near you and bottom navigation
 
 ---
 
