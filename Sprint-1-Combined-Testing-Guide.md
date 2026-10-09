@@ -1595,6 +1595,34 @@ the 6th returns **400** `ERROR_OTP_MAX_ATTEMPTS`.
 `POST /api/v1/auth/login/verify-mobile` with `{ "mobile": "9000000040" }` → **400** validation
 error, `otp` flagged.
 
+### US-106 Mobile App (Flutter) Scenarios
+
+Run the backend with the `dev` profile (mock OTP) and the app with
+`--dart-define-from-file=config/dev_ios.json` (simulator) or `dev_android.json` (emulator). The dev
+OTP is logged by the backend as `[DEV-MOCK] OTP ... otp=<code>`. Use a fresh install, or clear the
+stored session, so the app opens on Create Account.
+
+| TC | Scenario | Steps | Expected |
+|---|---|---|---|
+| M-01 | Open Sign In | Create Account → "Sign In" | Sign In screen with mobile field and "Don't have an account? Sign up" |
+| M-02 | `ACTIVE` login | Enter an `ACTIVE` mobile → Continue → enter OTP | Code screen, then Home |
+| M-03 | Unknown mobile | Enter a valid number with no account | Inline error with a "Create an account" link; no navigation |
+| M-04 | Carry number to Sign Up | Enter a valid number → footer "Sign up" (also from M-03) | Sign Up mobile step opens with the number filled in |
+| M-05 | Resume registration | Use an `EMAIL_VERIFICATION_PENDING` or `IDENTITY_VERIFICATION_PENDING` account | After OTP, app lands on the email or Aadhaar step |
+| M-06 | Incomplete mobile verification | Use an `OTP_PENDING` account | Inline "complete your registration" message |
+| M-07 | Suspended / banned | Set status `SUSPENDED`, then `BANNED` | Inline suspension / recovery-required message |
+| M-08 | Wrong and expired OTP | Enter a wrong code; wait 5 minutes | Inline invalid / expired messages, Resend works |
+| M-09 | Resend and limits | Resend more than 3 times in 10 minutes | Rate-limit message |
+| M-10 | Reverse link | Sign Up mobile step → "Already have an account? Sign In" | Sign In opens |
+| M-11 | Session expiry | Make the refresh token invalid and call any API | "Session expired" message and Sign In opens |
+| M-12 | Account unavailable | Reach the blocked screen | "Back to Sign In" opens Sign In |
+| M-13 | Hindi and large text | Switch device language to Hindi; set text size to maximum | No clipped text; the Hindi strings are for native-speaker review |
+| M-14 | Screen reader | Turn on VoiceOver or TalkBack | Field label, error and button are announced in order |
+
+Automated coverage: `test/features/auth/presentation/sign_in_test.dart`,
+`sign_in_accessibility_test.dart`; the device test `integration_test/sign_in_flow_test.dart` has not
+been run on a device yet.
+
 ### US-106 Reset Between Tests
 
 ```sql

@@ -4426,9 +4426,13 @@
 - Logout: US-104
 
 **Flutter Implementation Notes:**
-- Login screen offers mobile-number entry as the primary action, with "Continue with Google"/"Continue with Apple" as secondary buttons beneath it
-- Reuses the OTP-entry widget already built for registration (US-001)
+- Login screen offers mobile-number entry as the primary action (route `/sign-in`, code step `/sign-in/verify`). The "Continue with Google"/"Continue with Apple" secondary buttons are **not** part of the first implementation; they arrive with US-101/US-102
+- Reuses the OTP-entry widget already built for registration (US-001) through a `login` channel, with login-specific error text. Sign In has its own entry controller so it never shares state with the Sign Up mobile step
 - On success, route based on the returned `status` claim rather than assuming `ACTIVE` — anything short of `ACTIVE` re-enters the registration flow at that step
+- Unknown mobile number (`ERROR_MOBILE_NOT_REGISTERED`): inline error plus a "Create an account" link; the footer "Don't have an account? Sign up" carries a valid entered number to the Sign Up mobile step, and Sign Up's "Already have an account? Sign In" footer does the reverse
+- Entry points: Create Account "Sign In", the account-unavailable screen ("Back to Sign In") and session expiry all route to Sign In
+- `SUSPENDED` and `BANNED`/`CLOSED` show the backend's generic messages; the suspension end date is only inside the message text, so it is not shown as a separate value
+- English and Hindi strings; the Hindi text needs native-speaker review
 
 ---
 
@@ -4771,7 +4775,7 @@
 
 **Total User Stories:** 111  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.8 (Updated 2026-10-08) — Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.9 (Updated 2026-10-09) — US-106 Flutter Implementation Notes updated to the delivered mobile Sign In (screens, routing, error handling, what is deferred). Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)

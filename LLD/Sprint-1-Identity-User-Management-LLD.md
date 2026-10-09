@@ -1858,6 +1858,16 @@ registration (requires `!existsByMobile`) and login (requires `existsByMobile`).
   `user.isAadhaarVerified()` fresh from the DB into that claim exactly like every other flow, no
   new gating logic is needed.
 
+## 13.7 Mobile Client
+
+The Flutter app (`valuex-mobile`) consumes the two `/auth/login/*` endpoints through
+`/sign-in` and `/sign-in/verify`, reusing the registration OTP view with a `login` channel. After
+verification the route guard sends the user to the screen for the returned `status` (`ACTIVE` → Home;
+`EMAIL_VERIFICATION_PENDING`/`IDENTITY_VERIFICATION_PENDING` → that registration step). Error codes
+map to inline messages: `ERROR_MOBILE_NOT_REGISTERED` also offers a link to Sign Up, and
+`ERROR_ACCOUNT_SUSPENDED`/`ERROR_ACCOUNT_RECOVERY_REQUIRED` show the backend message. The backend
+contract did not change for the client. Details: `US-Implementation-Plans/US-106-Implementation-Plan.md`.
+
 ---
 
 # 14. US-107: Access Token Refresh

@@ -180,7 +180,7 @@ Structured JSON logs only. Every log entry must include:
 | Repo | Minimum Coverage |
 |------|-----------------|
 | valuex-backend | 80% |
-| valuex-mobile | 70% |
+| valuex-mobile | 85% (hand-written code; generated and l10n files excluded) |
 | valuex-web | 70% |
 | valuex-ai | 70% |
 | valuex-infra | Terraform `plan` validates all PRs |
@@ -407,14 +407,14 @@ Rules:
 
 # 3. valuex-mobile — Flutter / Dart
 
-**Stack:** Flutter 3.22+, Dart 3.4+, Riverpod 2.5+, GoRouter 14+, Dio 5.4+  
+**Stack:** Flutter 3.22+ (CI pins the exact version in the workflow), Dart 3.4+, Riverpod 3 (with `riverpod_generator`), GoRouter 14+, Dio 5.4+  
 **Architecture:** Clean Architecture + Feature-Based Modular Structure
 
 ---
 
 ## 3.1 Code Style
 
-- Follow **Dart official style guide** (enforced via `flutter_lints` + `riverpod_lint`).
+- Follow **Dart official style guide** (enforced via `flutter_lints` + `riverpod_lint`; `riverpod_lint` is enabled under `plugins:` in `analysis_options.yaml`).
 - Indentation: 2 spaces.
 - Max line length: 100 characters.
 - Run `dart format` before every commit.
@@ -938,10 +938,12 @@ Quality gates: tests must pass, coverage ≥ 80%.
 
 **Mobile CI (`mobile-ci.yml`):**
 ```
-Checkout → Setup Flutter 3.22 → flutter pub get → dart format --check → flutter analyze → flutter test (with coverage) → flutter build apk (release) → [if main] flutter build ios
+Checkout → Setup Flutter (pinned) → flutter pub get → generated code up to date (build_runner, gen-l10n, dart format, git diff) → dart format --check → flutter analyze --fatal-infos → flutter test (with coverage) → coverage gate → store-compliance script → flutter build apk (debug) → flutter build ios (debug, only when ios/ or pubspec change)
 ```
 
-Quality gates: analyzer zero warnings, coverage ≥ 70%.
+Also on pull requests: Conventional Commits PR title check. Dependabot updates pub and GitHub Actions weekly.
+
+Quality gates: analyzer zero issues (infos included), coverage ≥ 85%. `tool/check_store_compliance.sh` reports Play and App Store readiness findings as warnings on every PR; the manual `strict_store_checks` run and release builds must have zero findings. Signed release builds belong in a separate release workflow (not yet added), not on PRs.
 
 **Web CI (`web-ci.yml`):**
 ```
