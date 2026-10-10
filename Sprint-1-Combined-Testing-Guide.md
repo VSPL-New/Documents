@@ -1750,6 +1750,29 @@ Authorize in Swagger UI with a **refresh token**, call `GET /api/v1/users/me` â†
 UPDATE users SET status = 'ACTIVE' WHERE mobile = '9000000030';
 ```
 
+### US-107 Mobile App (Flutter) Scenarios
+
+The app refreshes on a `401`; there is no refresh screen, so these are observed through normal use.
+To reach an expired access token quickly, start the backend with a short access-token lifetime
+(Spring relaxed binding), for example `VALUEX_JWT_ACCESS_TOKEN_EXPIRY=20000` (20 s) instead of the
+1-hour default, sign in on the app, wait 25 seconds, then use the app (pull to refresh Home, or
+open any screen that calls the API). Restore the default afterwards.
+
+| TC | Scenario | Steps | Expected |
+|---|---|---|---|
+| MR-01 | Silent renewal | Short token lifetime; sign in; wait for expiry; use the app | The action succeeds with no sign-in prompt; backend log shows `POST /auth/refresh` then the original call |
+| MR-02 | Several calls at once | As MR-01, then trigger Home (multiple calls) | One `POST /auth/refresh` in the backend log, all calls succeed |
+| MR-03 | Expired refresh token | Also set `VALUEX_JWT_REFRESH_TOKEN_EXPIRY=5000`; sign in; wait; use the app | "Session expired â€” Login again" notice and the Sign In screen; no token left on the device |
+| MR-04 | Suspended after sign-in | Sign in; set the user to `SUSPENDED`; wait for access-token expiry; use the app | Account-unavailable screen; "Back to Sign In" opens Sign In |
+| MR-05 | Banned after sign-in | Same with `BANNED` | Account-unavailable screen |
+| MR-06 | State changed elsewhere | Sign in at `IDENTITY_VERIFICATION_PENDING`; finish Aadhaar through the API; wait for expiry; use the app | After the refresh the app follows the new status (for example moves on to Sign Up or Home) |
+| MR-07 | Offline during refresh | Expire the access token, turn the network off, use the app, turn it on, retry | A connection error, not a sign-out; the retry succeeds without signing in again |
+| MR-08 | Logged-out session | Log out through the API (US-104) with the same tokens, then use the app | "Session expired" notice and Sign In (the refresh token is rejected) |
+| MR-09 | Cold start with an old access token | Expire the access token, kill and reopen the app | Splash, then the right screen with no sign-in prompt |
+
+Automated coverage: `test/core/network/api_client_test.dart` (refresh once, shared refresh, stale
+token retry, each error code), `session_controller_test.dart` and `app_resume_test.dart`.
+
 ### US-107 Error Reference
 
 | HTTP | Error Code | Cause |

@@ -4478,9 +4478,12 @@
 - Logout: US-104 (must invalidate the refresh token, not just the access token)
 
 **Flutter Implementation Notes:**
-- HTTP client interceptor catches `401`, calls the refresh endpoint with the stored refresh token, retries the original request once
-- On refresh failure, force logout and route to the login screen (US-106)
-- Refresh token stored in secure storage only, never in plain shared preferences
+- HTTP client interceptor catches `401`, calls the refresh endpoint with the stored refresh token, retries the original request once. Concurrent `401`s share one refresh call, and a request that failed with a token another call has already replaced is retried with the new token instead of triggering a second refresh
+- The refresh call itself, and public endpoints, never go through the refresh interceptor
+- On refresh failure the stored tokens are cleared and the app returns to Sign In (US-106) with a "Session expired" notice. Network, timeout and 5xx failures during refresh keep the tokens so the user is not signed out by a bad connection
+- `ERROR_ACCOUNT_SUSPENDED` and `ERROR_ACCOUNT_RECOVERY_REQUIRED` at refresh time open the account-unavailable screen instead of the generic notice ("fail closed" for accounts no longer in good standing)
+- The `status` and `aadhaarVerified` returned by each refresh update the app's account state, so a change made elsewhere (for example Aadhaar verified on another device) routes the user on the next refresh
+- Refresh token stored in secure storage only, never in plain shared preferences; token values are never logged
 
 ---
 
@@ -4775,7 +4778,7 @@
 
 **Total User Stories:** 111  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.9 (Updated 2026-10-09) — US-106 Flutter Implementation Notes updated to the delivered mobile Sign In (screens, routing, error handling, what is deferred). Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.10 (Updated 2026-10-10) — US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)

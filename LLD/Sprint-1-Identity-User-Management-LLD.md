@@ -1959,6 +1959,27 @@ Documented explicitly, not silently dropped:
 8. **`authProvider` claim resets to `MOBILE_OTP` on every refresh**, regardless of the original
    login method — currently inert, since nothing reads this claim downstream today.
 
+## 14.6 Mobile Client
+
+`valuex-mobile` renews the session in its HTTP layer (`ApiInterceptor` + `TokenRefresher`), not in a
+screen. On a `401` from an authenticated call it posts the stored refresh token to
+`/auth/refresh` (a separate Dio instance, so the refresh call cannot trigger itself), saves the new
+pair in secure storage and retries the original request once. Concurrent `401`s share one refresh,
+and a request that failed with a token another call has since replaced is retried with the new
+token without a second refresh (so a future single-use rotation will not trip over the client).
+
+Outcomes of a refresh, published as events on `ApiClient.sessionEvents`:
+
+| Server result | Client behaviour |
+|---|---|
+| `200` | Tokens replaced; `status`/`aadhaarVerified` from the response update the app's account state, which re-routes through the route guard if it changed |
+| `ERROR_REFRESH_TOKEN_EXPIRED`, `ERROR_INVALID_REFRESH_TOKEN`, `ERROR_WRONG_TOKEN_TYPE`, other non-transient `4xx` | Tokens cleared; "Session expired" notice; Sign In |
+| `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED` | Tokens cleared; account-unavailable screen ("Back to Sign In") |
+| Network error, timeout, `5xx` | Tokens kept; the original call fails with a retryable error |
+
+A `401` after the retry also ends the session. Items 1–5 of §14.5 still apply to the client:
+it simply uses whatever the backend accepts.
+
 ---
 
 # 15. Database Schema
