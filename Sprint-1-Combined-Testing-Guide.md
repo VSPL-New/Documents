@@ -1647,10 +1647,10 @@ UPDATE users SET status = 'ACTIVE' WHERE mobile = '9000000040';
 
 ## US-107 — Access Token Refresh
 
-**What this ships:** a **stateless** refresh endpoint. It validates the submitted refresh token
-(signature, expiry, type) and the account's current standing, then reissues a fresh access+refresh
-pair. It does **not** implement single-use rotation, theft detection, or logout-invalidation
-beyond what US-104 already provides.
+**What this ships:** a refresh endpoint that validates the submitted refresh token (signature,
+expiry, type, session not logged out) and the account's current standing, then reissues a fresh
+access+refresh pair. Refresh tokens are **single-use**: using one again revokes the session
+(LLD §14.7).
 
 | Setting | Value |
 |---|---|
@@ -1669,7 +1669,7 @@ beyond what US-104 already provides.
 | TC-005 | Expired refresh token | `400 ERROR_REFRESH_TOKEN_EXPIRED` |
 | TC-006 | Account suspended after token issuance | `400 ERROR_ACCOUNT_SUSPENDED` |
 | TC-007 | Account banned/closed after token issuance | `400 ERROR_ACCOUNT_RECOVERY_REQUIRED` |
-| TC-008 | Old refresh token still works after one use (if not logged out) | `200` — by design, not a bug |
+| TC-008 | Refresh token used a second time | `400 ERROR_INVALID_REFRESH_TOKEN`, session revoked |
 | TC-009 | Refresh token rejected as Bearer access token | `401` |
 | TC-010 | Missing `refreshToken` in body | `400`, validation error |
 
@@ -1719,13 +1719,17 @@ Refresh with the still-valid token → **400:** `ERROR_ACCOUNT_SUSPENDED`.
 
 Same as TC-006 with `status = 'BANNED'` → **400:** `ERROR_ACCOUNT_RECOVERY_REQUIRED`.
 
-### TC-008 — Old Refresh Token Still Works After One Use
+### TC-008 — Used Refresh Token Is Rejected and Revokes the Session
 
-1. Get `refreshToken_A`.
-2. `POST /auth/refresh` with `refreshToken_A` → note `refreshToken_B`.
-3. `POST /auth/refresh` again with the **original** `refreshToken_A`.
+1. Log in; note `refreshToken_A`.
+2. `POST /auth/refresh` with `refreshToken_A` → `200`, note `refreshToken_B`.
+3. `POST /auth/refresh` again with `refreshToken_A`.
+4. `POST /auth/refresh` with `refreshToken_B`.
 
-**Expected:** step 3 **succeeds** (200) — no single-use rotation. **Do not file as a bug.**
+**Expected:** step 3 → **400** `ERROR_INVALID_REFRESH_TOKEN` (backend log: "Refresh token reuse
+detected"); step 4 → **400** `ERROR_REFRESH_TOKEN_EXPIRED` because the session was revoked. A normal
+chain (A → B → C → D) always returns `200`. Two simultaneous refreshes with one token: exactly one
+`200`.
 
 ### TC-009 — Refresh Token Rejected as Bearer Access Token
 
@@ -1738,10 +1742,8 @@ Authorize in Swagger UI with a **refresh token**, call `GET /api/v1/users/me` �
 
 ### Not Testable Yet (US-107)
 
-- "Replayed rotated-out token → theft, invalidate token family" — conditional on session tracking
-  this design intentionally keeps minimal.
-- Concurrent refresh calls near expiry — both succeed independently; a direct consequence of the
-  stateless design.
+- Grace window for a lost refresh response — not built; the device's next refresh is treated as
+  reuse and the user signs in again.
 - Clock skew at the expiry boundary — a pre-existing, systemic JJWT configuration property.
 
 ### US-107 Reset Between Tests
@@ -1749,6 +1751,29 @@ Authorize in Swagger UI with a **refresh token**, call `GET /api/v1/users/me` �
 ```sql
 UPDATE users SET status = 'ACTIVE' WHERE mobile = '9000000030';
 ```
+
+### US-107 Mobile App (Flutter) Scenarios
+
+The app refreshes on a `401`; there is no refresh screen, so these are observed through normal use.
+To reach an expired access token quickly, start the backend with a short access-token lifetime
+(Spring relaxed binding), for example `VALUEX_JWT_ACCESS_TOKEN_EXPIRY=20000` (20 s) instead of the
+1-hour default, sign in on the app, wait 25 seconds, then use the app (pull to refresh Home, or
+open any screen that calls the API). Restore the default afterwards.
+
+| TC | Scenario | Steps | Expected |
+|---|---|---|---|
+| MR-01 | Silent renewal | Short token lifetime; sign in; wait for expiry; use the app | The action succeeds with no sign-in prompt; backend log shows `POST /auth/refresh` then the original call |
+| MR-02 | Several calls at once | As MR-01, then trigger Home (multiple calls) | One `POST /auth/refresh` in the backend log, all calls succeed |
+| MR-03 | Expired refresh token | Also set `VALUEX_JWT_REFRESH_TOKEN_EXPIRY=5000`; sign in; wait; use the app | "Session expired — Login again" notice and the Sign In screen; no token left on the device |
+| MR-04 | Suspended after sign-in | Sign in; set the user to `SUSPENDED`; wait for access-token expiry; use the app | Account-unavailable screen; "Back to Sign In" opens Sign In |
+| MR-05 | Banned after sign-in | Same with `BANNED` | Account-unavailable screen |
+| MR-06 | State changed elsewhere | Sign in at `IDENTITY_VERIFICATION_PENDING`; finish Aadhaar through the API; wait for expiry; use the app | After the refresh the app follows the new status (for example moves on to Sign Up or Home) |
+| MR-07 | Offline during refresh | Expire the access token, turn the network off, use the app, turn it on, retry | A connection error, not a sign-out; the retry succeeds without signing in again |
+| MR-08 | Logged-out session | Log out through the API (US-104) with the same tokens, then use the app | "Session expired" notice and Sign In (the refresh token is rejected) |
+| MR-09 | Cold start with an old access token | Expire the access token, kill and reopen the app | Splash, then the right screen with no sign-in prompt |
+
+Automated coverage: `test/core/network/api_client_test.dart` (refresh once, shared refresh, stale
+token retry, each error code), `session_controller_test.dart` and `app_resume_test.dart`.
 
 ### US-107 Error Reference
 
