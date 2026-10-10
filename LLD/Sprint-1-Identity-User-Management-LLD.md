@@ -664,7 +664,7 @@ POST /api/v1/auth/social/google  { idToken }
   → Return: { requiresMobileVerification: true, socialSessionToken, googleEmail }
 
 POST /api/v1/auth/social/google/initiate-mobile
-  { socialSessionToken, mobile, termsAccepted, consentGiven }
+  { socialSessionToken, mobile, termsAccepted?, consentGiven? }   (terms/consent optional; see 4.6)
   → Validate social session exists in Redis
   → Check mobile not already ACTIVE with Google already linked
   → Send mobile OTP
@@ -686,8 +686,12 @@ POST /api/v1/auth/social/google/verify-mobile
 POST /api/v1/auth/social/google  { idToken }
   → Validate token
   → Google sub found in user_social_accounts → look up User
+  → assertAccountInGoodStanding(user): NEW/OTP_PENDING -> ERROR_INVALID_STATE,
+    SUSPENDED -> ERROR_ACCOUNT_SUSPENDED, BANNED/CLOSED -> ERROR_ACCOUNT_RECOVERY_REQUIRED
+    (same rules as login, section 13.3)
   → Issue JWT immediately
-  → Return: { requiresMobileVerification: false, accessToken, refreshToken, ... }
+  → Return: { requiresMobileVerification: false, accessToken, refreshToken, aadhaarVerified,
+              userId, status }
 ```
 
 ### Flow C — Link Google to an existing mobile-OTP account
@@ -849,6 +853,36 @@ Production env vars required when `provider=http`:
 | `GOOGLE_CLIENT_ID_WEB` | Web OAuth client ID |
 | `GOOGLE_CLIENT_ID_ANDROID` | Android OAuth client ID (SHA-1 fingerprint registered) |
 | `GOOGLE_CLIENT_ID_IOS` | iOS OAuth client ID |
+
+## 4.6 Changes Made While Building the Mobile Client
+
+- **Flow B returns `status`** (`SocialSignInResponse.status`) so the app routes like a normal
+  sign-in, and applies the account-standing check from section 13.3 (duplicated in
+  `GoogleSignInService`, per this module's convention). Before this a suspended or banned user
+  could sign in with Google and was only stopped at the next token refresh.
+- **Terms and consent are optional on `initiate-mobile`.** Registration collects them at Sign Up
+  (`SIGNUP_PENDING`), so the social flow no longer demands them before the user has seen the terms,
+  and `createNewSocialUser` no longer stamps `terms_accepted_at`/`consent_given_at`. An explicit
+  `false` is still rejected. Sign Up records both for Google users as for everyone else.
+
+## 4.7 Mobile Client
+
+`valuex-mobile` offers "Continue with Google" on Create Account (Sign In has no Google button in
+its design). The ID token comes from `google_sign_in` (`native`) or, in development, from a
+dev-only chooser that sends `mock-<name>` (`mock`; rejected in prod by `AppConfig`). The app only
+ever sends the ID token; the backend verifies it.
+
+| Server result | App behaviour |
+|---|---|
+| Flow B, tokens issued | Tokens stored; session status published; router opens the screen for `status` |
+| Flow A/C, `requiresMobileVerification` | Session token kept in memory; mobile step (`/google/mobile`), then code step (`/google/verify`, shared OTP view with a `googleLink` channel); the verify response carries `status` |
+| `ERROR_INVALID_GOOGLE_TOKEN`, `ERROR_GOOGLE_SERVICE_UNAVAILABLE` | Inline message under the Google button |
+| `ERROR_INVALID_STATE` at the mobile step | "Unfinished registration" message (sign in with the mobile number instead) |
+| `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`, `ERROR_SOCIAL_SESSION_EXPIRED`/`_INVALID`, `ERROR_MOBILE_MISMATCH` | Inline message; session problems ask the user to start Google sign-in again |
+| `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED` | Standard suspension / recovery messages; user stays signed out |
+
+Open items: real OAuth clients (Web client ID = token audience for `GOOGLE_CLIENT_ID_WEB`, Android
+with SHA-1s, iOS with URL scheme) and App Store guideline 4.8 (see section 5).
 
 ---
 
