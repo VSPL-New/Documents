@@ -491,9 +491,10 @@ POST /api/v1/auth/social/google/verify-mobile
 | TC-008 | Invalid Google token | `400 ERROR_INVALID_GOOGLE_TOKEN` |
 | TC-009 | Expired/unknown social session | `400 ERROR_SOCIAL_SESSION_EXPIRED` |
 | TC-010 | Mobile number mismatch at verify step | `400 ERROR_MOBILE_MISMATCH` |
-| TC-011 | Terms not accepted / consent not given | `400 ERROR_TERMS_NOT_ACCEPTED` / `ERROR_CONSENT_REQUIRED` |
+| TC-011 | Terms and consent are optional here; an explicit `false` is rejected | `200` without them / `400 ERROR_TERMS_NOT_ACCEPTED` / `ERROR_CONSENT_REQUIRED` |
 | TC-012 | Wrong or expired OTP at verify step | `400 ERROR_INVALID_OTP` / `ERROR_OTP_EXPIRED` |
 | TC-013 | Google Sign-In with a BANNED existing mobile | see cross-reference below |
+| TC-014 | Returning Google user whose account is suspended, banned or closed | `400 ERROR_ACCOUNT_SUSPENDED` / `ERROR_ACCOUNT_RECOVERY_REQUIRED`, no tokens |
 
 ### TC-001 — Flow A Step 1: Brand-New Google User
 
@@ -565,11 +566,12 @@ Check console log for `[DEV-MOCK] OTP for mobile=9111000001 purpose=MOBILE_VERIF
   "data": {
     "requiresMobileVerification": false,
     "accessToken": "...", "refreshToken": "...",
-    "aadhaarVerified": false, "userId": "..."
+    "aadhaarVerified": false, "userId": "...", "status": "IDENTITY_VERIFICATION_PENDING"
   }
 }
 ```
-> One call, done — no OTP, no mobile step. Same `idToken` as TC-001 on purpose: it's the *same*
+> One call, done — no OTP, no mobile step. `status` is returned so the client can route like a
+> normal sign-in. Same `idToken` as TC-001 on purpose: it's the *same*
 > Google account signing in a second time.
 
 ### TC-005 — Flow C: Link Google to an Existing ACTIVE Account
@@ -660,14 +662,17 @@ Same result if you legitimately wait 10+ minutes between step 1 and step 2 of an
 ```
 **400 Bad Request:** `ERROR_MOBILE_MISMATCH`, `"Mobile number does not match the registered session"`.
 
-### TC-011 — Terms Not Accepted / Consent Not Given
+### TC-011 — Terms and Consent Are Optional Here (Sign Up Collects Them)
 
-`POST /api/v1/auth/social/google/initiate-mobile`
+`POST /api/v1/auth/social/google/initiate-mobile` with **no** `termsAccepted`/`consentGiven`:
 ```json
-{ "socialSessionToken": "<valid>", "mobile": "9111000006", "termsAccepted": false, "consentGiven": true }
+{ "socialSessionToken": "<valid>", "mobile": "9111000006" }
 ```
-**400 Bad Request:** `ERROR_TERMS_NOT_ACCEPTED`. Repeat with `"consentGiven": false` (and
-`termsAccepted: true`) → `ERROR_CONSENT_REQUIRED`.
+**200 OK:** OTP sent. After verifying, the new user's `terms_accepted_at` and `consent_given_at` are
+**null**; they are recorded at Sign Up (`POST /auth/register/complete`).
+
+An explicit refusal is still rejected: `"termsAccepted": false` → **400** `ERROR_TERMS_NOT_ACCEPTED`;
+`"consentGiven": false` (with `termsAccepted: true`) → `ERROR_CONSENT_REQUIRED`.
 
 ### TC-012 — Wrong or Expired OTP at Verify Step
 
@@ -681,6 +686,44 @@ Expired OTP: wait 300+ seconds after TC-002 before verifying (or temporarily red
 This exact scenario is already documented in detail under **US-002 / TC-005** — see that section
 rather than duplicating it here, since it's really a one-account-enforcement test that happens to
 use this endpoint.
+
+### TC-014 — Returning Google User Whose Account Is Not in Good Standing
+
+**Prerequisite:** TC-003 completed (Google `mock-newgoogleuser` is linked).
+
+```sql
+UPDATE users SET status = 'SUSPENDED' WHERE mobile = '9111000001';
+```
+`POST /api/v1/auth/social/google` with `{ "idToken": "mock-newgoogleuser" }` → **400**
+`ERROR_ACCOUNT_SUSPENDED` ("Your account is suspended. Please contact support"), **no tokens** and
+no `user_sessions` row created. Repeat with `status = 'BANNED'` or `'CLOSED'` → **400**
+`ERROR_ACCOUNT_RECOVERY_REQUIRED`. Before this check existed a suspended user could sign in with
+Google and only lost access at the next token refresh.
+
+### US-101 Mobile App (Flutter) Scenarios
+
+Run the backend with the mock provider (default) and the app from a dev config
+(`GOOGLE_SIGN_IN=mock`). "Continue with Google" opens a development-only chooser; the name you type
+becomes `mock-<name>`, and the same name is always the same Google account. Use a new name for each
+new user.
+
+| TC | Scenario | Steps | Expected |
+|---|---|---|---|
+| MG-01 | Chooser | Create Account → Continue with Google | Dialog with a DEVELOPMENT ONLY banner; Cancel changes nothing |
+| MG-02 | New Google user | Choose a new name → enter a new mobile → OTP from the backend log | Mobile step shows the Google email; after the code the app opens Aadhaar; then Skip leads to Sign Up (terms collected there) |
+| MG-03 | Returning Google user | Sign out, choose the same name again | Home with no number or code (or the registration step the account is at) |
+| MG-04 | Link to an existing account | Choose a new name → enter the mobile of an existing `ACTIVE` account → code | Home; no new user created |
+| MG-05 | Unfinished account | As MG-04 with a mobile stuck at `EMAIL_VERIFICATION_PENDING` | Inline "unfinished registration" message on the mobile step |
+| MG-06 | Already linked | Link a second Google name to a mobile that already has Google | Inline "already linked" message |
+| MG-07 | Wrong code | Enter 000000 | "Invalid or expired OTP", stays on the code step |
+| MG-08 | Expired Google session | Wait more than 10 minutes between the chooser and the code | Message to sign in with Google again |
+| MG-09 | Suspended user | After MG-03 set the user to `SUSPENDED` and sign in again | "Your account is suspended" under the button, signed out |
+| MG-10 | Hindi and large text | Hindi device language, maximum text size | Nothing clipped (Hindi strings need native-speaker review) |
+| MG-11 | Screen reader | VoiceOver or TalkBack | Button, chooser fields and errors are announced |
+
+Automated coverage: `google_sign_in_test.dart`, `google_sign_in_controller_test.dart`,
+`google_accessibility_test.dart` and the whole-flow `integration_test/google_sign_in_flow_test.dart`
+(host-run only; not run on a device).
 
 ### Not Testable Yet (US-101)
 
@@ -711,7 +754,8 @@ DELETE FROM users WHERE mobile IN ('9111000001','9111000002','9111000003','91110
 | 400 | `ERROR_SOCIAL_SESSION_EXPIRED` | `socialSessionToken` unknown or its 10-minute TTL elapsed (TC-009) |
 | 400 | `ERROR_SOCIAL_SESSION_INVALID` | Session data malformed (not reachable through normal use) |
 | 400 | `ERROR_MOBILE_MISMATCH` | Verify-step mobile doesn't match the initiate-step mobile (TC-010) |
-| 400 | `ERROR_TERMS_NOT_ACCEPTED` / `ERROR_CONSENT_REQUIRED` | Missing consent flags at initiate-mobile (TC-011) |
+| 400 | `ERROR_TERMS_NOT_ACCEPTED` / `ERROR_CONSENT_REQUIRED` | Explicit `false` for either flag at initiate-mobile (TC-011) |
+| 400 | `ERROR_ACCOUNT_SUSPENDED` | Returning Google user's account is suspended (TC-014) |
 | 400 | `ERROR_INVALID_STATE` | Linking target account isn't `ACTIVE` yet (TC-006) |
 | 400 | `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED` | Target account already has a Google account linked (TC-007) |
 | 400 | `ERROR_ACCOUNT_RECOVERY_REQUIRED` | Linking target account is `BANNED`/`CLOSED` (see US-002 TC-005) |
