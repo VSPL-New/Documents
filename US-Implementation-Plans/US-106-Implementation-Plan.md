@@ -135,3 +135,32 @@ US-106 currently only exists as a story entry (`user-stories.md`) and a Sprint-p
 1. `mvn verify` from `valuex-backend/` — checkstyle, full test suite, JaCoCo 65% gate.
 2. Fast iteration: `mvn test -Dtest=UserLoginServiceTest,AuthControllerTest`.
 3. Manual check via Swagger UI: register a fresh user, let them sit at `EMAIL_VERIFICATION_PENDING` (don't complete email step), then call `POST /auth/login/initiate` with that mobile — confirm OTP is sent and `POST /auth/login/verify-mobile` returns a JWT with `aadhaarVerified: false`. Then complete Aadhaar verification via the existing flow, log out (no real logout yet — just discard the token), and log back in via `/auth/login/*` — confirm the new JWT has `aadhaarVerified: true`, proving it's read fresh and not stuck at whatever it was during registration.
+
+## Mobile Implementation (Flutter, `valuex-mobile`)
+
+Delivered on `feature/us-106-mobile-otp-login` after the backend work above. The backend contract is
+unchanged; the app calls `POST /auth/login/initiate` and `POST /auth/login/verify-mobile` and routes by
+the `status` returned in `AuthResponse` (see LLD §13, v1.9).
+
+**Decisions**
+- Two screens (`/sign-in`, `/sign-in/verify`) built on the existing auth form scaffold, mobile field and
+  OTP view. The OTP view gained a `login` channel instead of a second widget.
+- Sign In has its own entry controller, separate from the Sign Up mobile step, so a half-typed sign-up
+  number never leaks into login (and the reverse).
+- Unknown mobile: inline error plus a "Create an account" link. The footer "Sign up" carries a valid
+  entered number to Sign Up; Sign Up's footer links back to Sign In.
+- Create Account "Sign In", the account-unavailable screen and session expiry now route to Sign In; the
+  earlier "coming soon" stub is removed.
+- Error text is specific to login (no account, unfinished registration, suspended, recovery required).
+  The suspension end date is only inside the backend message, so it is not shown separately.
+- Visuals follow the design system, not Figma where they differ (recorded in
+  `valuex-mobile/docs/Flutter-Design-System.md` and `.figma/mapping.json`, node `3:247`).
+
+**Not in this iteration**
+- "Continue with Google/Apple" on Sign In (US-101/US-102).
+- Logout UI (US-104 mobile).
+- Native-speaker review of the Hindi strings.
+- Running `integration_test/sign_in_flow_test.dart` on a device.
+
+**Verification:** `flutter analyze` clean; 433 tests pass. Manual cases are in
+`Sprint-1-Combined-Testing-Guide.md` under "US-106 Mobile App (Flutter) Scenarios".
