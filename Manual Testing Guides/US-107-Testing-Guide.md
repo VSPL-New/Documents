@@ -4,7 +4,7 @@
 
 Manual test cases for the refresh-token exchange endpoint, using Swagger UI against a local dev environment.
 
-> **What this story actually ships:** a **stateless** refresh endpoint. It validates the submitted refresh token (signature, expiry, type) and the account's current standing, then reissues a new access+refresh pair with fresh `status`/`aadhaarVerified` values. It does **not** implement single-use rotation, theft detection, or logout-invalidation — those require session/`jti` tracking infrastructure that doesn't exist anywhere in this codebase yet (deferred to US-104/US-105). See `Documents/LLD/Sprint-1-Identity-User-Management-LLD.md` §14 for the full reasoning, and the **Not Testable Yet** section below before filing anything related as a bug.
+> **What this story ships:** a refresh endpoint that validates the submitted refresh token (signature, expiry, type, session not logged out) and the account's current standing, then reissues a new access+refresh pair with fresh `status`/`aadhaarVerified` values. Refresh tokens are **single-use**: each successful refresh replaces the session's stored token, and presenting an already-used token revokes the session (see `Documents/LLD/Sprint-1-Identity-User-Management-LLD.md` §14.7).
 
 | Setting | Value |
 |---|---|
@@ -45,7 +45,7 @@ Alternatively, if the test user already exists, use `US-106-Implementation-Plan.
 | TC-005 | Expired refresh token | `400 ERROR_REFRESH_TOKEN_EXPIRED` |
 | TC-006 | Account suspended after the refresh token was issued | `400 ERROR_ACCOUNT_SUSPENDED` |
 | TC-007 | Account banned/closed after the refresh token was issued | `400 ERROR_ACCOUNT_RECOVERY_REQUIRED` |
-| TC-008 | Old refresh token still works after being used once | `200` — **by design**, not a bug (see note) |
+| TC-008 | Refresh token used a second time | `400 ERROR_INVALID_REFRESH_TOKEN`, session revoked |
 | TC-009 | Refresh token rejected when used as a Bearer access token | `401`, protected endpoint denies the request |
 | TC-010 | Missing `refreshToken` in request body | `400`, Jakarta validation error |
 
@@ -208,18 +208,28 @@ Same result for `status = 'CLOSED'`.
 
 ---
 
-## TC-008 — Old Refresh Token Still Works After Being Used Once
+## TC-008 — Used Refresh Token Is Rejected and Revokes the Session
 
-**Goal:** Confirm the documented (not a bug) gap — this design does not invalidate a refresh token after it's used.
+**Goal:** Confirm single-use rotation and reuse detection.
 
 **Steps:**
-1. Get a refresh token, call `refreshToken_A`.
-2. `POST /api/v1/auth/refresh` with `refreshToken_A` → note the new `refreshToken_B` in the response.
-3. `POST /api/v1/auth/refresh` **again with the original `refreshToken_A`**.
+1. Log in (`/auth/login/*`) and note `refreshToken_A` and `accessToken_A`.
+2. `POST /api/v1/auth/refresh` with `refreshToken_A` → `200`; note `refreshToken_B` (different from A).
+3. `POST /api/v1/auth/refresh` **again with `refreshToken_A`**.
+4. `POST /api/v1/auth/refresh` with `refreshToken_B`.
+5. `GET /api/v1/users/me` with the access token from step 2.
 
-**Expected:** step 3 **succeeds** (`200`, another new token pair issued) — `refreshToken_A` was not invalidated by step 2 and remains usable until its own natural 7-day expiry.
+**Expected:**
+- Step 3: **400 `ERROR_INVALID_REFRESH_TOKEN`** — `refreshToken_A` was spent by step 2. The backend log shows `Refresh token reuse detected, revoking session`.
+- Step 4: **400 `ERROR_REFRESH_TOKEN_EXPIRED`** — the whole session was revoked by the reuse in step 3.
+- Step 5: **401** — the session's access token is blocklisted too.
+- `GET /users/me/sessions` no longer lists the session; `user_sessions.revoked_reason = 'REFRESH_TOKEN_REUSE'`.
 
-> **Do not file this as a bug.** True single-use rotation requires session/`jti` tracking that doesn't exist yet — explicitly deferred to US-104/US-105 (LLD §14.2, §14.5 item 1). This TC exists to confirm the *documented* current behavior, so a future rotation implementation has a regression test to flip.
+**Also check — chained use is fine:** log in, refresh with A → B, refresh with B → C, refresh with C → D. Every step returns `200` with a new token.
+
+**Also check — concurrency:** send two refreshes with the same token at once; exactly one returns `200`, the other `ERROR_INVALID_REFRESH_TOKEN` (and the session is then revoked, per LLD §14.7).
+
+**Also check — logout:** log out, wait longer than the access-token lifetime, then refresh with the pre-logout refresh token → **400 `ERROR_REFRESH_TOKEN_EXPIRED`** (the Redis blocklist entry has expired by then; the revoked session row still rejects it).
 
 ---
 
@@ -260,10 +270,7 @@ Same result for `status = 'CLOSED'`.
 
 ## Not Testable Yet (Don't File as Bugs)
 
-- **Single-use rotation / invalidate-on-reuse** — see TC-008. The old refresh token is never invalidated in this scope. Deferred to whenever US-104/US-105 land with real session/`jti` tracking.
-- **"Replayed rotated-out token → theft, invalidate token family"** — explicitly conditional in the user story on session tracking existing (`user-stories.md` US-107 edge cases). N/A until that infrastructure exists.
-- **"Logout invalidates the refresh token"** — categorically untestable: US-104 (logout) has no endpoint at all yet, zero "logout" references anywhere in `src/main/java`.
-- **Concurrent refresh calls near expiry** — both currently succeed independently (no mutual exclusion). Not a race-condition bug to report; a direct consequence of the stateless design (LLD §14.5, item 5).
+- **Grace window for a lost refresh response** — not built. A refresh response that never reaches the device leaves it with a spent token; its next refresh is treated as reuse and the user signs in again (LLD §14.7).
 - **Clock skew at the expiry boundary** — a pre-existing, systemic property of `JwtTokenProvider`'s JJWT configuration (zero tolerance), not something this story changed either way.
 
 ---

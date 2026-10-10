@@ -1647,10 +1647,10 @@ UPDATE users SET status = 'ACTIVE' WHERE mobile = '9000000040';
 
 ## US-107 — Access Token Refresh
 
-**What this ships:** a **stateless** refresh endpoint. It validates the submitted refresh token
-(signature, expiry, type) and the account's current standing, then reissues a fresh access+refresh
-pair. It does **not** implement single-use rotation, theft detection, or logout-invalidation
-beyond what US-104 already provides.
+**What this ships:** a refresh endpoint that validates the submitted refresh token (signature,
+expiry, type, session not logged out) and the account's current standing, then reissues a fresh
+access+refresh pair. Refresh tokens are **single-use**: using one again revokes the session
+(LLD §14.7).
 
 | Setting | Value |
 |---|---|
@@ -1669,7 +1669,7 @@ beyond what US-104 already provides.
 | TC-005 | Expired refresh token | `400 ERROR_REFRESH_TOKEN_EXPIRED` |
 | TC-006 | Account suspended after token issuance | `400 ERROR_ACCOUNT_SUSPENDED` |
 | TC-007 | Account banned/closed after token issuance | `400 ERROR_ACCOUNT_RECOVERY_REQUIRED` |
-| TC-008 | Old refresh token still works after one use (if not logged out) | `200` — by design, not a bug |
+| TC-008 | Refresh token used a second time | `400 ERROR_INVALID_REFRESH_TOKEN`, session revoked |
 | TC-009 | Refresh token rejected as Bearer access token | `401` |
 | TC-010 | Missing `refreshToken` in body | `400`, validation error |
 
@@ -1719,13 +1719,17 @@ Refresh with the still-valid token → **400:** `ERROR_ACCOUNT_SUSPENDED`.
 
 Same as TC-006 with `status = 'BANNED'` → **400:** `ERROR_ACCOUNT_RECOVERY_REQUIRED`.
 
-### TC-008 — Old Refresh Token Still Works After One Use
+### TC-008 — Used Refresh Token Is Rejected and Revokes the Session
 
-1. Get `refreshToken_A`.
-2. `POST /auth/refresh` with `refreshToken_A` → note `refreshToken_B`.
-3. `POST /auth/refresh` again with the **original** `refreshToken_A`.
+1. Log in; note `refreshToken_A`.
+2. `POST /auth/refresh` with `refreshToken_A` → `200`, note `refreshToken_B`.
+3. `POST /auth/refresh` again with `refreshToken_A`.
+4. `POST /auth/refresh` with `refreshToken_B`.
 
-**Expected:** step 3 **succeeds** (200) — no single-use rotation. **Do not file as a bug.**
+**Expected:** step 3 → **400** `ERROR_INVALID_REFRESH_TOKEN` (backend log: "Refresh token reuse
+detected"); step 4 → **400** `ERROR_REFRESH_TOKEN_EXPIRED` because the session was revoked. A normal
+chain (A → B → C → D) always returns `200`. Two simultaneous refreshes with one token: exactly one
+`200`.
 
 ### TC-009 — Refresh Token Rejected as Bearer Access Token
 
@@ -1738,10 +1742,8 @@ Authorize in Swagger UI with a **refresh token**, call `GET /api/v1/users/me` �
 
 ### Not Testable Yet (US-107)
 
-- "Replayed rotated-out token → theft, invalidate token family" — conditional on session tracking
-  this design intentionally keeps minimal.
-- Concurrent refresh calls near expiry — both succeed independently; a direct consequence of the
-  stateless design.
+- Grace window for a lost refresh response — not built; the device's next refresh is treated as
+  reuse and the user signs in again.
 - Clock skew at the expiry boundary — a pre-existing, systemic JJWT configuration property.
 
 ### US-107 Reset Between Tests

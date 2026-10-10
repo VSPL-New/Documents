@@ -1938,6 +1938,9 @@ why it isn't folded into `UserRegistrationService`). Same codes/messages: `NEW`/
 
 ## 14.5 ACs and Edge Cases NOT Satisfied by This Scope
 
+> **Update:** items 1–5 below were resolved after US-104/US-105 introduced `jti` and the
+> `user_sessions` table — see §14.7. They are kept as the record of the original stateless scope.
+
 Documented explicitly, not silently dropped:
 
 1. **Old refresh token is not invalidated on use** — stays valid until its own 7-day expiry. The
@@ -1966,7 +1969,7 @@ screen. On a `401` from an authenticated call it posts the stored refresh token 
 `/auth/refresh` (a separate Dio instance, so the refresh call cannot trigger itself), saves the new
 pair in secure storage and retries the original request once. Concurrent `401`s share one refresh,
 and a request that failed with a token another call has since replaced is retried with the new
-token without a second refresh (so a future single-use rotation will not trip over the client).
+token without a second refresh (so single-use rotation, §14.7, does not trip over the client).
 
 Outcomes of a refresh, published as events on `ApiClient.sessionEvents`:
 
@@ -1977,8 +1980,53 @@ Outcomes of a refresh, published as events on `ApiClient.sessionEvents`:
 | `ERROR_ACCOUNT_SUSPENDED`, `ERROR_ACCOUNT_RECOVERY_REQUIRED` | Tokens cleared; account-unavailable screen ("Back to Sign In") |
 | Network error, timeout, `5xx` | Tokens kept; the original call fails with a retryable error |
 
-A `401` after the retry also ends the session. Items 1–5 of §14.5 still apply to the client:
-it simply uses whatever the backend accepts.
+A `401` after the retry also ends the session. Since refresh tokens are single-use (§14.7), a
+refresh whose response is lost in transit leaves the device holding a spent token; its next refresh
+is treated as reuse and the user signs in again.
+
+## 14.7 Single-Use Refresh Tokens (rotation)
+
+US-104/US-105 added the pieces §14.2 was waiting for: every session has a `jti` and a
+`user_sessions` row that already stores `refresh_token_hash`, the hash of the latest refresh token
+issued for it. Rotation needed no schema change.
+
+```
+POST /api/v1/auth/refresh  (after validateToken, type, blocklist, user and good-standing checks)
+  → generate the new access + refresh pair (same jti)
+  → SessionService.rotateRefreshToken(jti, presented, replacement):
+      no session row (token minted before session tracking)  → create the row from the new token
+      UPDATE user_sessions SET refresh_token_hash = :new
+       WHERE id = :jti AND refresh_token_hash = :presented AND revoked_at IS NULL
+        1 row  → rotated, return the new pair
+        0 rows → session already revoked         → ERROR_REFRESH_TOKEN_EXPIRED
+                  otherwise (token already used)  → revoke the session (reason REFRESH_TOKEN_REUSE,
+                                                    jti blocklisted) and ERROR_INVALID_REFRESH_TOKEN
+```
+
+- **Atomic:** the compare-and-swap is one SQL `UPDATE`, so of two concurrent refreshes with the
+  same token exactly one wins.
+- **Reuse revokes the session** (the story's "invalidate the token family": a family is one
+  session/jti), which also blocklists the current access token.
+- **Unique tokens:** refresh tokens carry a random `rid` claim. Without it two refreshes within the
+  same second mint byte-identical tokens (same `sub`, `jti`, `iat`) and the old token could not be
+  told from the new one.
+- **Closes a logout gap:** the Redis blocklist entry only lives for the access token's remaining
+  lifetime, so before this a logged-out refresh token worked again after that. The rotation update
+  requires `revoked_at IS NULL`, so a revoked session stays dead for the refresh token's full life.
+- **No new error codes:** the client already treats both codes as "sign in again".
+
+Consequences to be aware of:
+
+1. A refresh response lost in transit (or the app killed before saving the new tokens) leaves the
+   device with a spent token; the next refresh looks like reuse and ends the session. A short grace
+   window for the previous token would soften this; not built.
+2. Two clients holding the same refresh token and refreshing at once — one wins, the other triggers
+   reuse handling and revokes the session, so the winner's new tokens stop working too. The mobile
+   app refreshes through one shared call per device, so this only affects a copied token.
+3. A token minted before session tracking existed is accepted once to create its row; it cannot be
+   checked for earlier use.
+
+Remaining from §14.5: items 6–8 (clock skew, expired access token reporting, `authProvider` reset).
 
 ---
 
