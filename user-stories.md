@@ -4176,9 +4176,13 @@
 - `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Google account is already linked to another ValueX account"
 
 **Flutter Implementation Notes:**
-- Use `google_sign_in` Flutter package
-- Send `idToken` from Google to backend — backend validates, never trust client-side verification
-- On success show standard home screen; on new account show mobile verification screen
+- Use `google_sign_in` Flutter package (v7). The app sends only the `idToken`; the backend validates it and the app never trusts client-side verification. The app signs the Google account out locally right after reading the token
+- The entry point is the existing "Continue with Google" button on Create Account; Sign In has none (its design has no Google button)
+- Returning Google user: `status` in the response drives the same routing as Sign In (`ACTIVE` goes to Home, unfinished registration resumes at its step). A suspended or banned account is refused with the standard messages and the user stays signed out
+- New Google account: a mobile-number step and an OTP step (the shared OTP view, `googleLink` channel) follow. Verifying creates the account at `IDENTITY_VERIFICATION_PENDING` (Aadhaar, then Sign Up), or links Google to an existing `ACTIVE` account (straight to Home)
+- Terms and consent are not sent with the number: Sign Up collects and records them, as for mobile-OTP registration. The backend leaves them unset until then
+- Build configuration: `GOOGLE_SIGN_IN=mock` (development; a dev-only account chooser sends `mock-<name>` to a backend running the mock verifier, rejected in prod) or `native` with `GOOGLE_SERVER_CLIENT_ID` (the web client ID the backend accepts) and optional `GOOGLE_IOS_CLIENT_ID`
+- Not done yet: real Google OAuth clients (Web, Android with SHA-1s, iOS with URL scheme), and Apple guideline 4.8 (an equivalent privacy-preserving login is needed once Google is offered on iOS; Sign in with Apple is out of scope)
 
 ---
 
@@ -4778,7 +4782,7 @@
 
 **Total User Stories:** 111  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.10 (Updated 2026-10-10) — US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.11 (Updated 2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
