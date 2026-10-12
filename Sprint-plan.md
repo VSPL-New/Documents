@@ -129,12 +129,14 @@ Enable buyers to discover items.
 | US-012 | View Listing Details       | backend, mobile | 5  | US-011     |
 | US-073 | Save and Bookmark Listings | backend, mobile | 3  | US-012     |
 | US-066 | Saved Searches and Alerts  | backend, mobile | 5  | US-011     |
+| US-111 | Home Page (backend feed, categories, promos; mobile UI already built on a mock repository) | backend, mobile | 8 | US-011 |
 
 ## Exit Criteria
 
 * Search operational with filters
 * Listing detail view complete
 * Saved items and search alerts working
+* Home page served by real endpoints for categories, featured listings near the user and promos, replacing the mock repository (US-111)
 
 ---
 
@@ -212,6 +214,7 @@ Enable fulfillment workflow.
 | ID     | Story                                     | Repo            | SP | Dependency |
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
 | US-092 | Lifecycle State - Shipping                | backend         | 3  | US-023     |
+| US-112 | Seller Incoming Orders                    | backend, mobile | 5  | US-023, US-103 |
 | US-026 | Seller Prepares Package and Uploads Proof | backend, mobile | 5  | US-023     |
 | US-027 | Pickup Scheduling                         | backend, mobile | 5  | US-026     |
 | US-028 | Item Pickup by Logistics Partner          | backend         | 5  | US-027     |
@@ -225,8 +228,10 @@ Enable fulfillment workflow.
 ## Exit Criteria
 
 * End-to-end shipping operational
+* Sellers see every order grouped as New, Packing, Scheduled and Shipped on Incoming Orders (Profile > Selling) and can start packing, continue packing, schedule pickup and view the schedule from it (US-112). "Reject" on a New order opens US-059 and is enabled when Sprint 7 ships; until then it shows the coming-soon message
 * Logistics partner integration complete
 * Payment release mechanism working
+* Seller Incoming Orders page reachable from the Profile hub (US-112)
 
 ---
 
@@ -266,6 +271,7 @@ Enable order cancellation and return workflows.
 ## Exit Criteria
 
 * Order cancellation working with penalties
+* "Reject" on a New order in Seller Incoming Orders (US-112) opens the seller cancellation flow (US-059)
 * Return flow complete
 * Refund processing operational
 
@@ -476,10 +482,10 @@ Add advanced features and optimize platform.
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
 | S1     | Identity & User Management          | 13      | 62* | 2 weeks  |
 | S2     | Seller Listing Creation             | 10      | 52  | 2 weeks  |
-| S3     | Discovery & Search                  | 4       | 21  | 2 weeks  |
+| S3     | Discovery & Search                  | 5       | 29  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
 | S5     | Cart, Checkout & Payments           | 12      | 62  | 2 weeks  |
-| S6     | Shipping & Delivery                 | 10      | 44  | 2 weeks  |
+| S6     | Shipping & Delivery                 | 11      | 49  | 2 weeks  |
 | S7     | Order Cancellation & Returns        | 6       | 34  | 2 weeks  |
 | S8     | Ratings & Disputes                  | 5       | 27  | 2 weeks  |
 | S9     | Trust & Safety                      | 7       | 39  | 2 weeks  |
@@ -489,13 +495,13 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **113** | **603*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **115** | **616*** | **32 weeks** |
 
-\* Sprint 1 and total points add US-108 (3), US-109 (5, proposed) and US-110 (8, proposed) to the previous figures.
+\* Sprint 1 and total points add US-108 (3), US-109 (5, proposed) and US-110 (8, proposed) to the previous figures. Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them).
 
 ## Coverage
 
-### Stories Planned: 113 / 110 total user stories
+### Stories Planned: 115 / 112 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -509,6 +515,8 @@ Add advanced features and optimize platform.
 - Address Management (US-108): ✅ 1 story (Sprint 1)
 - Mobile App Security (US-109): ✅ 1 story (Sprint 1)
 - UI Quality (US-110): ✅ 1 story (Sprint 1)
+- Home (US-111): ✅ 1 story (Sprint 3)
+- Seller Order Management (US-112): ✅ 1 story (Sprint 6)
 
 **Not Yet Planned (Future Backlog):**
 - US-061: Screen Reader Compatibility (merged into US-099)

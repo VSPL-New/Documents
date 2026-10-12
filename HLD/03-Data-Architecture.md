@@ -123,6 +123,7 @@ erDiagram
 
 USER ||--o{ LISTING : creates
 USER ||--o{ ORDER : places
+USER ||--o{ ORDER : fulfils
 USER ||--o{ RATING : gives
 USER ||--o{ CHAT_THREAD : participates
 
@@ -405,12 +406,19 @@ CREATE TABLE cart_items (
 ```sql
 CREATE TABLE orders (
     id UUID PRIMARY KEY,
+    order_number VARCHAR(30) UNIQUE,
     buyer_id UUID,
+    seller_id UUID,
+    delivery_mode VARCHAR(20),
     status VARCHAR(50),
     total_amount NUMERIC(12,2),
     created_at TIMESTAMP
 );
 ```
+
+`order_number` is the public reference shown to both buyer and seller (US-023, US-112). `delivery_mode` is `DELIVERY` or `SELF_PICKUP` (US-020); the seller's Incoming Orders queue lists both and marks self-pickup orders (US-112). `seller_id` is denormalised from `order_items.seller_id` for that queue.
+
+Each cart item becomes its own order: a consolidated payment for any number of items from any number of sellers creates one order per item, each with its own order number, escrow, delivery and refund (US-019, US-021). So every order has exactly one item and exactly one seller, and `seller_id` is a plain column.
 
 ---
 
@@ -1005,6 +1013,10 @@ ON orders(buyer_id);
 
 CREATE INDEX idx_order_status
 ON orders(status);
+
+-- Seller's Incoming Orders queue and summary counts (US-112)
+CREATE INDEX idx_order_seller_status
+ON orders(seller_id, status, created_at DESC);
 ```
 
 ---
