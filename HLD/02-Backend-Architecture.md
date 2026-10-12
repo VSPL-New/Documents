@@ -230,6 +230,10 @@ GET    /api/v1/users/me/payout-methods
 POST   /api/v1/users/me/payout-methods
 ```
 
+### Profile Hub Badges (US-103)
+
+`GET /api/v1/users/me/menu-summary` returns the profile summary and a `badges` map. Each domain module adds its own count by implementing the `ProfileMenuBadgeProvider` SPI (`menuKey()`, `badgeCount(userId)`), so this module never reads another module's tables. Badge keys in use or planned: `MY_ORDERS`, `INCOMING_ORDERS` (Order module, US-112), `OFFERS`, `NOTIFICATIONS`, `SUPPORT_TICKETS`.
+
 ---
 
 ## 4.3 Listing Module
@@ -454,10 +458,11 @@ POST   /api/v1/cart/checkout
 
 ### Responsibilities
 
-* Order creation
+* Order creation: one order per cart item, so one consolidated payment can create several orders, each with its own order number, escrow, delivery and refund
 * Order lifecycle
 * Order history
 * Cancellation
+* Seller fulfilment queue (Incoming Orders): the seller's open orders grouped as New, Packing, Scheduled and Shipped, with the next allowed action per order, and the New-order count for the Profile hub badge
 
 ### Owns
 
@@ -474,6 +479,16 @@ GET  /api/v1/orders/{id}
 POST /api/v1/orders/{id}/cancel
 POST /api/v1/orders/{id}/confirm-receipt
 ```
+
+### Seller Fulfilment APIs (US-112)
+
+```http
+GET  /api/v1/seller/orders
+GET  /api/v1/seller/orders/summary
+POST /api/v1/seller/orders/{orderId}/start-packing
+```
+
+The queue is a read model over `orders` and the US-090 lifecycle state. The server maps order states to the four buckets and decides which actions a card offers, so the mobile app does not hold the state machine. Packing proof, pickup scheduling and seller cancellation stay in their own stories (US-026, US-027, US-059). The module contributes an `INCOMING_ORDERS` count (orders in the New state) to the Profile menu summary through the `ProfileMenuBadgeProvider` SPI (US-103, see §4.2 and LLD Sprint 1 §8.2) and publishes the new-order event that the Notification module turns into a push (US-077).
 
 ---
 

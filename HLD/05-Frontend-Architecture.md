@@ -351,7 +351,13 @@ Profile
  → Subscription
  → Support
  → Settings
+ → Incoming Orders (seller)
+     → Pack & Upload Proof
+     → Schedule Pickup / View Schedule
+     → Order Details
 ```
+
+Incoming Orders is a pushed screen with a back button, opened from the Profile hub (US-103, US-112). It is not a bottom-navigation tab.
 
 ---
 
@@ -380,6 +386,9 @@ Plan Selection
 Listing Management
 Offer Management
 Seller Analytics
+Incoming Orders
+Pack & Upload Proof
+Schedule Pickup
 ```
 
 ---
@@ -515,6 +524,7 @@ Firebase Cloud Messaging
 
 ```text
 Order Updates
+New Order Received (seller, opens Incoming Orders)
 Payment Updates
 Disputes
 Account Security

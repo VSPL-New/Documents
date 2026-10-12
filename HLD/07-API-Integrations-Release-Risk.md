@@ -440,6 +440,25 @@ POST /api/v1/orders/{id}/confirm-receipt
 
 ---
 
+## Seller Incoming Orders (US-112)
+
+All three endpoints return only the caller's own orders and require an `ACTIVE` account.
+
+```http
+GET /api/v1/seller/orders?bucket=NEW|PACKING|SCHEDULED|SHIPPED&page=0&size=20
+GET /api/v1/seller/orders/summary
+POST /api/v1/seller/orders/{orderId}/start-packing
+```
+
+* `GET /seller/orders` is paginated (`page`, `size`, `totalElements`, `totalPages` in `metadata`), ordered New, Packing, Scheduled, Shipped, newest first inside each bucket; `bucket` is optional and filters to one bucket.
+* `GET /seller/orders/summary` returns the four counts and the total, used by the page header, the count tiles and the Profile badge.
+* `POST /seller/orders/{orderId}/start-packing` moves the order from `SHIPPING_MODE_SELECTED` to `SELLER_PACKING_PENDING`; repeating it on an order that is already packing returns the same result.
+* Each order carries an `actions` list decided by the server (`START_PACKING`, `REJECT`, `CONTINUE_PACKING`, `SCHEDULE_PICKUP`, `VIEW_SCHEDULE`, `VIEW_PICKUP_DETAILS`). Packing proof (US-026), pickup scheduling (US-027) and seller cancellation (US-059) use their own endpoints.
+* Each order also carries `deliveryMode` (`DELIVERY` or `SELF_PICKUP`); self-pickup orders are listed like any other New order and the app marks them "Self Pickup by Buyer".
+* Errors: `ERROR_ORDER_ACTION_NOT_ALLOWED` (409), `ERROR_ORDER_NOT_FOUND` (404).
+
+---
+
 # 10. Payment APIs
 
 ## Initiate Payment

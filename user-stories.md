@@ -29,6 +29,7 @@
 20. [Mobile App Security](#mobile-app-security)
 21. [UI Quality](#ui-quality)
 22. [Home](#home)
+23. [Seller Order Management](#seller-order-management)
 
 ---
 
@@ -830,7 +831,7 @@
 - Then items are grouped by seller
 - When I proceed to checkout
 - Then I make one payment transaction
-- And system creates separate escrows per item
+- And system creates one order per item, each with its own order number and its own escrow
 
 **Edge Cases:**
 - Item removed by seller after adding to cart
@@ -923,20 +924,21 @@
 - Then payment is processed via payment gateway
 - When payment succeeds
 - Then funds are held in escrow (separate per item)
-- And order is created
-- And seller is notified to ship
+- And one order is created per item, each with its own order number
+- And each seller is notified to ship their own items
 - And I receive order confirmation
 
 **Edge Cases:**
 - Payment gateway timeout
 - Payment fails after deduction
-- Partial payment success (multi-item cart)
+- Payment succeeds but creating the order for one of the items fails (the consolidated payment covers several item orders)
 - User closes app during payment
 - Duplicate payment attempt
 
 **Validation Rules:**
-- Payment amount must match order total
-- Escrow created per item (not combined)
+- Payment amount must match the total of all the item orders in the checkout
+- Escrow created per item (not combined); each item's amount is paid out only to that item's seller
+- Every order covers exactly one item
 - Payment confirmation required before order creation
 - Buyer must complete payment within 15 minutes
 - Failed payments auto-cancel order
@@ -1015,7 +1017,7 @@
 **Edge Cases:**
 - Tracking not updated by logistics partner
 - Order stuck in one status for days
-- Multiple items from same seller shipped separately
+- Several items bought together from the same seller are separate orders and are shipped separately
 - Logistics partner returns item to seller
 
 **Validation Rules:**
@@ -1140,6 +1142,9 @@
 - `ERROR_IMAGE_UPLOAD_FAILED`: "Failed to upload images. Try again"
 - `WARNING_IMAGE_QUALITY_LOW`: "Image quality low. Upload clearer photo"
 
+**Related User Stories:**
+- US-112: this screen opens from "Start Packing" and "Continue Packing" on the seller's Incoming Orders page
+
 ---
 
 ### US-027: Pickup Scheduling
@@ -1179,6 +1184,9 @@
 - `ERROR_NO_LOGISTICS_AVAILABLE`: "No pickup service in your area. Contact support"
 - `ERROR_INVALID_TIMESLOT`: "Selected time slot unavailable"
 - `ERROR_PICKUP_DELAYED`: "Pickup delayed. We'll notify you when rescheduled"
+
+**Related User Stories:**
+- US-112: "Schedule Pickup" and "View Schedule" on the seller's Incoming Orders page open this flow
 
 ---
 
@@ -2349,7 +2357,7 @@
 **Edge Cases:**
 - Buyer cancels just as logistics partner is picking up
 - Multiple cancellation attempts (duplicate requests)
-- Buyer cancels multi-item order (partial vs. full cancellation)
+- Buyer cancels one of several items bought together: only that item's order is cancelled and refunded, because each item is its own order
 - Refund fails due to payment method issues
 - Seller already shipped item before cancellation processed
 
@@ -2422,6 +2430,7 @@
 - Penalty amount calculated and shown in confirmation dialog before seller confirms
 - Cancellation count badge visible in seller dashboard header
 - Cooling-period timer shown on the affected listing in MyListingsScreen
+- "Reject" on a New order in Incoming Orders (US-112) opens this same cancellation flow, with the same penalty warning and confirmation
 
 ---
 
@@ -2807,7 +2816,7 @@
 - User has hundreds of orders (pagination)
 - Order deleted by admin
 - Seller account suspended after order
-- Multi-item orders display
+- Items bought together in one checkout appear as separate orders, each with its own order number
 
 **Validation Rules:**
 - Orders sorted by date (newest first)
@@ -3710,12 +3719,16 @@
 - Auto-complete after 7 days if no buyer action
 - CANCELLED triggers refund
 - SHIPMENT_LOST triggers investigation
+- Each order covers exactly one item; a checkout with several items creates several orders (US-019, US-021)
 
 **Validation Rules:**
 - State transitions sequential
 - Cannot skip states (except exceptions like CANCELLED)
 - Both parties notified at key states
 - Timestamps recorded for SLA tracking
+
+**Related User Stories:**
+- US-112: tapping "Start Packing" on Incoming Orders moves the order from `SHIPPING_MODE_SELECTED` to `SELLER_PACKING_PENDING`; the seller's Incoming Orders buckets (New, Packing, Scheduled, Shipped) are derived from these states
 
 ---
 
@@ -4249,7 +4262,7 @@
 - When I tap the "Profile" tab
 - Then I see my profile summary (photo, display name, rating, joined date) at the top
 - And below it, a menu of sections grouped by category:
-  - **Activity**: My Orders, My Listings, Saved Items, Offers/Negotiations
+  - **Activity**: My Orders, Incoming Orders (seller orders to pack and ship), My Listings, Saved Items, Offers/Negotiations
   - **Payments**: Payment & Transaction History, Payout Settings (sellers only)
   - **Preferences**: Notification Preferences, Language
   - **Support**: Help & Support, Raise Dispute, My Support Tickets
@@ -4268,6 +4281,7 @@
 **Validation Rules:**
 - Sections requiring seller status remain visible to all users but stay empty until first listing
 - Badge counts refresh on profile view and on relevant push notification receipt
+- The Incoming Orders badge is the number of orders in the New state (US-112)
 - Logout requires confirmation dialog (see US-104)
 
 **Error Scenarios:**
@@ -4275,7 +4289,7 @@
 
 **Related User Stories:**
 - Profile summary fields: US-003
-- Activity: My Orders → US-023, US-070; My Listings → US-010, US-067, US-064; Saved Items → US-073; Offers → US-076
+- Activity: My Orders → US-023, US-070; Incoming Orders → US-112; My Listings → US-010, US-067, US-064; Saved Items → US-073; Offers → US-076
 - Payments: US-071 (transaction history), US-072 (payout settings)
 - Preferences: US-087 (notifications), US-044 (language)
 - Support: US-043, US-045, US-046 (help & support), US-047 (raise dispute), US-074 (ticket status)
@@ -4775,14 +4789,162 @@
 **Backend Notes:**
 - Needs endpoints for the categories list, the home feed (featured and nearby listings by area or coordinates, ranked by plan) and active promos; none exist yet
 - Promo content is managed by the product team and loaded before launch
+- Scheduling: the mobile page is already built on a mock repository; the backend endpoints are delivered in Sprint 3 (Discovery & Search), after US-011, and the app then switches to them
+
+---
+
+## Seller Order Management
+
+### US-112: Seller Incoming Orders
+**As a** seller  
+**I want** one list of every order buyers have placed on my items, grouped by what I need to do next  
+**So that** I can pack, schedule pickup and follow each order without searching through chats and notifications
+
+**Design Note:** Built from the Figma Make app screen `SellerIncomingOrdersScreen` (Profile > Selling > Incoming Orders). Make shows four sample orders, one per status, with sample buyers, items and prices; that content is a sample, not data. Where the Make screen differs from `valuex-mobile/docs/Flutter-Design-System.md`, the design system wins (colours, type sizes, 48 dp tap targets, the single brand gradient). Make's "Reject" button has no action defined; this story defines it (see Acceptance Criteria and Open Questions).
+
+**Related User Stories:**
+- US-103: Profile hub entry ("Incoming Orders") and its New-order badge
+- US-023: the order, its reference number and the order details page
+- US-090: order lifecycle states from which the four buckets are derived
+- US-020, US-022: delivery or self-pickup choice and the self-pickup payment options
+- US-031: the buyer confirms collection of a self-pickup order, which completes it
+- US-026: "Start Packing" and "Continue Packing" open Pack & Upload Proof
+- US-027: "Schedule Pickup" and "View Schedule" open pickup scheduling
+- US-059: "Reject" opens seller cancellation with penalty
+- US-058: a buyer cancelling removes the order from this list
+- US-029: tracking after pickup (the Shipped bucket)
+- US-070: completed, cancelled and returned orders are found in order history
+- US-077: new-order push notification
+- US-110, US-099: accessibility and design system rules the screen must meet
+
+**Acceptance Criteria:**
+- Given my account is `ACTIVE` and buyers have paid for orders on my items
+- When I open Profile and tap "Incoming Orders" under Selling
+- Then I see the Incoming Orders page with a back button, the title "Incoming Orders" and the line "{n} orders · {x} new"
+- And when {x} is more than zero, a "{x} New" badge is shown beside the title
+- And I see four count tiles: New, Packing, Scheduled and Shipped
+- And I see my orders as cards, ordered New first, then Packing, Scheduled and Shipped, newest first inside each group
+- And each card shows: the order reference, an "URGENT" tag when it applies, a status chip (icon and text), the item photo, title and price in INR, "Buyer: {name}" with the buyer's initials, and how long ago the order was placed
+- And each card has an action area and a button that opens the order details
+- Given an order is **New Order** (paid, delivery chosen, I have not started packing)
+- Then the card offers "Start Packing" and "Reject"
+- When I tap "Start Packing"
+- Then the order moves to Packing and I open Pack & Upload Proof for it (US-026)
+- When I tap "Reject"
+- Then I see the seller cancellation confirmation with the penalty warning (US-059), and only after I confirm is the order cancelled and the buyer refunded in full
+- And the penalty always applies once a buyer has booked the order and paid into escrow, whenever I reject it; a Pay at Pickup order has no escrow payment, so no penalty applies (buyer and seller agree it between themselves)
+- Given an order is **Packing Required** (packing started, proof not yet uploaded)
+- Then the card offers "Continue Packing", which reopens Pack & Upload Proof with the photos I already added kept
+- Given I uploaded proof but have not scheduled pickup
+- Then the order stays in Packing and the card offers "Schedule Pickup" (US-027)
+- Given an order is **Pickup Scheduled**
+- Then the card offers "View Schedule", which shows the pickup date, time slot and address (US-027)
+- Given an order is **Shipped** (picked up, in transit, out for delivery, delivered or waiting for buyer confirmation)
+- Then the card shows "Order Shipped" as a status and has no action button; I follow progress on the order details (US-029)
+- Given an order is a **self-pickup order** (the buyer collects the item from me, US-020)
+- Then it is treated like any other New Order: it is in the New group with the "New Order" chip and the extra tag "Self Pickup by Buyer"
+- And there is no shipping for it: no packing proof and no pickup scheduling
+- And the card offers "View Pickup Details" (my pickup address and hours as the buyer sees them) and "Reject"
+- And it is never marked URGENT, because there is no logistics pickup deadline
+- When the buyer collects the item and confirms in the app (US-031)
+- Then the order is completed and leaves the list
+- When I tap the order details button on any card
+- Then I open the order details with its timeline, buyer, item and the amount held in escrow (US-023)
+- When a buyer pays for one of my items
+- Then I get a push notification (US-077), the Profile "Incoming Orders" badge increases, and opening the notification takes me to this page
+- When I pull down
+- Then the page refreshes the list and the counts
+- When I come back from packing or pickup scheduling
+- Then the card shows the new status without a manual refresh
+- When there are more than 20 orders
+- Then more are loaded as I scroll
+- And when all are loaded I see "Showing all {n} incoming orders" at the bottom
+- Given I have no incoming orders
+- Then I see an empty state: "No incoming orders yet. Orders for your listings will appear here", and the counts show 0
+- Given an order is completed, cancelled, returned or in dispute
+- Then it is no longer in this list and is found in order history (US-070)
+- Given the network is down
+- When I open the page
+- Then I see the last loaded list with a message and a Retry button, or an error state with Retry when nothing was loaded before
+
+**Status Mapping (from US-090 order states):**
+
+| Bucket (chip text) | Order states | Seller actions |
+|---|---|---|
+| New ("New Order") | `SHIPPING_MODE_SELECTED`, delivery orders | Start Packing, Reject |
+| New ("New Order", tag "Self Pickup by Buyer") | `SHIPPING_MODE_SELECTED`, self-pickup orders (paid into escrow, or Pay at Pickup, US-022) | View Pickup Details, Reject |
+| Packing ("Packing Required") | `SELLER_PACKING_PENDING`; `SELLER_PROOF_UPLOADED` | Continue Packing; Schedule Pickup |
+| Scheduled ("Pickup Scheduled") | `PICKUP_SCHEDULED` | View Schedule |
+| Shipped ("Shipped") | `PICKED_UP`, `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `DELIVERED`, `BUYER_PROOF_PENDING`, `BUYER_CONFIRMATION_PENDING`, `DELIVERY_FAILED`, `SHIPMENT_LOST` | none |
+
+Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETED`, `CANCELLED`, `RETURN_REQUESTED`, `RETURN_TO_SELLER`, `DISPUTE_RAISED`.
+
+**Edge Cases:**
+- A buyer cancels (US-058) or the order changes state while the seller has the page open: the seller taps an action on a stale card and is told the order has moved on, then the card refreshes
+- The seller taps "Start Packing" twice, or on two devices: the second request does nothing harmful and opens the same packing screen
+- The seller leaves Pack & Upload Proof without finishing: the order stays in Packing and the entered photos are kept where possible
+- The seller uploads proof but does not schedule pickup: the order stays in Packing with "Schedule Pickup"
+- Several orders for the same item or the same buyer
+- A cart with several items from several sellers becomes one order per item, each with its own order number, escrow, delivery and refund, so each item is its own card
+- Buyer name is very long, has no Latin letters, or is a single word (initials from the first letters of the first two words)
+- Item photo fails to load or the item has since been removed (a placeholder is shown; the order stays)
+- A delivery exception (`DELIVERY_FAILED`, `SHIPMENT_LOST`) is shown in Shipped with its status text so the seller can see it
+- Hundreds of orders (pagination); counts above 99
+- Hindi text; text size at 200%; item titles that wrap
+- Seller account suspended or banned: the page is not available (US-088)
+- Self-pickup orders (US-020, US-022) are New orders with the tag "Self Pickup by Buyer" and no shipping; a Pay at Pickup order has no escrow payment, and the buyer may never collect it
+
+**Validation Rules:**
+- Only the seller's own orders are returned; another user's order is never visible
+- The buyer is shown by display name and initials only; no mobile number, email or address (contact goes through the masked channels of Sprint 4)
+- Prices are shown in INR with Indian digit grouping (for example ₹1,85,000); the amount is the order amount (each order is one item)
+- The order reference is the same reference the buyer sees (US-023). While the page runs on mock data it shows the sample numbers from the Figma Make screen (for example ORD-S-1001); with real data it shows the actual order number from the backend
+- "Urgent" is decided by the server, not the app: a New order whose seller deadline (pickup within 48 hours of the order, US-027) is within 24 hours; self-pickup orders are never urgent
+- Which buttons a card shows is decided by the server from the order state, so the app does not hold the state machine
+- "Start Packing" is allowed only from the New state; "Continue Packing" and "Schedule Pickup" only from Packing; the server rejects any other request
+- "Reject" is offered on New orders and on self-pickup orders; once packing has started the seller cancels from the order details through US-059. In both cases the US-059 penalty applies in full, except on Pay at Pickup orders, which have no escrow payment and no penalty
+- Counts and list come from the same data and agree after a refresh
+- Every control has a tap area of at least 48 by 48 dp and a label; the page title is a heading; text is at least 14 px for anything important and passes 4.5:1 contrast; a status is told by its icon and text, never by colour alone (US-110)
+- The screen is added to the automated accessibility and heading tests
+
+**Error Scenarios:**
+- `ERROR_INCOMING_ORDERS_LOAD_FAILED`: "Unable to load your incoming orders. Pull down or tap Retry"
+- `ERROR_ORDER_ACTION_NOT_ALLOWED`: "This order has already moved to the next step. Refreshing"
+- `ERROR_ORDER_NOT_FOUND`: "This order is no longer available"
+- `ERROR_SECTION_UNAVAILABLE`: "This section is temporarily unavailable" (US-103)
+
+**Flutter Implementation Notes:**
+- Page `SellerIncomingOrdersScreen` under `lib/features/order/`, route `/seller/orders`, opened from the Profile "Incoming Orders" row; it has a back button (it is not a bottom-navigation tab)
+- Layout from Make: header (back, title, count line, New badge) over a tint-to-background fade, a four-tile summary row, then order cards; the card has a header row (reference, URGENT, status chip), an item row (photo, title, price, buyer avatar and name, time) and an action row (primary button, secondary button, details button)
+- Design system mapping: Poppins title and DM Sans text; the status chip uses brand colours with an icon and text; "Start Packing" is `BrandGradientButton`, "Reject" is a destructive secondary using `brandError`, other actions use `SingleToneButton`; tiles and cards use the existing card tokens; details button is a 48 dp icon button
+- Providers: an incoming-orders list provider (paged) and a summary provider; the summary also feeds the Profile badge; both are refreshed after any action and when a new-order push arrives
+- Mobile talks to the backend through a repository interface; until the endpoints exist a mock repository supplies the four sample orders from Make so the screen can be built first, and is replaced by the real repository without a screen change
+- Actions navigate to the existing packing and pickup screens of US-026 and US-027; the buttons shown come from the server's `actions` list; the self-pickup tag "Self Pickup by Buyer" is shown from `deliveryMode`
+- While running on mock data the repository returns the four sample orders from Make with their order numbers (ORD-S-1001 and so on); the real repository shows the backend order number
+- All strings in the English and Hindi ARB files; relative time uses a localized formatter
+
+**Backend Notes:**
+- Needs `GET /api/v1/seller/orders`, `GET /api/v1/seller/orders/summary` and `POST /api/v1/seller/orders/{orderId}/start-packing` (see LLD Sprint 6, Part A)
+- Adds an `INCOMING_ORDERS` badge provider to the Profile menu summary (US-103)
+- Uses the order data and lifecycle of US-023 and US-090; no new table is needed
+
+**Decisions (product owner, 2026-10-12):**
+- Urgent: a New delivery order whose pickup deadline (48 hours from the order) is within 24 hours
+- Reject: the penalty always applies after a buyer has booked the order and paid into escrow; Pay at Pickup orders have no escrow payment and no penalty
+- Self-pickup orders are treated like any New order, with the extra tag "Self Pickup by Buyer" and no shipping
+- One order per item: one consolidated payment for any number of items from any number of sellers creates one order per item, each with its own order number, escrow, chat, negotiation, delivery and refund; each seller is paid for their own items
+- Order reference: mock data shows the sample numbers from Make; real data shows the actual order number from the backend
+
+**Open:**
+- US-090 has no states for the self-pickup hand-over; the owner will update US-090 when needed. Until then a self-pickup order stays New until it completes or is cancelled
 
 ---
 
 ## End of User Stories Document
 
-**Total User Stories:** 111  
+**Total User Stories:** 112  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.11 (Updated 2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4811,6 +4973,7 @@
 - **Mobile App Security (US-109):** 1 story - SSL pinning, root and jailbreak detection, device ID (CODING_STANDARDS 3.7)
 - **UI Quality (US-110):** 1 story - Contrast, touch target, text size and screen reader fixes for the registration screens, and the design system rules for later screens
 - **Home (US-111):** 1 story - Home page: location header, search with photo search, promo card, category browsing, featured deals near you and bottom navigation
+- **Seller Order Management (US-112):** 1 story - Seller's Incoming Orders list reached from the Profile hub: orders grouped as New, Packing, Scheduled and Shipped, with Start Packing, Reject, Continue Packing, Schedule Pickup and View Schedule
 
 ---
 
