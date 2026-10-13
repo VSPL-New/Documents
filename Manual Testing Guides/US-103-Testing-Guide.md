@@ -154,9 +154,40 @@ No request body.
 
 ---
 
+## Mobile App (Flutter) — Profile Tab
+
+Manual test cases for the Profile tab in `valuex-mobile` against the local backend. Automated coverage is in `test/features/profile/profile_test.dart`.
+
+| Setting | Value |
+|---|---|
+| Run | `flutter run -d <device> --dart-define-from-file=config/dev_local.json` (add `--dart-define=CLEAR_LOCAL_SESSION=true` to start signed out) |
+| Sign in | Sign In with a registered `ACTIVE` account (mock OTP is in the backend log, search for `DEV-MOCK`) |
+| Open | Home, then the **Profile** tab |
+| Endpoints used | `GET /api/v1/users/me`, `GET /api/v1/users/me/menu-summary` |
+
+| TC | Scenario | Expected Result |
+|---|---|---|
+| M-TC-001 | Header shows who you are | Avatar, display name, verified mark if Aadhaar is verified, masked mobile, "Joined {month year}" matching `memberSince` |
+| M-TC-002 | Menu sections and rows | Buying, Selling and Account sections with the rows listed in the README; none hidden |
+| M-TC-003 | No badges today | No count pill on any row while `badges` is `{}` (TC-005 above) |
+| M-TC-004 | Badge appears when the backend sends a count | See the note below |
+| M-TC-005 | Pull to refresh | Pull down on the page: the profile and badges reload; the spinner stops |
+| M-TC-006 | Not-built rows | Tap any row, Upgrade or Sign Out: "This is coming soon" message, no navigation, no crash |
+| M-TC-007 | Edit button | The edit icon opens Profile details; the back button returns to the Profile tab |
+| M-TC-008 | Guest | Signed out, open Profile from a guest session: you are sent to Sign In |
+| M-TC-009 | Backend down | Stop the backend and open Profile: the header shows an error with Retry, the menu rows still show; start the backend and tap Retry |
+| M-TC-010 | Language and large text | Switch the device to Hindi, then set text size to the largest: no clipped or overlapping text, the page scrolls to Sign Out |
+| M-TC-011 | Screen reader | TalkBack or VoiceOver: every row, the edit button and the bottom tabs have labels; section titles are headings; a row with a badge reads "My Orders, 3 new" |
+
+> **M-TC-004 note:** no backend story registers a badge provider yet, so the response has no counts and this case cannot be run end to end. When the first provider ships (for example `INCOMING_ORDERS` with Seller Incoming Orders, Sprint 6), create the data it counts and confirm the pill shows the same number as `GET /users/me/menu-summary`. Counts above 99 show as "99+". Until then the behaviour is covered by the automated test with a mocked response.
+>
+> **Mock figures:** rating, transactions, Listings, Sold, Reviews and the plan badge on the Profile header are sample values from the design (`profileSummaryProvider`), not real data. Do not file them as bugs; they are replaced when the ratings, orders, listings and subscription stories ship.
+
+---
+
 ## Not Testable Yet (Don't File as Bugs)
 
-- **The actual "Profile" menu/tab UI** (grouped sections, empty/"coming soon" states for unshipped destinations, seller-only rows) — that's mobile-side work per the LLD; this guide only covers the backend summary endpoint.
+- **Menu rows whose destination screens are not built yet** (My Orders, Saved Items, Payment History, Incoming Orders, My Listings, Payout Details, Seller Analytics, Notifications, Language, Dispute Center, Help & Support, Upgrade, Sign Out) — they answer with "This is coming soon" by design until their stories ship. The mobile steps are in the Mobile section above.
 - **Any badge count** (`MY_ORDERS`, `SAVED_ITEMS`, `OFFERS`, `TRANSACTIONS`, `PAYOUTS`, `NOTIFICATIONS`, `SUPPORT_TICKETS`, `DISPUTES`) — see TC-005. None exist until their owning story ships.
 - **`ERROR_SECTION_UNAVAILABLE`** — this error is defined in `user-stories.md` for when an individual menu *destination* screen is down, not for this summary endpoint itself. Not reachable via any current API call.
 - **Resilience against a broken badge provider** — the backend was hardened during PR review so that (a) one provider throwing an exception or returning a negative count doesn't break the whole response, just omits that one badge, and (b) two providers registering the same key fails app startup with a clear error rather than crashing a live request. Neither is exercisable via this API today since zero providers are registered — there's nothing that *can* misbehave yet. Once the first real provider (Notifications, earliest Sprint 11) ships, these become worth re-testing directly.
