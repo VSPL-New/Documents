@@ -1298,7 +1298,8 @@ service, matching this module's one-service-per-concern convention:
 POST /api/v1/users/me/mobile/change/initiate
   Auth: Bearer token required
   Body: { newMobile }
-  → Validate format; reject if newMobile already belongs to another user (existsByMobileAndIdNot)
+  → Validate format; reject if newMobile equals the user's current mobile (ERROR_SAME_MOBILE)
+  → Reject if newMobile already belongs to another user (existsByMobileAndIdNot)
   → Rate-limited (otp.max-send-attempts-per-window, shared config)
   → Generate OTP, store SHA-256(otp) in Redis: otp:{newMobile}:MOBILE_CHANGE  TTL=300s
   → OtpPort.sendOtp(newMobile, otp, OtpPurpose.MOBILE_CHANGE)
@@ -1332,8 +1333,8 @@ mid-way, nothing changes (matches user-stories.md US-105 validation rule; confir
 GET /api/v1/users/me/sessions
   Auth: Bearer token required
   → SessionService.listActive(userId): top 10 non-revoked user_sessions rows, most recent first
-  → Mark the row matching SecurityContext.getCurrentJti() as isCurrent: true
-  → Return: [{ sessionId, deviceInfo, ipAddress, createdAt, lastActiveAt, isCurrent }, ...]
+  → Mark the row matching SecurityContext.getCurrentJti() as current: true
+  → Return: [{ sessionId, deviceInfo, ipAddress, createdAt, lastActiveAt, current }, ...]
 
 POST /api/v1/users/me/sessions/revoke-others
   Auth: Bearer token required
@@ -2743,7 +2744,7 @@ now-blocklisted token returns `401` rather than a second `200`.
 **Auth:** Bearer token required
 **Request:** `{ "newMobile": "9123456780" }`
 **Response 200:** `{ "message": "OTP sent", "otpExpiresInSeconds": 300 }`
-**Errors:** `ERROR_MOBILE_ALREADY_REGISTERED`, `ERROR_OTP_RATE_LIMIT_EXCEEDED`
+**Errors:** `ERROR_SAME_MOBILE`, `ERROR_MOBILE_ALREADY_REGISTERED`, `ERROR_OTP_RATE_LIMIT_EXCEEDED`
 
 ### POST /api/v1/users/me/mobile/change/verify
 **Auth:** Bearer token required
@@ -2754,7 +2755,7 @@ now-blocklisted token returns `401` rather than a second `200`.
 ### POST /api/v1/users/me/email/change/initiate
 ### POST /api/v1/users/me/email/change/verify
 Same contract as mobile change, against `newEmail`.
-**Errors:** `ERROR_EMAIL_ALREADY_REGISTERED`, `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`
+**Errors:** `ERROR_SAME_EMAIL` (case-insensitive), `ERROR_EMAIL_ALREADY_REGISTERED`, `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`
 
 ### GET /api/v1/users/me/sessions
 **Auth:** Bearer token required
@@ -2764,9 +2765,9 @@ Same contract as mobile change, against `newEmail`.
   "success": true,
   "data": [
     { "sessionId": "uuid", "deviceInfo": "iPhone 14 / iOS 18", "ipAddress": "49.x.x.x",
-      "createdAt": "2026-08-01T10:00:00Z", "lastActiveAt": "2026-08-06T09:00:00Z", "isCurrent": true },
+      "createdAt": "2026-08-01T10:00:00Z", "lastActiveAt": "2026-08-06T09:00:00Z", "current": true },
     { "sessionId": "uuid", "deviceInfo": "Chrome / Windows", "ipAddress": "103.x.x.x",
-      "createdAt": "2026-07-28T18:00:00Z", "lastActiveAt": "2026-07-30T12:00:00Z", "isCurrent": false }
+      "createdAt": "2026-07-28T18:00:00Z", "lastActiveAt": "2026-07-30T12:00:00Z", "current": false }
   ]
 }
 ```
