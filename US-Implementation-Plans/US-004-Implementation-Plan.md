@@ -8,10 +8,10 @@
 | Title | Create Listing with Photo Capture |
 | Sprint | Sprint 2 — Seller Listing Creation |
 | Story Points | 8 |
-| Repos | valuex-backend only for this pass (see decision below) — LLD/user story scope is valuex-mobile, valuex-backend |
-| Dependency | US-001 (User Registration via Mobile OTP) — caller must be an authenticated, `ACTIVE` seller |
+| Repos | valuex-backend, valuex-mobile (Flutter) |
+| Dependency | US-001 (User Registration via Mobile OTP) — caller must be an authenticated, `ACTIVE`, Aadhaar-verified seller |
 
-**Scope decision (per `CLAUDE.md` §6):** `valuex-mobile` currently contains a trial/prototype React app, not the real mobile platform — the real client will be Flutter, built separately by the UI dev team, not yet available. This implementation pass is **backend-only**; no changes are made to `valuex-mobile`. Mobile wiring is deferred to when the Flutter app exists and is out of scope here, not merely postponed within this plan.
+**Scope (updated 2026-10-14):** `valuex-mobile` is now the real Flutter app (Flutter/Riverpod/go_router, see `CLAUDE.md` §6). The first pass of this story was backend-only; the gap-fix pass adds the Flutter capture screen wired to the backend and closes the backend gaps listed in §8.
 
 Sprint 2 goal: "Allow sellers to create and publish listings." US-004 is the entry point of that sprint — every later Sprint 2 story (US-005 AI suggestions, US-006 tagging, US-007 restricted-item check, US-089 lifecycle, US-084 trust & safety, US-078/US-008/US-009 plan & publish, US-010 edit/delete) builds on the `listings`/`listing_images` rows this story creates.
 
@@ -44,12 +44,12 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part A](../LLD/Spri
 - `listings.status` will be persisted as the existing `ListingState` enum, not a newly-defined Postgres enum type — avoids two competing sources of truth for the same state set.
 - `com/valuex/listing/**` is currently in **both** the JaCoCo and SonarQube exclusion lists in `pom.xml` (as a not-yet-implemented future-sprint stub, per `Documents/SonarQube-Setup-Guide.md`). This story must remove those two exclusion lines so the new code is actually measured for coverage and scanned.
 - Object storage is now an approved configurable-provider design: Cloudflare R2 Standard + Cloudflare CDN for MVP, accessed only through `ObjectStoragePort` and selected by external configuration (`OBJECT_STORAGE_PROVIDER`, endpoint, credentials, bucket prefix, CDN URL). AWS S3/Backblaze B2 remain plug-in adapter options after their adapters exist; business code must not change for provider switching.
-- `valuex-mobile` is, in its current state, a Figma-exported **React + Vite** prototype (`CreateListingScreen.tsx` already exists with hardcoded mock photo URLs and a fake AI-progress timer), not the Flutter app assumed by `Documents/CODING_STANDARDS.md` §3 and the HLD. Per the confirmed decision in `CLAUDE.md` §6, this prototype is ignored entirely — no mobile implementation steps are included in this plan.
+- `valuex-mobile` is the Flutter app. The Figma Make `CreateListingScreen` (React) is used only as the **visual reference** for the photo step; the Flutter screen adds the "Let AI do the work for you" card and "Photo tips for best results" section, and the bottom button reads **Submit to AI** (replacing "Add at least 2 photos"). The story's rule of min 1 / max 10 photos wins over the prototype's min 2 / max 8.
 
 ## 4. Implementation Steps
 
 ### DB Migration (valuex-backend)
-- [x] Add Flyway migration `V9__listing_media_schema.sql`:
+- [x] Add Flyway migration `V10__listing_media_schema.sql` (originally `V9`; renumbered after a version clash with another V9 on main):
   - `listings` table: `id, seller_id, title, description, condition, price, status, plan_type, ai_assisted, seller_location, expires_at, created_at, updated_at` (status stored as `VARCHAR`, mapped via `@Enumerated(EnumType.STRING)` to `ListingState` — no new Postgres `ENUM` type, per §3 correction).
   - `media_assets` table: shared media metadata (`owner_type`, `owner_id`, `media_purpose`, provider/bucket/object reference, detected content type, size, dimensions, checksum, `perceptual_hash`, status, visibility, retention/delete timestamps).
   - `media_variants` table: generated derivative metadata (`thumbnail`, `card`, `detail`, `zoom`) with object key, content type, size, and dimensions.
@@ -98,8 +98,15 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part A](../LLD/Spri
 - [x] `pom.xml`: remove `**/com/valuex/listing/**` from `sonar.exclusions` and from the JaCoCo `<excludes>` list — this module is no longer a future-sprint stub.
 - [x] `pom.xml`: add the S3-compatible storage client dependency used by the provider adapter.
 
-### Mobile — out of scope for this pass
-Per `CLAUDE.md` §6, `valuex-mobile` (React/Vite trial prototype) is intentionally left untouched. No mobile steps are planned until the Flutter app exists. The backend API contract (§3) is designed to be client-agnostic so the future Flutter client can integrate against it without backend rework.
+### Mobile (valuex-mobile, Flutter)
+- [x] `features/listing/domain/listing_photo.dart` — photo rules (max 10, 10 MB, 480×480), magic-byte type detection, upload status per photo.
+- [x] `features/listing/data/photo_source.dart` — camera/gallery via `image_picker` (scaled to ≤2560 px), real dimensions via `ui.ImageDescriptor`, permission-denied mapping.
+- [x] `features/listing/data/listing_repository.dart` — `POST /listings`, `POST /media/uploads`, direct `PUT` to the signed URL with a plain Dio (no bearer token), `POST /media/{id}/complete`, `POST/DELETE /listings/{id}/images`.
+- [x] `CreateListingController` — creates the draft on the first valid photo, validates on device, uploads photos concurrently, retry/remove, `canSubmit` when ≥1 photo is ready and nothing is in flight.
+- [x] `CreateListingScreen` (`/sell`, opened from the bottom-nav **Sell** tab; signed-in + Aadhaar-verified only) — opens the camera on entry, Figma photo-step layout, AI intro card, photo tips, **Submit to AI**.
+- [x] English + Hindi strings; iOS `NSCameraUsageDescription` / `NSPhotoLibraryUsageDescription`.
+- [ ] "Submit to AI" currently confirms the photos are saved; wiring it to AI analysis is US-005.
+- [ ] Resuming an unfinished draft (`GET /listings/{id}`) from the app is not built; each Sell session starts a new draft.
 
 ## 5. Test Plan
 
@@ -123,40 +130,63 @@ Target ≥90% line coverage on new `listing` package classes (now that it's out 
 | Integration: complete/attach flow when object metadata is missing or invalid | Edge case: network failure / corrupted upload |
 | Configuration test: `OBJECT_STORAGE_PROVIDER=r2` wires `CloudflareR2ObjectStorageAdapter` behind `ObjectStoragePort`; listing services never depend on provider classes | Plug-and-play storage requirement |
 
-Non-item/random-photo detection and camera-permission-denied are explicitly **not** backend-testable here (per LLD §A.1.1: non-item detection is AI's advisory concern in US-005; camera permission is OS/client-only) — these, along with all other client-side UX behavior, are deferred to the future Flutter client and its own test suite, not covered by this backend-only pass.
+Non-item/random-photo detection is **not** testable here (LLD §A.1.1: AI's advisory concern in US-005). Camera-permission denial and the client-side rules are covered by Flutter tests in `test/features/listing/create_listing_test.dart`.
 
 ## 6. Validation Checklist
 
-- [ ] Min 1 photo required before proceeding past capture step (client-gated; confirm backend intentionally allows a 0-image `DRAFT` to persist so a seller can resume later).
-- [ ] Max 10 photos enforced both client- and server-side.
-- [ ] Format restricted to JPG/PNG/HEIC (content-type validated server-side, not just filename extension, per `CODING_STANDARDS.md` §1.5).
-- [ ] Max 10MB per photo enforced server-side.
-- [ ] Min resolution 480×480px enforced server-side.
-- [ ] `ERROR_CAMERA_PERMISSION_DENIED` handled client-only (no backend involvement).
-- [ ] `ERROR_MAX_PHOTOS_EXCEEDED`, `ERROR_PHOTO_UPLOAD_FAILED`, `ERROR_INVALID_PHOTO` all return the exact codes/messages from `user-stories.md`.
-- [ ] Ownership check prevents any cross-seller access to another seller's draft/images.
-- [ ] `listing_images` stores `media_asset_id`, not provider URLs; client responses expose media resources/variants, not bucket internals.
-- [ ] Object storage provider is selected through external config, not business-code changes; `CloudflareR2ObjectStorageAdapter` is the MVP adapter behind `ObjectStoragePort`.
-- [ ] Signed upload/access URLs are short-lived and never persisted as canonical database values.
-- [ ] Only an `ACTIVE` seller (per US-001/US-088 account state) can create a listing — confirm against current account-status gating used elsewhere (e.g. `AadhaarGatingInterceptor`/`assertLoginEligible`-style checks), since this LLD doesn't specify the exact status guard.
-- [ ] `com/valuex/listing/**` removed from both Sonar and JaCoCo exclusion lists in `pom.xml`.
+- [x] Min 1 photo required before proceeding past capture step (client-gated; confirm backend intentionally allows a 0-image `DRAFT` to persist so a seller can resume later).
+- [x] Max 10 photos enforced both client- and server-side.
+- [x] Format restricted to JPG/PNG/HEIC (content-type validated server-side, not just filename extension, per `CODING_STANDARDS.md` §1.5).
+- [x] Max 10MB per photo enforced server-side.
+- [x] Min resolution 480×480px enforced server-side.
+- [x] `ERROR_CAMERA_PERMISSION_DENIED` handled client-only (no backend involvement).
+- [x] `ERROR_MAX_PHOTOS_EXCEEDED`, `ERROR_PHOTO_UPLOAD_FAILED`, `ERROR_INVALID_PHOTO` all return the exact codes/messages from `user-stories.md`.
+- [x] Ownership check prevents any cross-seller access to another seller's draft/images.
+- [x] `listing_images` stores `media_asset_id`, not provider URLs; client responses expose media resources/variants, not bucket internals.
+- [x] Object storage provider is selected through external config, not business-code changes; `CloudflareR2ObjectStorageAdapter` is the MVP adapter behind `ObjectStoragePort`.
+- [x] Signed upload/access URLs are short-lived and never persisted as canonical database values.
+- [x] Only an `ACTIVE` seller (per US-001/US-088 account state) can create a listing — confirm against current account-status gating used elsewhere (e.g. `AadhaarGatingInterceptor`/`assertLoginEligible`-style checks), since this LLD doesn't specify the exact status guard.
+- [x] `com/valuex/listing/**` removed from both Sonar and JaCoCo exclusion lists in `pom.xml`.
 
 ## 7. Open Gaps / Questions
 
-1. ~~No object storage backend exists yet~~ — **Resolved by architecture decision:** implement the shared Media Module with `ObjectStoragePort`; default provider is Cloudflare R2 Standard + Cloudflare CDN, selected with `OBJECT_STORAGE_PROVIDER=r2` and related external config. AWS S3 and Backblaze B2 remain plug-in provider adapters once implemented; business modules must continue to depend only on `ObjectStoragePort`.
-2. ~~`valuex-mobile` is a React/Vite prototype, not the Flutter app~~ — **Resolved:** confirmed by the user this is a trial prototype only; the real Flutter app is being built separately by the UI dev team and isn't available yet. This plan is backend-only; mobile wiring is deferred until the Flutter app exists (see `CLAUDE.md` §6).
-3. **Seller account-status gating for listing creation** isn't specified in US-004's own acceptance criteria or the LLD — only "logged in as a seller." Confirm which `UserAccountState` values are allowed to create a listing (presumably `ACTIVE` only, mirroring US-081's later "block transactions for users under investigation" rule), so `ListingDraftService.createDraft` can enforce it now rather than retrofitting in Sprint 9.
-4. **Migration version number** (`V{N}`) must be set to the actual next available Flyway version at implementation time, not the LLD's placeholder.
+1. ~~No object storage backend exists yet~~ — **Resolved:** shared Media Module with `ObjectStoragePort`; Cloudflare R2 by default. Local development uses a RustFS S3-compatible container from `docker-compose.yml` (host port 9300, because SonarQube uses 9000).
+2. ~~`valuex-mobile` is a React/Vite prototype~~ — **Resolved:** `valuex-mobile` is the Flutter app; mobile wiring is implemented in this story.
+3. ~~Seller account-status gating~~ — **Resolved:** `createDraft` requires `ACTIVE` (`ACCOUNT_NOT_ACTIVE`) and is annotated `@RequiresIdentityVerification` (`AADHAAR_VERIFICATION_REQUIRED`); the app also blocks Sell until Aadhaar is verified.
+4. ~~Migration version number~~ — **Resolved:** `V10`.
 
 ---
 
 ## 8. Implementation Reconciliation
 
-- [x] Backend-only scope applied; `valuex-mobile` was not modified.
-- [x] Added Flyway migration `V9__listing_media_schema.sql` with listings, media assets/variants, listing-image associations, and status history.
-- [x] Added Listing and Media domain models, repositories, `ListingDraftService`, `MediaAssetService`, REST controllers, `ObjectStoragePort`, and the Cloudflare R2 S3-compatible adapter.
-- [x] Added service/controller tests and verified focused tests pass.
-- [x] Added [US-004-Testing-Guide.md](US-004-Testing-Guide.md).
-- [ ] Asynchronous media-worker validation, AVIF/WebP derivative generation, and production R2/IaC provisioning remain deployment follow-ups; the backend lifecycle and provider abstraction are implemented for this story.
+- [x] Backend first pass (commit f906746, merged to main): listing/media modules, R2 adapter, tests.
+- [x] Migration renumbered to `V10__listing_media_schema.sql`.
+- [x] Added [US-004-Testing-Guide.md](../scripts/US-004-Testing-Guide.md).
+- [ ] Asynchronous media-worker validation, AVIF/WebP derivative generation, EXIF stripping and production R2/IaC provisioning remain deployment follow-ups.
 
-**Status:** Implemented — awaiting user approval to commit and push
+### 8.1 Gap-fix pass (branch `feature/us-004-gap-fixes`, 2026-10-14)
+
+Gaps found in review and fixed:
+
+| # | Gap | Fix |
+|---|---|---|
+| 1 | `completeUpload` trusted client-reported width/height and content type | Reads the first 512 KB of the stored object (`ObjectStoragePort.readHead`), detects JPEG/PNG/HEIC by magic bytes, reads JPEG/PNG dimensions from the bytes (`ImageInspector`) |
+| 2 | `REJECTED` status was rolled back with the exception, leaving media `PENDING_UPLOAD` | `@Transactional(noRollbackFor = BusinessException.class)`; rejected objects are also deleted from storage |
+| 3 | Missing object / storage outage surfaced as HTTP 500 | Adapter wraps SDK errors in `StorageException`; complete returns `ERROR_PHOTO_UPLOAD_FAILED` and keeps the asset retryable |
+| 4 | Any status could be completed (e.g. `REJECTED`/`DELETED` revived) | Only `PENDING_UPLOAD` completes; `READY` is idempotent |
+| 5 | Concurrent attaches could exceed 10 photos or collide on `sort_order` | Pessimistic row lock on the listing for attach/delete; explicit `MEDIA_ALREADY_ATTACHED` / `LISTING_IMAGE_ORDER_CONFLICT` |
+| 6 | Deleting an image re-sequenced in one pass and hit the unique `(listing_id, sort_order)` index (found by the new integration test) | Two flushed passes via negative positions |
+| 7 | Deleting attached media orphaned `listing_images`; deleting twice called storage again | `MEDIA_IN_USE`, no-op for already deleted, `DELETION_PENDING` when storage is down; removing a listing image now deletes its media |
+| 8 | Signed download URL issued for non-READY media | `MEDIA_NOT_READY` |
+| 9 | No `listing_status_history` row for draft creation | `null → DRAFT` row with `DRAFT_CREATED` |
+| 10 | Aadhaar gate not applied to listing creation | `@RequiresIdentityVerification` on `POST /listings` |
+| 11 | Object key extension came from the client file name; file name unbounded | Extension from validated content type; file name sanitised/truncated; `@Size` on request fields; HEIF normalised to HEIC |
+| 12 | Max-10 only checked at attach, so unlimited uploads were possible | Upload authorization refuses once 10 READY photos exist; listing photos must be owned by a `LISTING` |
+| 13 | Variant map exposed raw bucket object keys | CDN URLs for public media only |
+| 14 | A new S3 client/presigner was built per call; presigned URLs used the internal endpoint | One cached client/presigner; `public-endpoint` + `path-style-access` settings |
+| 15 | No integration test | `ListingPhotoFlowIntegrationTest` (Testcontainers PostgreSQL) |
+| 16 | No mobile client | Flutter Sell flow (§4 Mobile) |
+
+Validation: `mvn verify` 418 tests green, checkstyle clean, listing+media line coverage 97.5%; SonarQube shows no open issues in listing/media (remaining quality-gate failures are pre-existing in `auth`/`common`). Flutter: see the testing guide.
+
+**Status:** Gap fixes implemented — awaiting user approval to commit, push and open the PR.
