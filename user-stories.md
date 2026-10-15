@@ -4772,8 +4772,8 @@
 - Then I can choose "Use my current location" or "Use my saved location", and Home refreshes for the new place
 - And there is no way to type an address on Home
 - When I choose "Use my saved location"
-- Then a pop-up asks me to select one of my saved addresses, each shown with its name (Home, Office or a custom name) and its full address
-- And when I select one, listings near that address (its city, state and pincode) are shown
+- Then a pop-up lists all my saved addresses, each with a radio button, its name (Home, Office or a custom name) and its full address (my default address is pre-selected)
+- And when I select one with its radio button and tap "Use this address", listings near that address (its city, state and pincode) are shown
 - Given I have no saved address
 - Then the pop-up tells me an address is saved when I buy or sell an item, and I can close it or use my current location
 - And the place chosen on Home is used only to find listings near it; it is not saved as an address and is never sent to the server

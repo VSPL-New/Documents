@@ -269,6 +269,7 @@ Sign Up (`POST /api/v1/auth/register/complete`) no longer collects state, city, 
 ```http
 POST   /api/v1/listings
 POST   /api/v1/listings/{id}/images
+POST   /api/v1/listings/{id}/submit
 PATCH  /api/v1/listings/{id}
 DELETE /api/v1/listings/{id}
 POST   /api/v1/listings/{id}/publish
