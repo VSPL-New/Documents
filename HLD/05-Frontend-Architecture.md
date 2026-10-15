@@ -359,6 +359,14 @@ Profile
 
 Incoming Orders is a pushed screen with a back button, opened from the Profile hub (US-103, US-112). It is not a bottom-navigation tab.
 
+The profile details screen edits only name and avatar and shows no city, date of birth or address. The Profile tab > Account has a "My Addresses" row that currently shows the passing "coming soon" message (US-113).
+
+### Home Location (US-111)
+
+The Home location header opens a sheet with exactly two options: "Use my current location" and "Use my saved location". There is no address entry, no Google Places and no address verification on Home. "Use my saved location" opens a pop-up listing the saved addresses (name and full address) from `GET /api/v1/users/me/addresses`; picking one uses only its city, state and pincode to find listings near it. With no saved address the pop-up says an address is saved when the user buys or sells. The chosen place is kept on the device only and is never saved as an address or sent to the server. Search and listing location filters and distance ranking use this Home location.
+
+The shared address component (search field, verification, state picker) is not used on Sign Up or Home; it is reused at checkout and listing creation.
+
 ---
 
 # 7. Mobile Screen Inventory
@@ -370,6 +378,7 @@ Splash
 Onboarding
 Mobile Verification
 OTP Verification
+Create Your Profile (avatar, name, optional gender, verified email and phone, terms)
 Aadhaar Verification
 Login
 ```

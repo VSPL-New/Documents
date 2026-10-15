@@ -73,7 +73,7 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part A](../LLD/Spri
 ### Backend — Application
 - [x] `com.valuex.listing.application.dto`: `CreateListingResponse`, `AttachListingImageRequest`, `AttachListingImageResponse`, `ListingDraftResponse`.
 - [x] `com.valuex.listing.application.service.ListingDraftService`:
-  - `createDraft(sellerId)` → `Listing` in `DRAFT` (initial value, no `ListingStateMachine.transition()` call needed — `DRAFT` is the entity's default/initial state, not a transition target in the existing state machine).
+  - `createDraft(sellerId)` → `Listing` in `DRAFT` (initial value, no `ListingStateMachine.transition()` call needed — `DRAFT` is the entity's default/initial state, not a transition target in the existing state machine). A new draft has `seller_location` NULL (design change, Oct 2026): it is no longer copied from the user's city, because the profile has no city. The seller chooses the pickup address in the listing flow (US-004 post step) and the city of that address becomes the item's location.
   - `attachListingImage(listingId, sellerId, AttachListingImageRequest)` → ownership/status guard, `count < 10`, calls `MediaAssetService.requireReadyAsset(mediaId, sellerId, LISTING_IMAGE)`, re-validates `width/height >= 480` and `sizeBytes <= 10MB`, else `BusinessException` with the exact codes from §2 Error Scenarios.
   - `deleteImage(listingId, sellerId, imageId)`.
   - `getDraft(listingId, sellerId)`.

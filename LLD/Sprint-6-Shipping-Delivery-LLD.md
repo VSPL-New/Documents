@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 6: Shipping & Delivery
 
-**Document Version:** 0.1 (design only, not implemented)
+**Document Version:** 0.2 (design only, not implemented)
 **Product:** ValueX
 **Sprint:** Sprint 6 - Shipping & Delivery
 **Stories Covered in this version:** US-112
@@ -13,6 +13,7 @@
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | Oct 2026 | Added Part A, US-112 Seller Incoming Orders, designed from the Figma Make `SellerIncomingOrdersScreen`. The remaining Sprint 6 stories get their own parts when they are designed. |
+| 0.2 | Oct 2026 | Address design change: the seller's pickup address is a saved address chosen when posting the item (US-004), preselected as the default and replaceable by a new named address; the profile and Sign Up hold no address. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 6 section
@@ -475,7 +476,7 @@ Route `/seller/orders` is pushed from the Profile "Incoming Orders" row (`RouteN
 ### A.8.2 Behaviour
 
 - Two providers load in parallel: the paged list and the summary. Pull to refresh invalidates both. Returning from the packing or pickup screens invalidates both, so the card moves bucket.
-- The buttons on a card come from `actions`. The app maps each value to a label and a destination and holds no order state machine: `START_PACKING` calls the endpoint then opens US-026; `CONTINUE_PACKING` opens US-026; `SCHEDULE_PICKUP` and `VIEW_SCHEDULE` open US-027; `VIEW_PICKUP_DETAILS` opens a read-only sheet with the seller's pickup address and hours as the buyer sees them (US-020); `REJECT` opens the US-059 confirmation, which always states the penalty (until US-059 ships, it shows the coming-soon message); the details button opens the order details (US-023). A card with `deliveryMode` `SELF_PICKUP` shows the tag "Self Pickup by Buyer" next to the "New Order" chip.
+- The buttons on a card come from `actions`. The app maps each value to a label and a destination and holds no order state machine: `START_PACKING` calls the endpoint then opens US-026; `CONTINUE_PACKING` opens US-026; `SCHEDULE_PICKUP` and `VIEW_SCHEDULE` open US-027; `VIEW_PICKUP_DETAILS` opens a read-only sheet with the seller's pickup address (the saved address the seller chose when posting the item, US-004) and hours as the buyer sees them (US-020); `REJECT` opens the US-059 confirmation, which always states the penalty (until US-059 ships, it shows the coming-soon message); the details button opens the order details (US-023). A card with `deliveryMode` `SELF_PICKUP` shows the tag "Self Pickup by Buyer" next to the "New Order" chip.
 - A 409 from Start Packing shows `ERROR_ORDER_ACTION_NOT_ALLOWED` as a passing message and reloads both providers.
 - The count line, "{x} New" badge and tiles read the summary. "Showing all {n} incoming orders" shows after the last page.
 - Empty, loading (skeleton cards), error with Retry, and last-loaded-list-with-message states, as for Home (US-111).

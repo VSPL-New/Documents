@@ -194,6 +194,8 @@ POST /ai/v1/support/respond
 }
 ```
 
+`sellerLocation` is optional and can be `null`: a new draft has no location until the seller picks the pickup address when posting the item, so suggest requests made earlier carry none.
+
 ### Output
 
 ```json
@@ -606,6 +608,8 @@ POST /ai/v1/listings/suggest
   "textHint": "used phone"
 }
 ```
+
+`sellerLocation` is optional and may be `null` before the pickup address is chosen.
 
 ### Response
 

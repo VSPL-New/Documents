@@ -44,14 +44,14 @@
 - This story covers first-time registration only. Returning-user login: US-106
 - Session renewal after the token issued here expires: US-107
 - Avatar catalog and later profile edits: US-003
-- Address entry with Google Places and verification (replaces the manual address fields of the Sign Up step): US-108
+- Addresses are not collected at Sign Up. The first address is saved when the user buys with home delivery (US-020) or posts an item to sell (US-004); they are managed later under My Addresses (US-113); entry and verification follow US-108
 
 **Registration Flow:**
 1. Verify mobile (SMS OTP) → account: `EMAIL_VERIFICATION_PENDING`
 2. Verify email (email OTP) → account: `IDENTITY_VERIFICATION_PENDING`
 3a. Complete Aadhaar verification → account: `SIGNUP_PENDING` (`aadhaarVerified = true`)
 3b. Skip Aadhaar → account: `SIGNUP_PENDING` (`aadhaarVerified = false`, limited until Aadhaar done)
-4. Sign Up: provide profile details and address, accept terms and consent → account: `ACTIVE`
+4. Sign Up: provide profile details, accept terms and consent → account: `ACTIVE`
 
 **Acceptance Criteria:**
 - Given I am on the registration page
@@ -69,16 +69,17 @@
 - And after successful Aadhaar OTP verification, my account transitions to `SIGNUP_PENDING` with `aadhaarVerified = true`
 - When I choose to skip Aadhaar verification
 - Then I receive a new JWT and my account transitions to `SIGNUP_PENDING`
-- And I am told that Aadhaar verification is required before any transaction (buy, sell, contact seller or buyer)
+- And I am told that Aadhaar verification is required before any transaction; for selling it is asked for after I submit my listing, for buying and contacting at that step
 - Given my account is `SIGNUP_PENDING`
 - When I am shown the Sign Up form
-- Then I provide my name, gender, date of birth, avatar (optional), state, city, address and pincode
+- Then I provide my name, gender (optional) and avatar (optional)
+- And I am not asked for a date of birth or an address
 - And my verified mobile number and email are shown and cannot be edited
 - When I open the Terms and Conditions and then accept them with the single terms and consent toggle
 - And I submit the form
 - Then my profile is saved, I receive a new JWT and my account transitions to `ACTIVE`
 - And I can browse and use most platform features
-- But I must complete Aadhaar verification before my first buy or sell transaction
+- But I must complete Aadhaar verification before my first buy transaction, and before I can choose a listing plan for my first listing
 - When I close or lose the app at any point during registration and reopen it later
 - Then I am taken to the registration step that matches my current account state, without repeating steps I already completed
 - And I am never shown a step that my account state does not allow
@@ -98,7 +99,7 @@
 - User requests OTP too many times on mobile or email (rate limiting applies)
 - App is closed on the Sign Up step (resume at Sign Up; email and mobile stay verified)
 - User tries to accept terms without having opened the Terms and Conditions page
-- Date of birth in the future or not a real calendar date
+- User leaves gender empty (neutral default avatar, no gender stored)
 
 **Validation Rules:**
 - Mobile number must be 10 digits, Indian format; unique per account
@@ -113,10 +114,9 @@
 - One Aadhaar can link to only one account across all states
 - Terms & conditions and data-processing consent are accepted on the Sign Up step with one toggle, enabled only after the user has opened the Terms and Conditions page; the accepted terms version is stored
 - Name: 3-50 characters, letters, spaces and `. ' -`
-- Gender: `MALE`, `FEMALE` or `OTHERS`
-- Date of birth: a valid date, not in the future (no minimum age)
-- State: one of the supported Indian states or union territories; city: 2-100 letters; address: 10-255 characters; pincode: 6 digits, first digit not 0
-- Avatar: optional, from the published catalog; otherwise a default avatar chosen by gender (male-looking, female-looking, or neutral for `OTHERS`)
+- Gender: optional; `MALE`, `FEMALE` or `OTHERS` when given; choosing the selected option again clears it
+- Date of birth is not collected anywhere in the app
+- Avatar: optional, from the published catalog; otherwise a default avatar chosen by gender (male-looking, female-looking, or neutral for `OTHERS` or when no gender is given)
 - Accounts in `SIGNUP_PENDING` can still complete Aadhaar verification
 
 **Error Scenarios:**
@@ -174,7 +174,8 @@
 **So that** buyers/sellers can view relevant details about me
 
 **Related User Stories:**
-- Profile fields here (avatar, display name, location) are surfaced from the Profile Hub: US-103
+- Profile fields here (avatar, display name, ratings) are surfaced from the Profile Hub: US-103
+- Addresses (home, office, any name the user gives) are not part of the profile; they are managed under My Addresses: US-113
 - Account security (mobile/email change, sessions, delete account): US-105
 - Logout: US-104
 
@@ -183,12 +184,12 @@
 **Acceptance Criteria:**
 - Given I am logged in
 - When I navigate to my profile
-- Then I can view my profile details (avatar, display name, location, ratings, joined date)
+- Then I can view my profile details (avatar, display name, gender if given, ratings, joined date)
 - When I open the avatar picker
 - Then I see the full catalog of available avatars
 - When I select an avatar and confirm
 - Then my profile updates to show the selected avatar
-- When I update my display name or location
+- When I update my display name
 - Then changes are saved successfully
 - And other users see updated information
 - Given I have never picked an avatar
@@ -198,15 +199,13 @@
 **Edge Cases:**
 - User selects an avatar ID that isn't in the current catalog (stale client-side list, tampered request)
 - User tries to change verified Aadhaar name
-- User submits an empty/blank display name or city on update
-- User updates location outside India
+- User submits an empty/blank display name on update
 - Avatar catalog changes (avatar removed) after a user already selected it — existing selection remains valid until the user picks a new one
 
 **Validation Rules:**
 - Avatar selection must be one of the platform's published avatar catalog IDs
 - Every account has a default avatar from account creation, before any explicit selection
 - Display name: 3-50 characters, no special symbols
-- Location must be valid Indian city/state
 - Aadhaar-verified name cannot be edited
 
 **Error Scenarios:**
@@ -229,6 +228,17 @@
 - When I capture at least 1 photo (max 10 photos)
 - Then photos are uploaded to the system
 - And I can proceed to add item details
+- When I post the listing and have no saved address
+- Then I am asked to enter my pickup address (entry and verification: US-108)
+- And it is saved as my default address for pickup and delivery
+- When I post the listing and already have saved addresses
+- Then my default address is preselected and I can choose another saved address or enter a new one
+- And a new address can be given a name such as Home, Office or any custom name
+- And the city of the chosen address is shown as the item's location
+- When I submit my listing and I have not completed Aadhaar verification
+- Then, before I am taken to listing plan selection (US-008), I am asked to complete Aadhaar verification
+- And once it is complete I continue to plan selection with my listing kept as it was
+- And tapping Sell, capturing photos and filling in the listing are never blocked by Aadhaar
 
 **Edge Cases:**
 - User denies camera permission
@@ -237,6 +247,8 @@
 - Photo quality is very poor
 - User uploads non-item photos (random images)
 - Network failure during photo upload
+- Seller has no saved address when posting (the address is requested at that point, not at Sign Up)
+- Seller leaves the Aadhaar verification step half-way or closes the app (the draft stays; the check is asked again on the next submit)
 
 **Validation Rules:**
 - Minimum 1 photo required
@@ -244,12 +256,19 @@
 - Photo format: JPG, PNG, HEIC
 - Max size per photo: 10MB
 - Minimum resolution: 480x480px
+- A listing cannot be posted without a pickup address; a new listing draft has no location until the seller chooses the address
 
 **Error Scenarios:**
 - `ERROR_CAMERA_PERMISSION_DENIED`: "Camera access required to capture photos"
 - `ERROR_MAX_PHOTOS_EXCEEDED`: "Maximum 10 photos allowed"
 - `ERROR_PHOTO_UPLOAD_FAILED`: "Failed to upload photo. Check your connection"
 - `ERROR_INVALID_PHOTO`: "Photo quality too low or invalid format"
+- `ERROR_PICKUP_ADDRESS_REQUIRED`: "Please add your pickup address to post this item"
+- `ERROR_AADHAAR_VERIFICATION_REQUIRED`: "Please complete Aadhaar verification to proceed" (shown when a seller submits a listing, before plan selection)
+
+**Related User Stories:**
+- US-108: pickup address entry and verification
+- US-113: managing saved addresses afterwards
 
 ---
 
@@ -382,6 +401,7 @@
 **Acceptance Criteria:**
 - Given I have completed my listing draft
 - When I proceed to publish
+- Then, if I have not completed Aadhaar verification, I am first asked to complete it (US-004) and only then shown the plan options
 - Then I am shown 3 listing plan options with features:
   - **Basic** (Free): Standard visibility, limited inquiries
   - **Boosted** (Paid): Higher ranking for 7 days, increased visibility
@@ -519,7 +539,7 @@
 - Search query max length: 200 characters
 - Results show only published, non-expired listings
 - Paid plan listings (Priority/Boosted) ranked higher
-- Distance-based ranking if location enabled
+- Distance-based ranking if a location is chosen on Home (my current location or one of my saved locations); that location is used only for searching and is never saved or entered as an address
 - Minimum relevance score for display
 
 **Error Scenarios:**
@@ -540,7 +560,7 @@
   - All photos (swipeable gallery)
   - Title, description, condition
   - Price
-  - Seller name, rating, location, joined date
+  - Seller name, rating, location (city of the seller's pickup address), joined date
   - Listing age
   - Communication options (chat, call, video call)
   - Add to cart button
@@ -872,6 +892,8 @@
   - **Self-Pickup**: Seller's pickup location, pickup hours
 - When I select "Delivery"
 - Then I can add/select delivery address
+- And if I have no saved address I am asked to enter one (entry and verification: US-108) and it is saved as my default address
+- And if I have saved addresses my default address is preselected, I can choose another, or enter a new address and give it a name such as Home, Office or any custom name
 - And shipping cost is calculated
 - When I select "Self-Pickup"
 - Then I choose payment option:
@@ -899,7 +921,7 @@
 - `ERROR_INVALID_ADDRESS`: "Please enter complete delivery address"
 
 **Flutter Implementation Notes:**
-- Delivery option card with Google Maps address picker
+- Delivery option card with the reusable address component from US-108 (search, verification, name) and the list of saved addresses
 - Shipping cost calculated via backend API on address selection
 - Self-pickup shows seller location on embedded map widget
 
@@ -1158,7 +1180,7 @@
 - Then I select:
   - Pickup date (today or next 7 days)
   - Pickup time slot
-  - Pickup address
+  - Pickup address (my default address preselected; I can choose another saved address or enter a new named one)
 - When I confirm
 - Then pickup request is sent to logistics partner
 - And I receive confirmation with pickup details
@@ -3599,7 +3621,7 @@
   - NEW: Registration started, not completed
   - OTP_PENDING: Awaiting mobile verification
   - IDENTITY_VERIFICATION_PENDING: Aadhaar verification in progress
-  - SIGNUP_PENDING: Aadhaar done or skipped, Sign Up form (profile, address, terms) not yet submitted
+  - SIGNUP_PENDING: Aadhaar done or skipped, Sign Up form (profile, terms) not yet submitted
   - ACTIVE: Registration complete, can use the platform (transactions need Aadhaar)
   - UNDER_REVIEW: Flagged for investigation
   - RESTRICTED: Limited access during review
@@ -4266,7 +4288,7 @@
   - **Payments**: Payment & Transaction History, Payout Settings (sellers only)
   - **Preferences**: Notification Preferences, Language
   - **Support**: Help & Support, Raise Dispute, My Support Tickets
-  - **Account**: Edit Profile, Account Security, Privacy Settings, Logout
+  - **Account**: Edit Profile, My Addresses, Account Security, Privacy Settings, Logout
 - When I tap any menu item
 - Then I am navigated to the corresponding screen
 - When a section has actionable items (e.g., pending orders, unread offers)
@@ -4293,7 +4315,7 @@
 - Payments: US-071 (transaction history), US-072 (payout settings)
 - Preferences: US-087 (notifications), US-044 (language)
 - Support: US-043, US-045, US-046 (help & support), US-047 (raise dispute), US-074 (ticket status)
-- Account: US-105 (account security), US-063 / US-098 (delete account), US-104 (logout)
+- Account: US-105 (account security), US-113 (my addresses; the row shows the coming soon message until US-113 is built), US-063 / US-098 (delete account), US-104 (logout)
 
 **Flutter Implementation Notes:**
 - ProfileScreen acts as the navigation shell; each menu row uses `ListTile` with leading icon, trailing badge/chevron
@@ -4508,14 +4530,17 @@
 ## Address Management
 
 ### US-108: Address Entry with Google Places Autocomplete and Address Verification
-**As a** user entering my address (during sign-up now, and later for delivery or pickup)  
+**As a** user entering an address (when I buy with home delivery or post an item to sell)  
 **I want to** search for my address with suggestions and have it verified  
 **So that** my address is accurate and deliveries and pickups can be completed
 
+**Design Change (2026-10-15):** Addresses are no longer collected at Sign Up or on Home. The first address is saved when the user checks out an item for home delivery (US-020) or posts an item to sell (US-004), and becomes their default address for delivery and pickup. A user can add more addresses and give each a name (Home, Office or any custom name). Home only uses the current or a saved location for searching and never calls address search or verification (US-111).
+
 **Related User Stories:**
-- US-001: the Sign Up step collects State, City, Address and Pincode with **manual entry and basic format validation** until this story ships; this story replaces the manual entry with search plus verification
-- US-020: delivery address selection (Google Maps address picker); US-027: pickup address; both should reuse this story's component and verification
-- US-003: profile address editing
+- US-001: Sign Up no longer collects an address; this story is not used there
+- US-004: posting a listing asks for the pickup address; US-020: delivery address selection; US-027: pickup address; all reuse this story's component and verification
+- US-111: Home does not use address search or verification
+- US-113: My Addresses (placeholder) manages the saved addresses
 
 **Acceptance Criteria:**
 - Given I am entering an address
@@ -4546,6 +4571,8 @@
 - Pincode is 6 digits; state must be one of the supported Indian states or union territories
 - Address line is 10 to 255 characters
 - The verification result (verified or not) and the verified timestamp are stored with the address
+- A saved address has an optional name (up to 50 characters) and one address per user is the default; the first address a user saves becomes the default
+- The user's saved addresses are listed for the app, default first, with name and full address (used by the Home saved-location pop-up, US-111)
 - The verification provider is behind a port with a sandbox adapter for development, the same pattern as the OTP and Aadhaar providers
 - Full addresses are never written to logs
 
@@ -4558,11 +4585,45 @@
 **Flutter Implementation Notes:**
 - Google Places Autocomplete with a 300 ms debounce, India-only restriction and session tokens to control billing
 - API keys restricted per platform (Android package and SHA-1, iOS bundle ID); keys supplied through the environment config, never committed
-- One reusable address component used by Sign Up, delivery and pickup screens
+- One reusable address component used by checkout (delivery), posting a listing (pickup) and My Addresses
 - Manual-entry fallback always available; accessible labels on suggestions
 
 **Backend Notes:**
 - Dedicated address verification API (provider-agnostic port) and storage of structured address components, place ID and verification status; design to be written in the LLD
+- `GET /users/me/addresses` returns the user's saved addresses (name, full address, default flag), default first; saving addresses is added by the stories that collect them (US-004, US-020, US-113)
+
+---
+
+### US-113: My Addresses (placeholder)
+**As a** user  
+**I want to** see and manage the addresses I have saved  
+**So that** I can reuse them for delivery, pickup and finding items near me
+
+**Status:** Placeholder. The product owner will detail this story later; the acceptance criteria below are only a starting point.
+
+**Design Note:** Addresses are not collected at Sign Up. The first address is saved when the user buys an item with home delivery (US-020) or posts an item to sell (US-004), and becomes the default for delivery and pickup. A user can enter new addresses and give each a name such as Home, Office or any custom name. The Profile tab shows a "My Addresses" row under Account that shows the coming soon message until this story is built.
+
+**Related User Stories:**
+- US-103: the "My Addresses" row under Account in the Profile tab
+- US-108: address entry and verification component
+- US-004, US-020, US-027: where addresses are first saved and chosen
+- US-111: Home offers the saved addresses as "Use my saved location"
+
+**Acceptance Criteria (to be detailed):**
+- Given I am logged in
+- When I tap "My Addresses" under Account in the Profile tab
+- Then I see my saved addresses with their names and full addresses, my default first
+- And I can add, edit, rename, delete and choose my default address (to be detailed)
+
+**Edge Cases:** To be detailed
+
+**Validation Rules:** To be detailed
+
+**Error Scenarios:** To be detailed
+
+**Open:**
+- Story points are not estimated yet
+- Rules for deleting the default address or an address used by an open order
 
 ---
 
@@ -4633,7 +4694,7 @@
 **Related User Stories:**
 - US-001: delivers the screens reviewed here
 - US-099: app-wide accessibility story; this story applies the same standard to the registration screens first and raises the touch target minimum to 48
-- US-108: the Address step replaces the manual address fields; it must follow the same standards
+- US-108: the address entry component must follow the same standards when it is used at checkout and when posting a listing
 
 **Acceptance Criteria:**
 - Given any text on a registration screen
@@ -4693,7 +4754,8 @@
 - US-038, US-039: the camera icon in the search bar starts photo search; non-premium users see the paywall
 - US-008, US-078: Boosted and Priority listings are ranked first and carry the "BOOSTED" or "Featured" badge
 - US-019: cart; US-077: notifications; US-004: Sell; US-013: Chats; US-103: Profile
-- US-108: address entry when location permission is not given
+- US-108: address entry and verification are not used on Home; Home offers only my current location or one of my saved locations
+- US-113: My Addresses manages the saved addresses that Home offers
 - US-110, US-099: accessibility and design system rules the screen must meet
 
 **Acceptance Criteria:**
@@ -4705,9 +4767,16 @@
 - When Home loads
 - Then the area and city are taken from my live location and the listings near me are shown
 - Given I have not allowed location access or it is unavailable
-- Then I am asked to enter an address (US-108) and listings near that address are shown
+- Then I am offered "Use my current location" and "Use my saved location"
 - When I tap the location in the header
-- Then I can change it by live location or by entering an address, and Home refreshes for the new place
+- Then I can choose "Use my current location" or "Use my saved location", and Home refreshes for the new place
+- And there is no way to type an address on Home
+- When I choose "Use my saved location"
+- Then a pop-up asks me to select one of my saved addresses, each shown with its name (Home, Office or a custom name) and its full address
+- And when I select one, listings near that address (its city, state and pincode) are shown
+- Given I have no saved address
+- Then the pop-up tells me an address is saved when I buy or sell an item, and I can close it or use my current location
+- And the place chosen on Home is used only to find listings near it; it is not saved as an address and is never sent to the server
 - When I tap the bell
 - Then I open my notifications (US-077), and an unread badge shows when there are unread items
 - When I tap the cart
@@ -4738,7 +4807,7 @@
 - Then I go to Home, Search, Sell (US-004), Chats (US-013) or Profile (US-103), and the current item is marked
 - Given I skipped Aadhaar verification
 - When I tap Sell
-- Then I am told Aadhaar verification is required before my first sell transaction (US-001)
+- Then the Sell flow opens as for any other user; Aadhaar verification is asked for only after I submit my listing (US-004)
 - Given the network is down
 - When I open Home
 - Then I see the last loaded content with a message and a Retry button, or an error state with Retry when nothing was loaded before
@@ -4746,7 +4815,8 @@
 **Edge Cases:**
 - Location permission denied once, denied permanently, or turned off in the device settings
 - Location takes long to resolve or is outside India
-- No address chosen and no location permission
+- No saved location chosen and no location permission
+- User has no saved addresses, or the list of saved addresses fails to load
 - No listings near the chosen place
 - Fewer than five categories returned by the backend
 - Promo expired or removed while the user is on Home
@@ -4766,22 +4836,25 @@
 - Categories, their order, names and images come from the backend and are not hard-coded in the app
 - Promo content (text, image, target, start and end date) comes from the backend; the app shows at most the active promos
 - Location permission is requested on Home with a short explanation of why, not at app start
-- Only the area and city are used for listings; exact coordinates are not logged, and are not stored without consent
+- Only the area and city (or the city, state and pincode of a saved address) are used for listings; exact coordinates are not logged, and are not stored without consent
+- The chosen place is kept on the device only so it survives an app restart; it is never saved as an address and no Google Places or address verification call is made from Home
 - Every control has a tap area of at least 48 by 48 dp, every control has a label, titles are headings, text is at least 14 px for anything important and passes 4.5:1 contrast (US-110)
 - The screen is added to the automated accessibility and heading tests
 
 **Error Scenarios:**
-- `ERROR_LOCATION_PERMISSION_DENIED`: "Location access is off. Enter your address to see items near you"
-- `ERROR_LOCATION_UNAVAILABLE`: "Unable to detect your location. Enter your address instead"
+- `ERROR_LOCATION_PERMISSION_DENIED`: "Location access is off. Use a saved location to see items near you"
+- `ERROR_LOCATION_UNAVAILABLE`: "Unable to detect your location. Use a saved location instead"
 - `ERROR_HOME_LOAD_FAILED`: "Unable to load Home. Pull down or tap Retry"
-- `NO_LISTINGS_NEAR_YOU`: "No items near you yet. Try another address"
+- `NO_LISTINGS_NEAR_YOU`: "No items near you yet. Try another location"
+- `NO_SAVED_LOCATIONS`: "You have no saved locations yet. An address is saved when you buy or sell an item."
+- `ERROR_SAVED_LOCATIONS_FAILED`: "Unable to load your saved locations. Try again"
 - `ERROR_CATEGORIES_UNAVAILABLE`: "Unable to load categories. Try again"
 
 **Flutter Implementation Notes:**
 - Page built from Figma node `2017:635` with the design system tokens only; the header uses `AppGradients.brand`; Figma values that conflict with the design system are resolved to the design system (decision A)
 - Reuses existing components where they fit (`BrandGradientButton` for the promo button, `FieldError` and the loading and error views); new shared pieces: listing card, category tile, promo card, bottom navigation with a raised Sell button, location header
 - Bell and cart are separate icon buttons with 48 dp tap areas and count badges
-- Location through the device location and permission packages; reverse geocoding gives the area and city; manual address uses the US-108 component
+- Location through the device location and permission packages; reverse geocoding gives the area and city; the saved-location pop-up lists the user's saved addresses from `GET /users/me/addresses` and uses the chosen address's city, state and pincode (no address search, no Places)
 - Data comes through repository interfaces; until the backend endpoints exist, a mock repository supplies listings, categories and a sample promo
 - The category selection page is its own route reached from the "More" tile
 - Pull to refresh, loading skeletons, empty and error states; all strings in the English and Hindi ARB files
@@ -4942,9 +5015,9 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ## End of User Stories Document
 
-**Total User Stories:** 112  
+**Total User Stories:** 113  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -4969,7 +5042,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - **Social Login (US-101 to US-102):** 2 stories - Google & Apple Sign-In
 - **Profile Management Extensions (US-103 to US-105):** 3 stories - Gap-fill identified when auditing US-003: Profile Hub navigation tying together My Orders/Listings/Payments/Payouts/Notifications/Language/Support/Dispute, plus Logout and Account Security (mobile/email change, sessions, delete account entry point)
 - **Authentication Extensions (US-106 to US-107):** 2 stories - Gap-fill identified when tracing the backend's returning-user API flow: mobile-OTP login (US-001 only covers first-time registration and blocks already-registered mobiles) and access-token refresh (refresh tokens are issued by every auth flow but no endpoint ever consumes one)
-- **Address Management (US-108):** 1 story - Address entry with Google Places Autocomplete and a dedicated address verification API; Sign Up (US-001) uses manual entry until it ships
+- **Address Management (US-108, US-113):** 2 stories - US-108: address entry with Google Places Autocomplete and a dedicated address verification API, used at checkout and when posting a listing (Sign Up and Home do not ask for an address); US-113: My Addresses placeholder to be detailed by the product owner
 - **Mobile App Security (US-109):** 1 story - SSL pinning, root and jailbreak detection, device ID (CODING_STANDARDS 3.7)
 - **UI Quality (US-110):** 1 story - Contrast, touch target, text size and screen reader fixes for the registration screens, and the design system rules for later screens
 - **Home (US-111):** 1 story - Home page: location header, search with photo search, promo card, category browsing, featured deals near you and bottom navigation

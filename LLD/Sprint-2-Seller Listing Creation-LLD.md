@@ -110,7 +110,7 @@ CREATE TABLE listings (
     status listing_status NOT NULL DEFAULT 'DRAFT',
     plan_type VARCHAR(50),
     ai_assisted BOOLEAN NOT NULL DEFAULT FALSE,
-    seller_location VARCHAR(255),
+    seller_location VARCHAR(255),  -- NULL on a new draft; set to the city of the pickup address the seller picks when posting (design change, Oct 2026)
     expires_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -943,6 +943,7 @@ public class ListingAiService {
             throw new BusinessException("AI_SUGGESTION_RATE_LIMITED", "Too many suggestion requests. Try again later");
         }
 
+        // sellerLocation is null until the seller picks the pickup address when posting; the AI service treats it as optional
         var request = new ListingSuggestRequest(listingId, sellerId, mediaIds, listing.getSellerLocation(), textHint);
 
         ListingSuggestResponse aiResponse;

@@ -196,7 +196,7 @@ Manual test cases for the Profile tab in `valuex-mobile` against the local backe
 
 ## Reset Between Tests
 
-Same as US-003 — see `US-003-Testing-Guide.md` → **Reset Between Tests** (reset `display_name`/`city`/`avatar_id` via SQL, or just register a fresh mobile number per TC).
+Same as US-003 — see `US-003-Testing-Guide.md` → **Reset Between Tests** (reset `display_name`/`avatar_id` via SQL, or just register a fresh mobile number per TC).
 
 ---
 
