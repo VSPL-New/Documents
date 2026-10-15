@@ -2,7 +2,9 @@
 
 **Sprint 1 · Identity & User Management**
 
-Manual test cases for viewing/editing profile fields (display name, city) and avatar selection, using Swagger UI against a local dev environment.
+Manual test cases for viewing/editing the profile field (display name) and avatar selection, using Swagger UI against a local dev environment.
+
+> **Design change (Oct 2026):** the profile no longer has a city, state, address, pincode or date of birth (Flyway V12 dropped the columns). `GET /users/me` does not return them and `PATCH /users/me` accepts only `displayName`. Saved addresses are listed by `GET /api/v1/users/me/addresses`.
 
 > **Design note:** users do **not** upload a profile photo. They pick an `avatarId` from a fixed, backend-owned catalog (`GET /api/v1/avatars`). There is no file upload, no image content moderation, and no `ERROR_INAPPROPRIATE_CONTENT` in this version of the story — see `Documents/LLD/Sprint-1-Identity-User-Management-LLD.md` §7 (v1.4) for why.
 
@@ -40,10 +42,10 @@ Account state is now `EMAIL_VERIFICATION_PENDING` — sufficient for every test 
 | TC | Scenario | Endpoint | Expected Result |
 |---|---|---|---|
 | TC-001 | View own profile (defaults) | `GET /users/me` | `200`, default avatar, masked mobile |
-| TC-002 | Update display name and city | `PATCH /users/me` | `200`, both fields updated |
-| TC-003 | Partial update leaves other field unchanged | `PATCH /users/me` | `200`, only the sent field changes |
+| TC-002 | Update display name | `PATCH /users/me` | `200`, display name updated |
+| TC-003 | Empty update leaves the field unchanged | `PATCH /users/me` | `200`, nothing changes |
 | TC-004 | Reject invalid display name | `PATCH /users/me` | `400 VALIDATION_ERROR` |
-| TC-005 | Reject invalid city | `PATCH /users/me` | `400 VALIDATION_ERROR` |
+| TC-005 | City is no longer editable | `PATCH /users/me` | `200`, `city` ignored and not returned |
 | TC-006 | List avatar catalog | `GET /avatars` | `200`, 12 IDs + default |
 | TC-007 | Select a valid avatar | `PUT /users/me/avatar` | `200`, `avatarId` updated |
 | TC-008 | Reject avatar not in catalog | `PUT /users/me/avatar` | `400 ERROR_INVALID_AVATAR` |
@@ -75,23 +77,22 @@ No request body.
 }
 ```
 
-> `displayName`, `email`, `city`, and `aadhaarName` are omitted entirely (not `null`) — the API uses `non_null` JSON inclusion, so unset fields simply don't appear. Don't file "displayName missing" as a bug; that's expected before the user ever calls `PATCH`.
+> `displayName`, `email`, `gender` and `aadhaarName` are omitted entirely (not `null`) — the API uses `non_null` JSON inclusion, so unset fields simply don't appear. Don't file "displayName missing" as a bug; that's expected before the user ever calls `PATCH`. The response never contains `city`, `state`, `address`, `pincode` or `dateOfBirth`.
 >
 > `avatarId` is `avatar-01` even though this user never called the avatar endpoint — it's assigned at account creation (`User.onCreate()`).
 
 ---
 
-## TC-002 — Update Display Name and City
+## TC-002 — Update Display Name
 
-**Goal:** Both editable fields save correctly in a single request.
+**Goal:** The display name saves correctly.
 
 **Endpoint:** `PATCH /api/v1/users/me` *(requires JWT)*
 
 **Request body:**
 ```json
 {
-  "displayName": "Abhay Kumar",
-  "city": "Bengaluru"
+  "displayName": "Abhay Kumar"
 }
 ```
 
@@ -101,7 +102,6 @@ No request body.
   "success": true,
   "data": {
     "displayName": "Abhay Kumar",
-    "city": "Bengaluru",
     "avatarId": "avatar-01",
     "...": "..."
   }
@@ -112,17 +112,15 @@ Confirm via `GET /api/v1/users/me` that the change persisted.
 
 ---
 
-## TC-003 — Partial Update Leaves the Other Field Unchanged
+## TC-003 — Empty Update Leaves the Field Unchanged
 
 **Goal:** `PATCH` semantics — a field omitted from the request body is left as-is, not cleared.
 
-**Prerequisite:** TC-002 completed (`displayName = "Abhay Kumar"`, `city = "Bengaluru"`).
+**Prerequisite:** TC-002 completed (`displayName = "Abhay Kumar"`).
 
 **Request body:**
 ```json
-{
-  "city": "Mumbai"
-}
+{}
 ```
 
 **Expected response (200 OK):**
@@ -131,13 +129,12 @@ Confirm via `GET /api/v1/users/me` that the change persisted.
   "success": true,
   "data": {
     "displayName": "Abhay Kumar",
-    "city": "Mumbai",
     "...": "..."
   }
 }
 ```
 
-> `displayName` must still read `"Abhay Kumar"` — sending `city` alone must not null out `displayName`.
+> `displayName` must still read `"Abhay Kumar"` — an empty body must not null it out.
 
 ---
 
@@ -172,32 +169,18 @@ Try each of these bodies in turn:
 
 ---
 
-## TC-005 — Reject Invalid City
+## TC-005 — City Is No Longer Editable
 
-**Goal:** City validation (2–100 chars, same character rule as display name) is enforced.
+**Goal:** The profile has no city; sending one changes nothing.
 
 **Endpoint:** `PATCH /api/v1/users/me`
 
 **Request body:**
 ```json
-{ "city": "P1" }
+{ "city": "Mumbai" }
 ```
 
-**Expected response (400 Bad Request):**
-```json
-{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Request validation failed",
-    "details": {
-      "city": "City must be a valid location name"
-    }
-  }
-}
-```
-
-> **Known simplification:** this is format validation only (letters/spaces/punctuation) — there is no exhaustive Indian city/state whitelist backing it, so a nonsense-but-alphabetic value (e.g. `"Notacity"`) will currently **pass**. That's expected per the LLD, not a bug to file.
+**Expected response (200 OK):** the profile is returned unchanged and contains no `city` field (`UpdateProfileRequest` has only `displayName`; unknown JSON fields are ignored, as in TC-009).
 
 ---
 
@@ -348,7 +331,6 @@ Either register a fresh mobile number per TC (recommended — matches how the ap
 ```sql
 UPDATE users
 SET display_name = NULL,
-    city = NULL,
     avatar_id = 'avatar-01'
 WHERE mobile = '9000000010';
 ```
@@ -367,7 +349,7 @@ DELETE FROM users WHERE mobile = '9000000010';
 
 | HTTP | Error Code | Cause |
 |---|---|---|
-| 400 | `VALIDATION_ERROR` | `displayName`/`city`/`avatarId` fails `@Size`/`@Pattern`/`@NotBlank` (TC-004, TC-005, TC-008) |
+| 400 | `VALIDATION_ERROR` | `displayName`/`avatarId` fails `@Size`/`@Pattern`/`@NotBlank` (TC-004, TC-008) |
 | 400 | `ERROR_INVALID_AVATAR` | `avatarId` is well-formed but not in `valuex.avatar.available-ids` (TC-008) |
 | 401 | `UNAUTHORIZED` | Missing or expired JWT (TC-010) |
 | 404 | `NOT_FOUND` | JWT references a user that no longer exists in the DB — not reachable via normal API use; only occurs if the account row was deleted out-of-band after the token was issued |

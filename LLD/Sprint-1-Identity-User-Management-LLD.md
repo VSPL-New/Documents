@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 1: Identity & User Management
 
-**Document Version:** 1.15
+**Document Version:** 1.16
 **Product:** ValueX
 **Sprint:** Sprint 1 - Identity & User Management
 **Sprint Duration:** 2 Weeks
@@ -25,6 +25,7 @@
 | 1.11 | Aug 2026 | US-088 (Lifecycle State - User Account) implemented and documented: §12 gained §12.6-§12.9. `UserStateService` adds the moderation half of `UserAccountStateMachine` that had no caller since S0-008 (`flagForReview`/`clearReview`/`restrict`/`liftRestriction`/`suspend`/`liftSuspension`/`ban`/`close`) — same `account_status_history` write pattern as `UserRegistrationService`, plus the codebase's first concrete `DomainEvent`, `UserStateChangedEvent`, published on every transition (closing the gap flagged in coding-standard §2.4 point 4, previously unmet by all four existing call sites). `SuspendedAccountAutoLiftJob` implements the `@Scheduled` job §7.5 had specified but marked "Not started" — hourly cron, `UserRepository.findByStatusAndSuspensionLiftedAtBefore`, per-user try/catch so one bad row can't block the batch. `User.suspensionLiftedAt` mapped to the `suspension_lifted_at` column that migration V2 had already added but no entity field ever used. Deliberately **not** built: a REST controller (no admin authentication/RBAC exists yet — Sprint 10 owns that surface; an unauthenticated moderation endpoint would be a security hole), active-order blocking on `close()` (order module doesn't exist until Sprint 5), and a user-facing appeal workflow for SUSPENDED/BANNED (no story anywhere defines one — user-stories.md's "appeals allowed within 30 days" is a validation-rule line, not a built flow). BANNED Aadhaar-blacklisting needs no new code — the pre-existing `users.aadhaar_hash` unique constraint already blocks reuse as long as banned rows aren't deleted, which `close()`/`ban()` never do. `UserAccountStateMachineTest` written from scratch — no test for the S0-008 state machine existed before this story despite it being live in 4 registration-flow services since US-001. |
 | 1.14 | Oct 2026 | **Sign Up step added at the end of registration (US-001):** new `SIGNUP_PENDING` state between `IDENTITY_VERIFICATION_PENDING` and `ACTIVE` — `skip-aadhaar` and `aadhaar/verify` now land in `SIGNUP_PENDING`, and the new `POST /register/complete` (profile, gender, date of birth, address, terms and consent) moves the account to `ACTIVE` and fires `AccountCreatedEvent`. `POST /register/initiate` no longer takes terms or consent. New `users` columns (Flyway V9), `GET /users/me` returns them, avatar catalog gains gender groups and per-gender defaults. |
 | 1.15 | Oct 2026 | US-112 (Seller Incoming Orders) adds one Profile hub menu item. §8.3 gained the `INCOMING_ORDERS` badge key (count of New orders, supplied by the order module's `ProfileMenuBadgeProvider`, designed in LLD Sprint 6 Part A). No change to the SPI, `ProfileMenuService` or the `menu-summary` response; the key is simply absent until Sprint 6 registers the provider. |
+| 1.16 | Oct 2026 | **Sign Up no longer collects state, city, address, landmark, pincode or date of birth (US-001 design change):** `POST /register/complete` now takes `{ displayName, gender?, avatarId?, termsAccepted, consentGiven, termsVersion }`; `gender` is optional (omitted → `users.gender` stays NULL and the neutral default avatar `avatar-09` is used). `ERROR_INVALID_ADDRESS_STATE` and `ERROR_INVALID_DATE_OF_BIRTH` are no longer raised by this endpoint, and the service no longer calls `AddressService.saveDefaultAddress` (removed; `AddressService` keeps only `verify(...)` and `listAddresses(userId)`). New Flyway V12 (V9 and V11 stay untouched) drops `users.date_of_birth`, `address`, `city`, `state`, `pincode` and adds nullable `addresses.label`. `GET /users/me` no longer returns `city`, `state`, `address`, `pincode` or `dateOfBirth`; `PATCH /users/me` accepts only `displayName`. New `GET /users/me/addresses` lists the user's saved addresses (default first). §3.1 step 6, §3.2, §5.1, §5.3, §15 (new §8.5), §16.1, §16.3 and §17 test names updated. |
 
 **Reference Documents:**
 - PRD v1.4
@@ -391,26 +392,24 @@ Step 5: Complete Aadhaar Verification
 
 Step 6: Complete Sign Up  (JWT, account must be SIGNUP_PENDING)
   POST /api/v1/auth/register/complete
-  Body: { displayName, gender (MALE|FEMALE|OTHERS), dateOfBirth (yyyy-MM-dd), state, city,
-          address, pincode, avatarId?, termsAccepted, consentGiven, termsVersion }
+  Body: { displayName, gender? (MALE|FEMALE|OTHERS, optional), avatarId?,
+          termsAccepted, consentGiven, termsVersion }
   → Reject unless status = SIGNUP_PENDING            (ERROR_INVALID_STATE)
   → termsAccepted and consentGiven must be true      (ERROR_TERMS_NOT_ACCEPTED, ERROR_CONSENT_REQUIRED)
-  → state must be one of the 36 states and union territories in IndianStates
-                                                      (ERROR_INVALID_ADDRESS_STATE)
-  → dateOfBirth: not in the future, not before 1900-01-01; no minimum age
-                                                      (ERROR_INVALID_DATE_OF_BIRTH)
   → avatarId must be in the catalog, otherwise the default for the gender is used
+    (the neutral default, avatar-09, when gender is omitted)
                                                       (ERROR_INVALID_AVATAR)
-  → Store profile, address, termsAcceptedAt, consentGivenAt, termsVersion
+  → Store profile (gender stays NULL when omitted), termsAcceptedAt, consentGivenAt, termsVersion
+    — no address or date of birth is collected or stored at Sign Up (design change, v1.16)
   → Transition state: SIGNUP_PENDING → ACTIVE  (action COMPLETE_SIGNUP)
   → Publish AccountCreatedEvent (moved here from skip-aadhaar and aadhaar/verify)
   → Reissue JWT (aadhaarVerified from the account)
   → Return: AuthResponse { accessToken, refreshToken, aadhaarVerified, userId, status=ACTIVE }
 ```
 
-Field rules (Bean Validation): `displayName` 3-50 letters, spaces and `. ' -`; `city` 2-100 letters;
-`address` 10-255 characters; `pincode` `^[1-9]\d{5}$`; the new `users` columns are all nullable so
-accounts that registered before Flyway V9 are unaffected.
+Field rules (Bean Validation): `displayName` 3-50 letters, spaces and `. ' -`; `gender` optional;
+the `users` columns added by Flyway V9 are all nullable so accounts that registered before it are
+unaffected.
 
 ## 3.2 User Entity
 
@@ -451,23 +450,8 @@ public class User {
     @Column(name = "avatar_id", length = 50)
     private String avatarId;            // ID from the platform's avatar catalog — never a user-uploaded URL
 
-    @Column(length = 255)
-    private String city;
-
     @Enumerated(EnumType.STRING)
-    private Gender gender;              // MALE, FEMALE, OTHERS (Sign Up, v1.14)
-
-    @Column(name = "date_of_birth")
-    private LocalDate dateOfBirth;
-
-    @Column(length = 100)
-    private String state;
-
-    @Column(length = 255)
-    private String address;
-
-    @Column(length = 6)
-    private String pincode;
+    private Gender gender;              // MALE, FEMALE, OTHERS (Sign Up, v1.14); optional, NULL when not given (v1.16)
 
     @Column(name = "terms_version", length = 50)
     private String termsVersion;
@@ -957,7 +941,6 @@ This provides the audit trail required by compliance without storing raw Aadhaar
 |---|---|---|---|
 | `displayName` | Yes | User input | 3-50 chars, no special symbols |
 | `avatarId` | Yes | Avatar catalog selection | Must be a published catalog ID |
-| `city` | Yes | User input | Valid Indian city |
 | `aadhaarName` | No | Aadhaar API | Read-only, shown as "Verified Name" |
 | `mobile` | No | Registration | Identity anchor, not changeable |
 
@@ -1003,9 +986,6 @@ public class UserProfileService {
 
         if (request.getDisplayName() != null) {
             user.setDisplayName(request.getDisplayName());
-        }
-        if (request.getCity() != null) {
-            user.setCity(request.getCity());
         }
 
         return UserProfileResponse.from(userRepository.save(user));
@@ -2214,6 +2194,31 @@ ALTER TABLE users ADD CONSTRAINT chk_users_gender
 
 All new columns are nullable, so accounts created before V9 keep working and `GET /users/me`
 returns them as absent. Avatar grouping lives in configuration (`valuex.avatar.*`), not in the database.
+V9 is already applied and is never edited; V12 (§8.5) drops the address and date-of-birth columns it added.
+
+## 8.5 Flyway Migrations: V11__addresses_schema.sql and V12__drop_signup_address_and_dob.sql
+
+V11 (US-108) creates the `addresses` table — one row per saved address: `user_id`, `address_line1`,
+`address_line2` (landmark), `city`, `state`, `pincode`, `place_id`, `verified`, `verified_at`,
+`is_default`, timestamps — with a unique partial index allowing one default address per user. It also
+copied every existing Sign Up address from `users` into `addresses` as a default, unverified row.
+
+```sql
+-- V12: address is no longer collected at Sign Up; date of birth is dropped
+ALTER TABLE users DROP COLUMN IF EXISTS date_of_birth;
+ALTER TABLE users DROP COLUMN IF EXISTS address;
+ALTER TABLE users DROP COLUMN IF EXISTS city;
+ALTER TABLE users DROP COLUMN IF EXISTS state;
+ALTER TABLE users DROP COLUMN IF EXISTS pincode;
+
+ALTER TABLE addresses ADD COLUMN IF NOT EXISTS label VARCHAR(50);
+```
+
+`addresses.label` is nullable and holds the user's own name for an address (Home, Office, custom).
+Nothing saves addresses yet: the stories that will are US-004 (seller's pickup address when posting a
+listing) and US-020 (buyer checkout with home delivery), managed later under US-113 "My Addresses".
+The first saved address becomes the default. `POST /addresses/verify` (US-108) is unchanged and kept
+for reuse at checkout and listing. `AddressService` now only has `verify(...)` and `listAddresses(userId)`.
 
 ---
 
@@ -2408,18 +2413,14 @@ Note: Account transitions to `SIGNUP_PENDING`; the client continues with the Sig
 {
   "displayName": "Asha Verma",
   "gender": "FEMALE",
-  "dateOfBirth": "1995-05-17",
-  "state": "Karnataka",
-  "city": "Bengaluru",
-  "address": "12 MG Road, Indiranagar",
-  "pincode": "560038",
   "avatarId": "avatar-06",
   "termsAccepted": true,
   "consentGiven": true,
   "termsVersion": "template-0"
 }
 ```
-`avatarId` is optional; without it the default avatar for the gender is stored.
+`gender` and `avatarId` are optional. Without `avatarId` the default avatar for the gender is stored;
+without `gender` too, `users.gender` stays NULL and the neutral default (`avatar-09`) is used.
 
 **Response 200:**
 ```json
@@ -2435,8 +2436,7 @@ Note: Account transitions to `SIGNUP_PENDING`; the client continues with the Sig
 }
 ```
 **Errors:** `VALIDATION_ERROR` (with per-field `details`), `ERROR_INVALID_STATE`,
-`ERROR_TERMS_NOT_ACCEPTED`, `ERROR_CONSENT_REQUIRED`, `ERROR_INVALID_ADDRESS_STATE`,
-`ERROR_INVALID_DATE_OF_BIRTH`, `ERROR_INVALID_AVATAR`, `ERROR_USER_NOT_FOUND`
+`ERROR_TERMS_NOT_ACCEPTED`, `ERROR_CONSENT_REQUIRED`, `ERROR_INVALID_AVATAR`, `ERROR_USER_NOT_FOUND`
 
 ---
 
@@ -2597,20 +2597,16 @@ linking Google to an already-registered mobile number.
     "aadhaarName": "A**** K****",
     "aadhaarVerified": true,
     "avatarId": "avatar-01",
-    "city": "Bengaluru",
     "gender": "MALE",
-    "dateOfBirth": "1995-05-17",
-    "state": "Karnataka",
-    "address": "12 MG Road, Indiranagar",
-    "pincode": "560038",
     "status": "ACTIVE",
     "memberSince": "2026-07-09T00:00:00Z"
   }
 }
 ```
-`gender`, `dateOfBirth`, `state`, `address` and `pincode` are filled by the Sign Up step (v1.14) and
-absent for accounts that registered before it. The endpoint works for every account state, which is
-what lets the app resume registration from `status`. Date of birth and address are never logged.
+`gender` is optional at Sign Up (v1.16) and is `null` when not given or for accounts that registered
+before Sign Up existed. `city`, `state`, `address`, `pincode` and `dateOfBirth` are no longer returned
+(v1.16; the columns were dropped in V12), so the profile has no location. The endpoint works for every
+account state, which is what lets the app resume registration from `status`.
 
 ---
 
@@ -2619,10 +2615,36 @@ what lets the app resume registration from `status`. Date of birth and address a
 **Request:**
 ```json
 {
-  "displayName": "Abhay Kumar",
-  "city": "Bengaluru"
+  "displayName": "Abhay Kumar"
 }
 ```
+`UpdateProfileRequest` has only `displayName` since v1.16 (`city` was removed with the `users.city` column).
+
+---
+
+### GET /api/v1/users/me/addresses
+**Auth:** Bearer token required (`AddressController`)
+**Response 200:** the user's saved addresses, default first.
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "label": "Home",
+      "address": "12 MG Road, Indiranagar",
+      "landmark": null,
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "pincode": "560038",
+      "verified": true,
+      "defaultAddress": true
+    }
+  ]
+}
+```
+`label` and `landmark` are nullable. The list is empty until an address is saved at checkout (US-020) or
+when a seller posts an item (US-004); see §8.5.
 
 ---
 
@@ -3006,7 +3028,7 @@ token flow until that's separately built.
 `UserProfileServiceTest`:
 - `shouldReturnProfileForExistingUser`
 - `shouldThrowNotFoundWhenGettingMissingUser`
-- `shouldUpdateDisplayNameAndCity`
+- `shouldUpdateDisplayName`
 - `shouldLeaveFieldsUnchangedWhenNotProvided`
 - `shouldNeverExposeAadhaarNameAsEditable`
 - `shouldReturnAvatarCatalogFromConfig`

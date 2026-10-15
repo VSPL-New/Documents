@@ -203,8 +203,8 @@ GET  /api/v1/auth/me
 
 ### Responsibilities
 
-* Profile management
-* Address management
+* Profile management (display name and avatar only; the profile holds no location, date of birth or address)
+* Address management (saved addresses with a user-given label, a default address, and address verification for reuse at checkout and listing)
 * Saved items
 * Language preferences
 * Notification preferences
@@ -226,9 +226,18 @@ PATCH  /api/v1/users/me
 POST   /api/v1/users/me/photo
 GET    /api/v1/users/me/addresses
 POST   /api/v1/users/me/addresses
+POST   /api/v1/addresses/verify
 GET    /api/v1/users/me/payout-methods
 POST   /api/v1/users/me/payout-methods
 ```
+
+`GET /api/v1/users/me/addresses` and `POST /api/v1/addresses/verify` (US-108) are implemented. Writing addresses (`POST /api/v1/users/me/addresses`, update, delete) is planned with US-004, US-020 and US-113.
+
+`PATCH /api/v1/users/me` accepts only `displayName`. `GET /api/v1/users/me` returns no city, state, address, pincode or date of birth, and `gender` is `null` when the user did not give one at Sign Up (gender is optional; the neutral default avatar is used).
+
+### Saved Addresses (2026-10-15 design change)
+
+Sign Up (`POST /api/v1/auth/register/complete`) no longer collects state, city, address, landmark, pincode or date of birth; Flyway `V12__drop_signup_address_and_dob.sql` drops `users.date_of_birth`, `address`, `city`, `state` and `pincode` and adds a nullable `addresses.label`. Addresses are saved when a buyer checks out an item for home delivery (US-020) and when a seller posts an item to sell (US-004, pickup address). The first saved address becomes the user's default; the user can pick another saved address or enter a new one and name it (Home, Office or a custom name). Managing addresses is planned as US-113 "My Addresses".
 
 ### Profile Hub Badges (US-103)
 

@@ -282,27 +282,23 @@ WHERE user_id = '<the test user id>' ORDER BY changed_at DESC LIMIT 1;
 {
   "displayName": "Asha Verma",
   "gender": "FEMALE",
-  "dateOfBirth": "1995-05-17",
-  "state": "Karnataka",
-  "city": "Bengaluru",
-  "address": "12 MG Road, Indiranagar",
-  "pincode": "560038",
   "termsAccepted": true,
   "consentGiven": true,
   "termsVersion": "template-0"
 }
 ```
-`avatarId` is optional. Without it the default for the gender is stored (`avatar-01` male, `avatar-05` female, `avatar-09` others).
+`gender` and `avatarId` are optional. Without `avatarId` the default for the gender is stored (`avatar-01` male, `avatar-05` female, `avatar-09` others). Sign Up no longer collects state, city, address, pincode or date of birth.
 
 **Expected response (200 OK):** `AuthResponse` with `"status": "ACTIVE"` and fresh tokens. Re-authorize with the new token.
 
 **Checks:**
-- `GET /api/v1/users/me` now returns `gender`, `dateOfBirth`, `state`, `address`, `pincode` and `status: ACTIVE`.
+- `GET /api/v1/users/me` now returns `gender` and `status: ACTIVE`. It does not return `city`, `state`, `address`, `pincode` or `dateOfBirth`.
 - `GET /api/v1/avatars` returns `groups` and `defaultAvatarIdByGender`.
 - Calling Step 7 again returns `ERROR_INVALID_STATE` (the account is already `ACTIVE`).
 - `termsAccepted: false` returns `ERROR_TERMS_NOT_ACCEPTED`; `consentGiven: false` returns `ERROR_CONSENT_REQUIRED`.
-- `"state": "Atlantis"` returns `ERROR_INVALID_ADDRESS_STATE`; a pincode like `012345` returns `VALIDATION_ERROR` with `details.pincode`.
-- A date of birth in the future returns `VALIDATION_ERROR`; there is no minimum age.
+- Gender omitted: send the body without `gender` (and without `avatarId`). Expect 200 OK, `GET /users/me` shows `gender: null` and `avatarId: "avatar-09"` (neutral default).
+- Sending the old address or date of birth fields (`state`, `city`, `address`, `pincode`, `dateOfBirth`) is not an error and none of them are stored; `ERROR_INVALID_ADDRESS_STATE` and `ERROR_INVALID_DATE_OF_BIRTH` are no longer returned by this endpoint.
+- `GET /api/v1/users/me/addresses` returns an empty list for a new account (no address is saved at Sign Up).
 - Resume: stop after Step 5a, call `GET /users/me` and confirm `status: SIGNUP_PENDING`, then finish with Step 7.
 
 ---
@@ -312,7 +308,7 @@ WHERE user_id = '<the test user id>' ORDER BY changed_at DESC LIMIT 1;
 | HTTP | Error Code | Cause & Fix |
 |---|---|---|
 | 401 | `UNAUTHORIZED` | Missing or expired JWT on a protected endpoint. Repeat Steps 2–2b to get a fresh token. |
-| 400 | `ERROR_INVALID_ADDRESS_STATE` / `ERROR_INVALID_DATE_OF_BIRTH` / `ERROR_INVALID_AVATAR` | Sign Up (Step 7) field not accepted. Use a listed Indian state or union territory, a real past date, and a catalog avatar id. |
+| 400 | `ERROR_INVALID_AVATAR` | Sign Up (Step 7) `avatarId` is not in the catalog. Use an id from `GET /api/v1/avatars`. |
 | 400 | `ERROR_TERMS_NOT_ACCEPTED` / `ERROR_CONSENT_REQUIRED` | Step 7 sent `false` for terms or consent. |
 | 400 | `ERROR_INVALID_STATE` | Endpoint called out of order (e.g., Aadhaar before email, or email OTP before mobile verify). Follow the flow above. |
 | 400 | `ERROR_OTP_EXPIRED` | OTP TTL is 300 s. Re-run Step 1 (mobile) or Step 3 (email) to generate a new one. |

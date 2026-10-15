@@ -185,7 +185,12 @@ GET /api/v1/users/me/addresses
 POST /api/v1/users/me/addresses
 PUT /api/v1/users/me/addresses/{id}
 DELETE /api/v1/users/me/addresses/{id}
+POST /api/v1/addresses/verify
 ```
+
+`GET /api/v1/users/me/addresses` (JWT) returns the saved addresses, default first: `{ id, label (nullable), address, landmark (nullable), city, state, pincode, verified, defaultAddress }`. `POST /api/v1/addresses/verify` (US-108, Google Address Validation behind a provider port with a sandbox adapter) is implemented. `POST`, `PUT` and `DELETE` are planned with US-004 (pickup address when posting), US-020 (home-delivery checkout) and US-113 (My Addresses). Address verification and Google Places are used from checkout and listing, not from Home or Sign Up.
+
+`GET /api/v1/users/me` no longer returns city, state, address, pincode or date of birth, and `PATCH /api/v1/users/me` accepts only `displayName`.
 
 ---
 

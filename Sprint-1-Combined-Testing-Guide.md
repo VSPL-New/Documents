@@ -895,7 +895,10 @@ DELETE FROM users WHERE mobile IN ('9000000001', '9000000002');
 
 ## US-003 — User Profile Management
 
-Viewing/editing profile fields (display name, city) and avatar selection.
+Viewing/editing the profile field (display name) and avatar selection.
+
+> **Design change (Oct 2026):** the profile has no city, state, address, pincode or date of birth
+> any more; `GET /users/me` does not return them and `PATCH /users/me` accepts only `displayName`.
 
 > **Design note:** users pick an `avatarId` from a fixed catalog (`GET /api/v1/avatars`) — there
 > is no photo upload or content moderation in this version. See
@@ -909,10 +912,10 @@ US-001 are sufficient.
 | TC | Scenario | Endpoint | Expected |
 |---|---|---|---|
 | TC-001 | View own profile (defaults) | `GET /users/me` | `200`, default avatar, masked mobile |
-| TC-002 | Update display name and city | `PATCH /users/me` | `200`, both fields updated |
-| TC-003 | Partial update leaves other field unchanged | `PATCH /users/me` | `200`, only sent field changes |
+| TC-002 | Update display name | `PATCH /users/me` | `200`, display name updated |
+| TC-003 | Empty update leaves the field unchanged | `PATCH /users/me` | `200`, nothing changes |
 | TC-004 | Reject invalid display name | `PATCH /users/me` | `400 VALIDATION_ERROR` |
-| TC-005 | Reject invalid city | `PATCH /users/me` | `400 VALIDATION_ERROR` |
+| TC-005 | City is no longer editable | `PATCH /users/me` | `200`, `city` ignored and not returned |
 | TC-006 | List avatar catalog | `GET /avatars` | `200`, 12 IDs + default |
 | TC-007 | Select a valid avatar | `PUT /users/me/avatar` | `200`, `avatarId` updated |
 | TC-008 | Reject avatar not in catalog | `PUT /users/me/avatar` | `400 ERROR_INVALID_AVATAR` |
@@ -927,20 +930,21 @@ US-001 are sufficient.
 ```json
 { "success": true, "data": { "userId": "...", "mobile": "90XXXX0010", "aadhaarVerified": false, "avatarId": "avatar-01", "status": "EMAIL_VERIFICATION_PENDING", "memberSince": "..." } }
 ```
-> `displayName`/`email`/`city`/`aadhaarName` are omitted entirely (not `null`) before ever set —
-> not a bug. `avatarId` defaults to `avatar-01` at account creation.
+> `displayName`/`email`/`gender`/`aadhaarName` are omitted entirely (not `null`) before ever set —
+> not a bug. `avatarId` defaults to `avatar-01` at account creation. The response never contains
+> `city`, `state`, `address`, `pincode` or `dateOfBirth`.
 
-### TC-002 — Update Display Name and City
+### TC-002 — Update Display Name
 
 `PATCH /api/v1/users/me`
 ```json
-{ "displayName": "Abhay Kumar", "city": "Bengaluru" }
+{ "displayName": "Abhay Kumar" }
 ```
 **200 OK**, confirm via `GET /users/me`.
 
-### TC-003 — Partial Update Leaves Other Field Unchanged
+### TC-003 — Empty Update Leaves the Field Unchanged
 
-Prerequisite: TC-002 done. `PATCH /api/v1/users/me` with `{ "city": "Mumbai" }` — `displayName`
+Prerequisite: TC-002 done. `PATCH /api/v1/users/me` with `{}` — `displayName`
 must still read `"Abhay Kumar"`.
 
 ### TC-004 — Reject Invalid Display Name
@@ -950,12 +954,10 @@ Try each: `{ "displayName": "Ab" }` (too short), `{ "displayName": "Abhay123" }`
 
 **400:** `code: VALIDATION_ERROR` for each.
 
-### TC-005 — Reject Invalid City
+### TC-005 — City Is No Longer Editable
 
-`{ "city": "P1" }` → **400** `VALIDATION_ERROR`.
-
-> **Known simplification:** format-only validation, no exhaustive city whitelist —
-> `"Notacity"` currently passes. Expected per LLD, not a bug.
+`PATCH /api/v1/users/me` with `{ "city": "Mumbai" }` → **200 OK**, profile unchanged and no
+`city` field in the response (`UpdateProfileRequest` has only `displayName`; unknown fields are ignored).
 
 ### TC-006 — List Avatar Catalog
 
@@ -1000,7 +1002,7 @@ Logout in Swagger UI, call `GET /api/v1/users/me` → **401** `UNAUTHORIZED`. Re
 ### US-003 Reset Between Tests
 
 ```sql
-UPDATE users SET display_name = NULL, city = NULL, avatar_id = 'avatar-01' WHERE mobile = '9000000010';
+UPDATE users SET display_name = NULL, avatar_id = 'avatar-01' WHERE mobile = '9000000010';
 ```
 Full teardown:
 ```sql
@@ -1014,7 +1016,7 @@ DELETE FROM users WHERE mobile = '9000000010';
 
 | HTTP | Error Code | Cause |
 |---|---|---|
-| 400 | `VALIDATION_ERROR` | `displayName`/`city`/`avatarId` fails `@Size`/`@Pattern`/`@NotBlank` |
+| 400 | `VALIDATION_ERROR` | `displayName`/`avatarId` fails `@Size`/`@Pattern`/`@NotBlank` |
 | 400 | `ERROR_INVALID_AVATAR` | `avatarId` well-formed but not in the catalog |
 | 401 | `UNAUTHORIZED` | Missing/expired JWT |
 | 404 | `NOT_FOUND` | JWT references a deleted user (not reachable via normal use) |

@@ -227,11 +227,11 @@ CREATE TABLE user_profiles (
     user_id UUID PRIMARY KEY,
     display_name VARCHAR(100),
     profile_image_url TEXT,
-    city VARCHAR(100),
-    state VARCHAR(100),
     language_code VARCHAR(10)
 );
 ```
+
+The profile holds no location, address or date of birth. Flyway `V12__drop_signup_address_and_dob.sql` (2026-10-15) dropped `users.date_of_birth`, `address`, `city`, `state` and `pincode`. `users.gender` is optional and stays `NULL` when the user does not give it at Sign Up.
 
 ---
 
@@ -241,6 +241,7 @@ CREATE TABLE user_profiles (
 CREATE TABLE addresses (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
+    label VARCHAR(50),
     address_line1 TEXT,
     city VARCHAR(100),
     state VARCHAR(100),
@@ -248,6 +249,8 @@ CREATE TABLE addresses (
     is_default BOOLEAN
 );
 ```
+
+`label` is nullable and holds the user's name for the address (Home, Office or a custom name; added by V12). Sign Up no longer fills this table. Rows are created when a buyer checks out for home delivery (US-020) or a seller posts an item (US-004, pickup address); the first saved address becomes the default. The city of the pickup address chosen when posting becomes `listings.seller_location`, which is `NULL` on a new draft.
 
 ---
 

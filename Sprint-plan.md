@@ -79,7 +79,7 @@ Allow users to register and login via multiple auth methods, verify identity, an
 * Aadhaar onboarding complete (skippable until first transaction)
 * User profiles operational
 * Profile hub navigation, logout, and account security settings operational (menu items to not-yet-built sections show empty/coming-soon states until their sprints land)
-* Address entry with Places autocomplete and verification operational (US-108)
+* Address entry component and verification operational (US-108); addresses are first saved from checkout (US-020) and from posting a listing (US-004), not at Sign Up
 * Mobile app security controls in place: SSL pinning, root/jailbreak detection, device ID (US-109)
 * Registration screens meet the contrast, touch target, text size and screen reader standards in the design system (US-110)
 
@@ -192,6 +192,7 @@ Enable secure transactions and escrow.
 | US-025 | Platform Fee Deduction             | backend         | 3  | US-021     |
 | US-072 | Seller Payout Bank/UPI Management  | backend, mobile | 5  | US-025     |
 | US-071 | View Payment and Transaction       | backend, mobile | 5  | US-021     |
+| US-113 | My Addresses (placeholder, to be detailed; points not estimated yet) | backend, mobile | TBD | US-020, US-108 |
 
 ## Exit Criteria
 
@@ -200,6 +201,7 @@ Enable secure transactions and escrow.
 * Escrow system operational
 * Order tracking working
 * Fee calculation accurate
+* Delivery address saved at checkout as the buyer's default address (US-020); My Addresses page built from the placeholder story (US-113)
 
 ---
 
@@ -484,7 +486,7 @@ Add advanced features and optimize platform.
 | S2     | Seller Listing Creation             | 10      | 52  | 2 weeks  |
 | S3     | Discovery & Search                  | 5       | 29  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
-| S5     | Cart, Checkout & Payments           | 12      | 62  | 2 weeks  |
+| S5     | Cart, Checkout & Payments           | 13      | 62* | 2 weeks  |
 | S6     | Shipping & Delivery                 | 11      | 49  | 2 weeks  |
 | S7     | Order Cancellation & Returns        | 6       | 34  | 2 weeks  |
 | S8     | Ratings & Disputes                  | 5       | 27  | 2 weeks  |
@@ -495,13 +497,13 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **115** | **616*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **116** | **616*** | **32 weeks** |
 
-\* Sprint 1 and total points add US-108 (3), US-109 (5, proposed) and US-110 (8, proposed) to the previous figures. Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them).
+\* Sprint 1 and total points add US-108 (3), US-109 (5, proposed) and US-110 (8, proposed) to the previous figures. Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total).
 
 ## Coverage
 
-### Stories Planned: 115 / 112 total user stories
+### Stories Planned: 116 / 113 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -512,7 +514,7 @@ Add advanced features and optimize platform.
 - Social Login (US-101 to US-102): ✅ 2 stories
 - Profile Management Extensions (US-103 to US-105): ✅ 3 stories
 - Authentication Extensions (US-106 to US-107): ✅ 2 stories
-- Address Management (US-108): ✅ 1 story (Sprint 1)
+- Address Management (US-108, US-113): ✅ 2 stories (US-108 in Sprint 1, US-113 in Sprint 5)
 - Mobile App Security (US-109): ✅ 1 story (Sprint 1)
 - UI Quality (US-110): ✅ 1 story (Sprint 1)
 - Home (US-111): ✅ 1 story (Sprint 3)
