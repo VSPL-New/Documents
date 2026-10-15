@@ -18,7 +18,7 @@ environment.
 |---|---|
 | Base URL | `http://localhost:8080` |
 | Swagger UI | `http://localhost:8080/swagger-ui.html` (tag: **Notifications**) |
-| Endpoints under test | `GET /api/v1/notifications`, `PATCH /api/v1/notifications/{id}/read` |
+| Endpoints under test | `GET /api/v1/notifications`, `PATCH /api/v1/notifications/{id}/read`, `PATCH /api/v1/notifications/read-all` |
 | Retention job | `NotificationRetentionCleanupJob` — daily cron `0 0 3 * * *`, deletes rows older than 90 days |
 
 ---
@@ -48,6 +48,9 @@ environment.
 | TC-007 | Cannot mark another user's notification as read | 404 |
 | TC-008 | A failed SMS/email send doesn't block notification creation | Row still appears; only an ERROR log line, no user-facing error |
 | TC-009 | Pagination and default page size | `GET /notifications` with no params returns 20 per page |
+| TC-010 | Mark all notifications read | `200`, `markedRead` equals the unread count, `X-Unread-Notifications: 0` |
+| TC-011 | Mark all read with nothing unread | `200`, `markedRead: 0` |
+| TC-012 | Mark all read only affects the caller | Another user's unread rows stay unread |
 
 ---
 
@@ -174,6 +177,79 @@ notifications for the test user.
 
 **Expected:** response `data` array has at most 20 entries; `metadata.size: 20`, `metadata.page: 0`,
 `metadata.totalElements` reflects the real count. Use `?page=1` for the next page.
+
+---
+
+## TC-010 — Mark All Notifications Read
+
+**Steps:**
+1. `GET /api/v1/notifications` — note `X-Unread-Notifications` (for example `3`).
+2. `PATCH /api/v1/notifications/read-all`.
+3. `GET /api/v1/notifications` again.
+
+**Expected response (200 OK):**
+```json
+{ "success": true, "data": { "markedRead": 3 } }
+```
+Step 3: `X-Unread-Notifications: 0`, every row has `"read": true`, and each previously unread row has a `readAt`.
+
+---
+
+## TC-011 — Mark All Read With Nothing Unread
+
+**Steps:** `PATCH /api/v1/notifications/read-all` a second time.
+
+**Expected:** `200 OK` with `{ "markedRead": 0 }`; no error and no `readAt` changes.
+
+---
+
+## TC-012 — Mark All Read Only Affects the Caller
+
+**Steps:** With User A and User B both holding unread notifications, call `PATCH /read-all` as User A, then `GET /notifications` as User B.
+
+**Expected:** User B's `X-Unread-Notifications` is unchanged.
+
+---
+
+## Mobile App (Flutter) — Notifications
+
+Manual test cases for the Notifications page in `valuex-mobile` against the local backend. Automated coverage is in `test/features/notifications/notifications_test.dart`.
+
+| Setting | Value |
+|---|---|
+| Run | `flutter run -d <device> --dart-define-from-file=config/dev_local.json` |
+| Sign in | A registered `ACTIVE` account (mock OTP is in the backend log, search for `DEV-MOCK`) |
+| Open | Home bell, or Profile > Account > Notifications |
+| Endpoints used | `GET /notifications`, `PATCH /notifications/{id}/read`, `PATCH /notifications/read-all` |
+| Sample data | Only account events exist, so insert other types with SQL (see below) to see every tab and a second page |
+
+```sql
+INSERT INTO notifications (user_id, status, event_type, title, body, deep_link, priority, read)
+VALUES ('<user-id>', 'SENT', 'ORDER_DELIVERED', 'Order Delivered', 'Your order has been delivered.', NULL, 'HIGH', false),
+       ('<user-id>', 'SENT', 'MESSAGE_RECEIVED', 'New Message', 'You have a message.', NULL, 'MEDIUM', false),
+       ('<user-id>', 'SENT', 'LISTING_BOOSTED', 'Listing Boosted', 'Your listing is boosted.', NULL, 'MEDIUM', true),
+       ('<user-id>', 'SENT', 'PRICE_DROP', 'Price Drop Alert', 'A price dropped.', NULL, 'LOW', true);
+```
+
+| TC | Scenario | Expected Result |
+|---|---|---|
+| M-TC-001 | Home bell count | Bell announces "Notifications, {n} unread" and shows a dot while `n` > 0; no dot at 0 |
+| M-TC-002 | Open the page | Title "Notifications", "{n} unread" (or "You're all caught up"), cards newest first with a relative time ("5 minutes ago", "2 hours ago", "3 days ago", then the date after a week) |
+| M-TC-003 | Unread look | Unread cards have a tint, a left bar and a dot; a screen reader says "Unread" first |
+| M-TC-004 | Alert colour | Under review, suspended and banned cards use a red icon tile; the others use the blue tile |
+| M-TC-005 | Tabs | All plus one tab per category that has notifications (Account, Orders, Messages, Listings, Others); a tab with none is hidden, and with only one category there is no tab row |
+| M-TC-006 | Filtering | Each tab lists only its category; All lists everything; an unknown event type is under Others |
+| M-TC-007 | Open a notification | Tapping marks it read (count drops, tint goes) and follows its link: `/profile` opens the Profile tab, `/profile/account-security` opens Account Security |
+| M-TC-008 | Link not built yet | `/support` shows "This is coming soon" and stays on the page; a notification with no link is only marked read |
+| M-TC-009 | Mark all read | Every card turns read, the button disappears, "You're all caught up" shows, the Home bell and Profile row clear; `GET /notifications` shows `X-Unread-Notifications: 0` |
+| M-TC-010 | Mark all read fails | Stop the backend, tap it: "Unable to mark all as read. Try again" and the list stays unread |
+| M-TC-011 | Paging | With more than 20 rows, scrolling to the end loads the next page; stop the backend first to see "Unable to load more notifications" and Retry |
+| M-TC-012 | Pull to refresh | A notification inserted in SQL appears after pulling down |
+| M-TC-013 | Empty | A user with no rows sees "No notifications yet" |
+| M-TC-014 | Backend down | The first load shows an error with Retry |
+| M-TC-015 | Guest | Tapping the bell while signed out sends the user to Sign In |
+| M-TC-016 | Language and large text | In Hindi the labels, tabs and times are Hindi (titles and text come from the backend, so stay in English); at the largest text size nothing is clipped or overlaps |
+| M-TC-017 | Screen reader | Each card reads as one button (unread state, title, text, time); tabs say selected; the title is a heading |
 
 ---
 

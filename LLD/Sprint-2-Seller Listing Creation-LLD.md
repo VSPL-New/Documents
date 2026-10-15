@@ -189,11 +189,14 @@ Base path `/api/v1/listings`, package `com.valuex.listing`.
 
 | Method & Path | Purpose | Auth |
 |---|---|---|
-| `POST /api/v1/listings` | Create draft listing (empty shell) | `SELLER` |
-| `POST /api/v1/media/uploads` | Create `PENDING_UPLOAD` media asset and return short-lived upload URL | authenticated owner |
-| `POST /api/v1/media/{mediaId}/complete` | Confirm upload and start validation/variant processing | authenticated owner |
+| `POST /api/v1/listings` | Create draft listing (empty shell); `@RequiresIdentityVerification` (403 `AADHAAR_VERIFICATION_REQUIRED` if not verified) | `SELLER`, `ACTIVE` |
+| `POST /api/v1/media/uploads` | Create `PENDING_UPLOAD` media asset and return short-lived upload URL (rejects when the listing already has 10 READY photos) | authenticated owner |
+| `POST /api/v1/media/{mediaId}/complete` | Read the stored object, verify real type/size/dimensions, mark `READY` or `REJECTED` (idempotent when already `READY`) | authenticated owner |
+| `GET /api/v1/media/{mediaId}` | Media metadata; variants exposed as CDN URLs only for public media | authenticated owner |
+| `DELETE /api/v1/media/{mediaId}` | Delete unattached media (`MEDIA_IN_USE` if attached) | authenticated owner |
+| `POST /api/v1/media/{mediaId}/access` | Short-lived download URL for `READY` media (`MEDIA_NOT_READY` otherwise) | authenticated owner |
 | `POST /api/v1/listings/{id}/images` | Associate a READY `LISTING_IMAGE` media asset with the listing | `SELLER`, owner |
-| `DELETE /api/v1/listings/{id}/images/{imageId}` | Remove an uploaded image while in `DRAFT` | `SELLER`, owner |
+| `DELETE /api/v1/listings/{id}/images/{imageId}` | Remove an image while in `DRAFT`, re-sequence the rest and delete its media | `SELLER`, owner |
 | `GET /api/v1/listings/{id}` | Fetch draft to resume editing | `SELLER`, owner |
 
 Create draft request/response:
@@ -273,8 +276,13 @@ sequenceDiagram
 | Format JPG/PNG/HEIC only | `ERROR_INVALID_PHOTO` | "Photo quality too low or invalid format" |
 | Max 10MB per photo | `ERROR_INVALID_PHOTO` | "Photo exceeds 10MB limit" |
 | Min resolution 480x480 | `ERROR_INVALID_PHOTO` | "Photo quality too low or invalid format" |
-| Upload transport failure | `ERROR_PHOTO_UPLOAD_FAILED` | "Failed to upload photo. Check your connection" |
+| Upload transport failure / object missing in storage | `ERROR_PHOTO_UPLOAD_FAILED` | "Failed to upload photo. Check your connection" |
 | Camera permission denied (client-only) | `ERROR_CAMERA_PERMISSION_DENIED` | "Camera access required to capture photos" |
+| Same media attached twice | `MEDIA_ALREADY_ATTACHED` | "Photo is already attached to a listing" |
+| Requested `sortOrder` already used | `LISTING_IMAGE_ORDER_CONFLICT` | "Another photo already uses that position" |
+| Delete media still attached to a listing | `MEDIA_IN_USE` | "Remove the photo from its listing before deleting it" |
+| Download access for non-READY media | `MEDIA_NOT_READY` | "Media is not available" |
+| Listing photo with non-`LISTING` owner | `ERROR_INVALID_PHOTO` | "Listing photos must belong to a listing" |
 
 ## A.8 Security & NFR Notes
 
@@ -283,13 +291,21 @@ sequenceDiagram
 - Ownership enforced via `SecurityContext.getCurrentUserId()` on every call, consistent with [CODING_STANDARDS.md §2.6](../CODING_STANDARDS.md).
 - Target: image registration P95 < 300ms; end-to-end photo-to-draft-ready P95 < 8s on 4G (dominated by client-side direct upload and media processing, not this API).
 
-### A.8.1 Implementation Reconciliation (US-004 backend slice)
+### A.8.1 Implementation Reconciliation (US-004)
 
 - Implemented backend package names are `com.valuex.media` and `com.valuex.listing`, with repositories under `infrastructure.persistence`; controllers use the existing `ApiResponse` envelope and `SecurityContext`.
-- Migration `V9__listing_media_schema.sql` stores `listing_images.media_asset_id`; reusable `media_assets` and `media_variants` tables own provider/object metadata.
-- `ObjectStoragePort` is configured through `OBJECT_STORAGE_PROVIDER` and `valuex.media.storage.*`. Cloudflare R2 is the default adapter using the AWS S3-compatible SDK; AWS S3 and Backblaze B2 adapters remain extension points and require no business-module changes when added.
-- `POST /api/v1/media/{mediaId}/complete` performs authoritative object metadata lookup through `ObjectStoragePort` and marks media `READY` after metadata/resolution validation. Asynchronous derivative-worker generation, AVIF/WebP processing, and perceptual-hash computation are intentionally deferred follow-ups; the lifecycle/schema is ready for them.
-- Upload authorization verifies that a `LISTING` media request targets an existing `DRAFT` listing owned by the authenticated seller. Listing attachment additionally verifies that the READY media asset belongs to that same listing.
+- Migration `V10__listing_media_schema.sql` (renumbered from V9 to resolve a Flyway version clash) stores `listing_images.media_asset_id`; reusable `media_assets` and `media_variants` tables own provider/object metadata.
+- `ObjectStoragePort` is configured through `OBJECT_STORAGE_PROVIDER` and `valuex.media.storage.*`. Cloudflare R2 is the default adapter using the AWS S3-compatible SDK (one cached `S3Client`/`S3Presigner` per adapter); AWS S3 and Backblaze B2 adapters remain extension points. Adapter SDK failures are translated to a provider-neutral `StorageException`.
+- `valuex.media.storage.public-endpoint` (`OBJECT_STORAGE_PUBLIC_ENDPOINT`) lets signed URLs use a host that devices can reach while the server talks to the internal endpoint; `path-style-access` (default `true`) is required for local S3-compatible stores. Local development uses a RustFS container (`object-storage` in `docker-compose.yml`, host port 9300) with buckets created by `object-storage-init`.
+- `POST /api/v1/media/{mediaId}/complete` is authoritative: it reads object metadata **and the first 512 KB** via `ObjectStoragePort.readHead`, identifies JPEG/PNG/HEIC from magic bytes (`ImageInspector`), reads JPEG/PNG dimensions from the bytes (client values are ignored), and rejects type mismatches, empty/oversized objects and images under 480×480. HEIC dimensions cannot be decoded by the JDK, so client-reported dimensions are used for HEIC only. Rejections are persisted as `REJECTED` (`noRollbackFor = BusinessException`) and the stored object is removed best-effort. A missing/unreadable object returns `ERROR_PHOTO_UPLOAD_FAILED` and leaves the asset `PENDING_UPLOAD` so the client can retry. Only `PENDING_UPLOAD` assets can be completed; `READY` returns idempotently.
+- Object keys take their extension from the validated content type (never the client file name); `image/heif` is normalised to `image/heic`; the original file name is stored stripped of paths/control characters and truncated to 255.
+- Upload authorization verifies that a `LISTING` media request targets an existing `DRAFT` listing owned by the authenticated seller, requires `LISTING_IMAGE` media to be owned by a `LISTING`, and rejects new uploads once the listing has 10 READY photos. Listing attachment additionally verifies the READY media belongs to that listing, is not already attached, and that a requested `sortOrder` is free.
+- Attach/delete take a `PESSIMISTIC_WRITE` lock on the listing row (`findByIdAndSellerIdForUpdate`) so concurrent uploads cannot exceed 10 photos or collide on `sort_order`. Re-sequencing after a delete runs in two flushed passes (negative positions first) because the unique `(listing_id, sort_order)` index is checked per row.
+- Removing a listing image also deletes its media asset; `DELETE /media/{id}` refuses attached media (`MEDIA_IN_USE`), is a no-op for already deleted media, and marks the asset `DELETION_PENDING` when the store is unavailable.
+- `createDraft` writes the initial `listing_status_history` row (`null → DRAFT`, reason `DRAFT_CREATED`) and is annotated `@RequiresIdentityVerification`.
+- `MediaAssetResponse.variants` contains CDN URLs (`cdn-base-url` + variant key) only for `PUBLIC_DERIVATIVE` media; bucket object keys are never returned.
+- Asynchronous derivative generation (AVIF/WebP), EXIF stripping and server-side perceptual hashing remain deferred follow-ups; the lifecycle/schema is ready for them.
+- Flutter client: `features/listing` (repository + `CreateListingController` + `CreateListingScreen`) implements the flow in §A.6 from the bottom-nav **Sell** tab; see the US-004 implementation plan.
 
 ---
 

@@ -1294,7 +1294,7 @@ sprint; tapping it today is expected to be a dead end, not a bug.
 | TC-010 | Reject email change to an already-registered email | `400 ERROR_EMAIL_ALREADY_REGISTERED` |
 | TC-011 | OTP send rate limit on change-initiate | `400 ERROR_OTP_RATE_LIMIT` on the 4th call |
 | TC-012 | OTP fail limit on change-verify | `400 ERROR_OTP_MAX_ATTEMPTS` on the 6th wrong attempt |
-| TC-013 | List active sessions with `isCurrent` flagged | `200`, exactly one session marked current |
+| TC-013 | List active sessions with `current` flagged | `200`, exactly one session marked current |
 | TC-014 | Log out of all other devices | `200`, other session's tokens die; caller's session untouched |
 | TC-015 | Revoke-others with no other sessions | `400 ERROR_NO_OTHER_SESSIONS` |
 | TC-016 | Logout (US-104) removes a session from this list | Session absent from a later `GET /sessions` |
@@ -1401,7 +1401,7 @@ Call `/mobile/change/initiate` (or `/email/change/initiate`) **4 times within 10
 Call the corresponding `/verify` endpoint with a wrong OTP **6 times within 10 minutes**. The 6th
 call returns **400** `ERROR_OTP_MAX_ATTEMPTS`.
 
-### TC-013 — List Active Sessions With `isCurrent` Flagged
+### TC-013 — List Active Sessions With `current` Flagged
 
 **Steps:**
 1. Log in for this account a second time (US-106) — now two sessions exist.
@@ -1412,12 +1412,12 @@ call returns **400** `ERROR_OTP_MAX_ATTEMPTS`.
 {
   "success": true,
   "data": [
-    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "isCurrent": true },
-    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "isCurrent": false }
+    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "current": true },
+    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "current": false }
   ]
 }
 ```
-Exactly **one** entry has `isCurrent: true`.
+Exactly **one** entry has `current: true`.
 
 ### TC-014 — Log Out of All Other Devices
 

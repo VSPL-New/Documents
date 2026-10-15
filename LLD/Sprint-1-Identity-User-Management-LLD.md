@@ -25,7 +25,8 @@
 | 1.11 | Aug 2026 | US-088 (Lifecycle State - User Account) implemented and documented: §12 gained §12.6-§12.9. `UserStateService` adds the moderation half of `UserAccountStateMachine` that had no caller since S0-008 (`flagForReview`/`clearReview`/`restrict`/`liftRestriction`/`suspend`/`liftSuspension`/`ban`/`close`) — same `account_status_history` write pattern as `UserRegistrationService`, plus the codebase's first concrete `DomainEvent`, `UserStateChangedEvent`, published on every transition (closing the gap flagged in coding-standard §2.4 point 4, previously unmet by all four existing call sites). `SuspendedAccountAutoLiftJob` implements the `@Scheduled` job §7.5 had specified but marked "Not started" — hourly cron, `UserRepository.findByStatusAndSuspensionLiftedAtBefore`, per-user try/catch so one bad row can't block the batch. `User.suspensionLiftedAt` mapped to the `suspension_lifted_at` column that migration V2 had already added but no entity field ever used. Deliberately **not** built: a REST controller (no admin authentication/RBAC exists yet — Sprint 10 owns that surface; an unauthenticated moderation endpoint would be a security hole), active-order blocking on `close()` (order module doesn't exist until Sprint 5), and a user-facing appeal workflow for SUSPENDED/BANNED (no story anywhere defines one — user-stories.md's "appeals allowed within 30 days" is a validation-rule line, not a built flow). BANNED Aadhaar-blacklisting needs no new code — the pre-existing `users.aadhaar_hash` unique constraint already blocks reuse as long as banned rows aren't deleted, which `close()`/`ban()` never do. `UserAccountStateMachineTest` written from scratch — no test for the S0-008 state machine existed before this story despite it being live in 4 registration-flow services since US-001. |
 | 1.14 | Oct 2026 | **Sign Up step added at the end of registration (US-001):** new `SIGNUP_PENDING` state between `IDENTITY_VERIFICATION_PENDING` and `ACTIVE` — `skip-aadhaar` and `aadhaar/verify` now land in `SIGNUP_PENDING`, and the new `POST /register/complete` (profile, gender, date of birth, address, terms and consent) moves the account to `ACTIVE` and fires `AccountCreatedEvent`. `POST /register/initiate` no longer takes terms or consent. New `users` columns (Flyway V9), `GET /users/me` returns them, avatar catalog gains gender groups and per-gender defaults. |
 | 1.15 | Oct 2026 | US-112 (Seller Incoming Orders) adds one Profile hub menu item. §8.3 gained the `INCOMING_ORDERS` badge key (count of New orders, supplied by the order module's `ProfileMenuBadgeProvider`, designed in LLD Sprint 6 Part A). No change to the SPI, `ProfileMenuService` or the `menu-summary` response; the key is simply absent until Sprint 6 registers the provider. |
-| 1.16 | Oct 2026 | **Sign Up no longer collects state, city, address, landmark, pincode or date of birth (US-001 design change):** `POST /register/complete` now takes `{ displayName, gender?, avatarId?, termsAccepted, consentGiven, termsVersion }`; `gender` is optional (omitted → `users.gender` stays NULL and the neutral default avatar `avatar-09` is used). `ERROR_INVALID_ADDRESS_STATE` and `ERROR_INVALID_DATE_OF_BIRTH` are no longer raised by this endpoint, and the service no longer calls `AddressService.saveDefaultAddress` (removed; `AddressService` keeps only `verify(...)` and `listAddresses(userId)`). New Flyway V12 (V9 and V11 stay untouched) drops `users.date_of_birth`, `address`, `city`, `state`, `pincode` and adds nullable `addresses.label`. `GET /users/me` no longer returns `city`, `state`, `address`, `pincode` or `dateOfBirth`; `PATCH /users/me` accepts only `displayName`. New `GET /users/me/addresses` lists the user's saved addresses (default first). §3.1 step 6, §3.2, §5.1, §5.3, §15 (new §8.5), §16.1, §16.3 and §17 test names updated. |
+| 1.16 | Oct 2026 | US-077 mobile built (in-app Notifications page) and one endpoint added: `PATCH /api/v1/notifications/read-all` marks every unread notification of the user as read (through the same `NotificationStateMachine` transitions as the single read) and returns `{ markedRead }`. §6.5 lists it, §6.10 records the mobile behaviour (category tabs and deep-link mapping are client-side). |
+| 1.17 | Oct 2026 | **Sign Up no longer collects state, city, address, landmark, pincode or date of birth (US-001 design change):** `POST /register/complete` now takes `{ displayName, gender?, avatarId?, termsAccepted, consentGiven, termsVersion }`; `gender` is optional (omitted → `users.gender` stays NULL and the neutral default avatar `avatar-09` is used). `ERROR_INVALID_ADDRESS_STATE` and `ERROR_INVALID_DATE_OF_BIRTH` are no longer raised by this endpoint, and the service no longer calls `AddressService.saveDefaultAddress` (removed; `AddressService` keeps only `verify(...)` and `listAddresses(userId)`). New Flyway V12 (V9 and V11 stay untouched) drops `users.date_of_birth`, `address`, `city`, `state`, `pincode` and adds nullable `addresses.label`. `GET /users/me` no longer returns `city`, `state`, `address`, `pincode` or `dateOfBirth`; `PATCH /users/me` accepts only `displayName`. New `GET /users/me/addresses` lists the user's saved addresses (default first). §3.1 step 6, §3.2, §5.1, §5.3, §15 (new §8.5), §16.1, §16.3 and §17 test names updated. |
 
 **Reference Documents:**
 - PRD v1.4
@@ -1278,7 +1279,8 @@ service, matching this module's one-service-per-concern convention:
 POST /api/v1/users/me/mobile/change/initiate
   Auth: Bearer token required
   Body: { newMobile }
-  → Validate format; reject if newMobile already belongs to another user (existsByMobileAndIdNot)
+  → Validate format; reject if newMobile equals the user's current mobile (ERROR_SAME_MOBILE)
+  → Reject if newMobile already belongs to another user (existsByMobileAndIdNot)
   → Rate-limited (otp.max-send-attempts-per-window, shared config)
   → Generate OTP, store SHA-256(otp) in Redis: otp:{newMobile}:MOBILE_CHANGE  TTL=300s
   → OtpPort.sendOtp(newMobile, otp, OtpPurpose.MOBILE_CHANGE)
@@ -1312,8 +1314,8 @@ mid-way, nothing changes (matches user-stories.md US-105 validation rule; confir
 GET /api/v1/users/me/sessions
   Auth: Bearer token required
   → SessionService.listActive(userId): top 10 non-revoked user_sessions rows, most recent first
-  → Mark the row matching SecurityContext.getCurrentJti() as isCurrent: true
-  → Return: [{ sessionId, deviceInfo, ipAddress, createdAt, lastActiveAt, isCurrent }, ...]
+  → Mark the row matching SecurityContext.getCurrentJti() as current: true
+  → Return: [{ sessionId, deviceInfo, ipAddress, createdAt, lastActiveAt, current }, ...]
 
 POST /api/v1/users/me/sessions/revoke-others
   Auth: Bearer token required
@@ -1474,6 +1476,9 @@ public class Notification {
 - Notification history retained for 90 days
 - `GET /api/v1/notifications` returns paginated list (default page size: 20)
 - Unread count returned in response header: `X-Unread-Notifications: 3`
+- `PATCH /api/v1/notifications/{id}/read` marks one read (idempotent; 404 for another user's row)
+- `PATCH /api/v1/notifications/read-all` marks every unread notification of the user as read and
+  returns `{ "success": true, "data": { "markedRead": 3 } }` (0 when nothing was unread)
 
 ## 6.6 Event Sources — As Built
 
@@ -1551,6 +1556,23 @@ the interface's shape may need revisiting once a second multi-event listener exi
    noted here for architecture alignment"), predating this implementation pass.
 6. **Order/payment/cart/dispute/message notifications** — their modules don't exist until Sprint
    4 onward; §6.1 scoped Sprint 1 to account-lifecycle events only.
+
+## 6.10 Mobile Notifications Page — As Built
+
+`valuex-mobile` shows the history at `/notifications` (Home bell, Profile > Notifications):
+
+- **List:** `GET /notifications?page&size=20`, newest first; the unread count comes from the
+  `X-Unread-Notifications` header (the Home bell and Profile row use a `size=1` request for it).
+- **Read:** tapping a row calls `PATCH /{id}/read` (shown read at once, undone if it fails);
+  "Mark all read" calls `PATCH /read-all`.
+- **Tabs (client-side, from `eventType`):** `ACCOUNT_*`/`AADHAAR_*` Account; `ORDER_*`, `PAYMENT_*`,
+  `ESCROW_*`, `SHIPMENT_*`, `DELIVERY_*`, `PICKUP_*`, `RETURN_*`, `REFUND_*` Orders; `MESSAGE_*`,
+  `CHAT_*`, `OFFER_*`, `NEGOTIATION_*` Messages; `LISTING_*` Listings; anything else Others. A tab
+  is hidden when it has no notification. New order/message/listing events need no backend change
+  to appear under the right tab.
+- **Deep links:** `/profile` opens the Profile tab, `/profile/account-security` opens Account
+  Security; other links (for example `/support`) show "coming soon" until the screen exists.
+- **Not on mobile:** push, preferences (US-087), grouping by day.
 
 ---
 
@@ -2765,7 +2787,7 @@ now-blocklisted token returns `401` rather than a second `200`.
 **Auth:** Bearer token required
 **Request:** `{ "newMobile": "9123456780" }`
 **Response 200:** `{ "message": "OTP sent", "otpExpiresInSeconds": 300 }`
-**Errors:** `ERROR_MOBILE_ALREADY_REGISTERED`, `ERROR_OTP_RATE_LIMIT_EXCEEDED`
+**Errors:** `ERROR_SAME_MOBILE`, `ERROR_MOBILE_ALREADY_REGISTERED`, `ERROR_OTP_RATE_LIMIT_EXCEEDED`
 
 ### POST /api/v1/users/me/mobile/change/verify
 **Auth:** Bearer token required
@@ -2776,7 +2798,7 @@ now-blocklisted token returns `401` rather than a second `200`.
 ### POST /api/v1/users/me/email/change/initiate
 ### POST /api/v1/users/me/email/change/verify
 Same contract as mobile change, against `newEmail`.
-**Errors:** `ERROR_EMAIL_ALREADY_REGISTERED`, `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`
+**Errors:** `ERROR_SAME_EMAIL` (case-insensitive), `ERROR_EMAIL_ALREADY_REGISTERED`, `ERROR_INVALID_OTP`, `ERROR_OTP_EXPIRED`
 
 ### GET /api/v1/users/me/sessions
 **Auth:** Bearer token required
@@ -2786,9 +2808,9 @@ Same contract as mobile change, against `newEmail`.
   "success": true,
   "data": [
     { "sessionId": "uuid", "deviceInfo": "iPhone 14 / iOS 18", "ipAddress": "49.x.x.x",
-      "createdAt": "2026-08-01T10:00:00Z", "lastActiveAt": "2026-08-06T09:00:00Z", "isCurrent": true },
+      "createdAt": "2026-08-01T10:00:00Z", "lastActiveAt": "2026-08-06T09:00:00Z", "current": true },
     { "sessionId": "uuid", "deviceInfo": "Chrome / Windows", "ipAddress": "103.x.x.x",
-      "createdAt": "2026-07-28T18:00:00Z", "lastActiveAt": "2026-07-30T12:00:00Z", "isCurrent": false }
+      "createdAt": "2026-07-28T18:00:00Z", "lastActiveAt": "2026-07-30T12:00:00Z", "current": false }
   ]
 }
 ```

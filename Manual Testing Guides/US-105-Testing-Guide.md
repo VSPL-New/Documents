@@ -53,10 +53,12 @@ combined Sprint-1 guide). Fastest path:
 | TC-010 | Reject email change to an already-registered email | `400 ERROR_EMAIL_ALREADY_REGISTERED` |
 | TC-011 | OTP send rate limit on change-initiate | `400 ERROR_OTP_RATE_LIMIT` on the 4th call |
 | TC-012 | OTP fail limit on change-verify | `400 ERROR_OTP_MAX_ATTEMPTS` on the 6th wrong attempt |
-| TC-013 | List active sessions with `isCurrent` flagged | `200`, exactly one session marked current |
+| TC-013 | List active sessions with `current` flagged | `200`, exactly one session marked current |
 | TC-014 | Log out of all other devices | `200`, other session's tokens die; caller's session untouched |
 | TC-015 | Revoke-others with no other sessions | `400 ERROR_NO_OTHER_SESSIONS` |
 | TC-016 | Logout (US-104) removes a session from this list | Session absent from a later `GET /sessions` |
+| TC-017 | Reject mobile change to your own current number | `400 ERROR_SAME_MOBILE`, no OTP sent |
+| TC-018 | Reject email change to your own current email | `400 ERROR_SAME_EMAIL` (any letter case), no OTP sent |
 
 ---
 
@@ -211,7 +213,7 @@ same ordering as every other OTP-verify flow in this codebase.
 
 ---
 
-## TC-013 — List Active Sessions With `isCurrent` Flagged
+## TC-013 — List Active Sessions With `current` Flagged
 
 **Steps:**
 1. Complete a login for this account in a second "session" (e.g. a second Swagger tab, or the
@@ -223,13 +225,13 @@ same ordering as every other OTP-verify flow in this codebase.
 {
   "success": true,
   "data": [
-    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "isCurrent": true },
-    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "isCurrent": false }
+    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "current": true },
+    { "sessionId": "...", "deviceInfo": "...", "ipAddress": "127.0.0.1", "createdAt": "...", "lastActiveAt": "...", "current": false }
   ]
 }
 ```
-Exactly **one** entry has `isCurrent: true` — the session whose token you called the endpoint
-with. Calling the same endpoint with the *other* session's token flips which entry is `isCurrent`.
+Exactly **one** entry has `current: true` — the session whose token you called the endpoint
+with. Calling the same endpoint with the *other* session's token flips which entry is `current`.
 
 > `deviceInfo` reflects whatever `User-Agent` header Swagger/your HTTP client sent — don't expect
 > a friendly device name like "iPhone 14," just the raw header value.
@@ -282,6 +284,73 @@ it was never explicitly "revoked" through this story's endpoint.
 
 ---
 
+## TC-017 — Reject Mobile Change to Your Own Current Number
+
+`POST /api/v1/users/me/mobile/change/initiate` with the account's **current** mobile
+```json
+{ "newMobile": "9000000060" }
+```
+
+**Expected response (400 Bad Request):**
+```json
+{ "success": false, "error": { "code": "ERROR_SAME_MOBILE", "message": "This is already your registered mobile number" } }
+```
+No OTP is sent (nothing new in the backend log) and the attempt does not count towards the OTP send limit (TC-011).
+
+---
+
+## TC-018 — Reject Email Change to Your Own Current Email
+
+`POST /api/v1/users/me/email/change/initiate` with the account's **current** email, then again with the same address in a different letter case
+```json
+{ "newEmail": "User@Example.com" }
+```
+
+**Expected response (400 Bad Request):**
+```json
+{ "success": false, "error": { "code": "ERROR_SAME_EMAIL", "message": "This is already your registered email address" } }
+```
+No OTP is sent. The comparison ignores letter case.
+
+---
+
+## Mobile App (Flutter) — Account Security
+
+Manual test cases for Profile > Account > Account Security in `valuex-mobile` against the local backend. Automated coverage is in `test/features/account_security/account_security_test.dart`.
+
+| Setting | Value |
+|---|---|
+| Run | `flutter run -d <device> --dart-define-from-file=config/dev_local.json` (add `--dart-define=CLEAR_LOCAL_SESSION=true` to start signed out) |
+| Sign in | Sign In with a registered `ACTIVE` account (mock OTP is in the backend log, search for `DEV-MOCK`) |
+| Open | Home, then **Profile**, then **Account Security** |
+| Endpoints used | `GET /users/me/account-security`, `GET /users/me/sessions`, `POST /users/me/{mobile,email}/change/{initiate,verify}`, `POST /users/me/sessions/revoke-others` |
+
+| TC | Scenario | Expected Result |
+|---|---|---|
+| M-TC-001 | Open the screen | "Account Security" with the masked mobile (e.g. `90XXXX0000`) and masked email, each with a Change button; Aadhaar status shown as an icon and words |
+| M-TC-002 | Aadhaar not verified | "Not verified yet" with "Verify now"; the button opens the Aadhaar step. A verified account shows "Verified" and no button |
+| M-TC-003 | Active sessions list | Up to 10 devices, newest first, each with "Last active {date}" and the IP; exactly one has the "This device" tag |
+| M-TC-004 | Device name | A session created by the app shows `JustQlic/0.1.0 (iOS)` (or Android); a Swagger session shows its raw header, or "Unknown device" |
+| M-TC-005 | Change mobile, happy path | Change, enter a new unregistered number, Send code. The page moves to "Confirm new number". Enter the code from the backend log. "Mobile number updated" shows, you return to Account Security and the masked number is the new one |
+| M-TC-006 | Change mobile to your current number | Enter your own registered number, Send code. "This is already your mobile number. Enter a different number." shows under the field, you stay on the entry step and no `DEV-MOCK` OTP line appears in the backend log |
+| M-TC-007 | Change mobile to another account's number | "This mobile number is already registered" shows under the field; no OTP is sent |
+| M-TC-008 | Wrong code | Enter a wrong 6-digit code: "Invalid or expired OTP" shows and the new number is not applied |
+| M-TC-009 | Resend | The resend link is disabled for 30 s, then works, up to 3 sends; the backend also stops at 3 sends per 10 minutes |
+| M-TC-010 | Leave midway | Send a code, then go back without confirming: the old number is still shown and still works for Sign In (TC-008) |
+| M-TC-011 | Change email, happy path | As M-TC-005 using Change next to Email and the email OTP from the backend log; "Email updated" |
+| M-TC-012 | Change email to your current email | Enter your own email in any letter case, Send code. "This is already your email address. Enter a different address." shows and no OTP is sent |
+| M-TC-013 | Log out of other devices | With two or more sessions, tap "Log out of all other devices", confirm. "Logged out of {n} other devices" shows and the list shrinks to "This device" |
+| M-TC-014 | Only one device | With a single session the log-out action is hidden and "This is the only device signed in" shows |
+| M-TC-015 | Revoked device | On the other device, the next request returns 401 and the user is sent to Sign In with the session-expired message |
+| M-TC-016 | Delete My Account | Shows the "coming soon" message; no navigation, no crash |
+| M-TC-017 | Backend down | Stop the backend and open the screen: an error with Retry for the summary and sessions; start the backend and tap Retry |
+| M-TC-018 | Language and large text | Switch to Hindi and set the largest text size: no clipped or overlapping text; both change pages scroll |
+| M-TC-019 | Screen reader | TalkBack or VoiceOver: Change buttons say which field they change, the "This device" tag is read, and page titles are headings |
+
+> **M-TC-006 and M-TC-012 need the backend fix** (valuex-backend PR for `ERROR_SAME_MOBILE` / `ERROR_SAME_EMAIL`). Against an older backend the app accepts the number and sends an OTP.
+
+---
+
 ## Not Testable Yet (Don't File as Bugs)
 
 - **Actual account deletion** — `deleteAccountUrl` is a static string; there is no
@@ -319,6 +388,8 @@ DELETE FROM contact_change_attempts WHERE user_id = '<user-id>';
 |---|---|---|
 | 400 | `ERROR_MOBILE_ALREADY_REGISTERED` | `newMobile` already belongs to another user (TC-005) |
 | 400 | `ERROR_EMAIL_ALREADY_REGISTERED` | `newEmail` already belongs to another user (TC-010) |
+| 400 | `ERROR_SAME_MOBILE` | `newMobile` equals the account's current mobile (TC-017) |
+| 400 | `ERROR_SAME_EMAIL` | `newEmail` equals the account's current email, ignoring case (TC-018) |
 | 400 | `ERROR_INVALID_OTP` | Wrong OTP submitted at verify (TC-006) |
 | 400 | `ERROR_OTP_EXPIRED` | OTP TTL (300s) elapsed (TC-007) |
 | 400 | `ERROR_OTP_RATE_LIMIT` | >3 change-initiate calls in 10 min for the same target value (TC-011) |
