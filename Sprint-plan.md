@@ -66,8 +66,6 @@ Allow users to register and login via multiple auth methods, verify identity, an
 | US-077 | Critical Event Notifications                | backend, mobile | 5  | US-001     |
 | US-088 | Lifecycle State - User Account              | backend         | 3  | US-001     |
 | US-108 | Address Entry with Google Places Autocomplete and Address Verification | backend, mobile | 3 | US-001 |
-| US-109 | Mobile App Security Hardening | mobile | 5 | US-001 |
-| US-110 | Registration UI Accessibility and Readability Review | mobile | 8 | US-001 |
 
 ## Exit Criteria
 
@@ -80,8 +78,6 @@ Allow users to register and login via multiple auth methods, verify identity, an
 * User profiles operational
 * Profile hub navigation, logout, and account security settings operational (menu items to not-yet-built sections show empty/coming-soon states until their sprints land)
 * Address entry component and verification operational (US-108); addresses are first saved from checkout (US-020) and from posting a listing (US-004), not at Sign Up
-* Mobile app security controls in place: SSL pinning, root/jailbreak detection, device ID (US-109)
-* Registration screens meet the contrast, touch target, text size and screen reader standards in the design system (US-110)
 
 ---
 
@@ -96,19 +92,23 @@ Allow sellers to create and publish listings.
 | ID     | Story                                 | Repo            | SP | Dependency |
 | ------ | ------------------------------------- | --------------- | -- | ---------- |
 | US-004 | Create Listing with Photo Capture     | mobile, backend | 8  | US-001     |
+| US-114 | Listing Item Details Entry            | backend, mobile | 5  | US-004     |
 | US-005 | AI-Assisted Listing Creation          | backend, AI     | 8  | US-004     |
-| US-006 | Multi-Category Tagging                | backend, mobile | 3  | US-004     |
-| US-007 | Restricted Items Prevention           | backend, AI     | 5  | US-005     |
+| US-006 | Multi-Category Tagging                | backend, mobile | 3  | US-004, US-114 |
+| US-007 | Restricted Items Prevention           | backend, AI     | 5  | US-005, US-114 |
 | US-089 | Lifecycle State - Listing             | backend         | 5  | US-004     |
-| US-084 | Pre-Publication Trust & Safety Review | backend, AI     | 5  | US-007     |
+| US-084 | Pre-Publication Trust & Safety Review | backend, AI     | 5  | US-007, US-009 (built together) |
 | US-078 | Listing Plan Features and Pricing     | backend, mobile | 3  | US-004     |
-| US-008 | Seller Chooses Listing Plan           | backend, mobile | 5  | US-078     |
-| US-009 | Listing Publication After Payment     | backend         | 5  | US-008     |
+| US-117 | Payment Gateway Integration           | backend, mobile | 5  | S0-001     |
+| US-008 | Seller Chooses Listing Plan           | backend, mobile | 5  | US-078, US-007, US-117 |
+| US-009 | Listing Publication After Payment     | backend         | 5  | US-008, US-084 (built together) |
 | US-010 | Edit/Delete Listing                   | backend, mobile | 5  | US-009     |
+| US-115 | Listing Lifecycle Notifications       | backend, mobile | 3  | US-077, US-089 |
 
 ## Exit Criteria
 
 * Listings can be created and published
+* Sellers can enter item details (title, category, condition, description, location, price) by hand, or have AI fill them in when AI is enabled (US-114)
 * AI-assisted metadata generation working
 * Moderation workflow operational
 * Payment integration for listing plans complete
@@ -320,6 +320,8 @@ Implement fraud detection and safety measures.
 | US-052 | Fraud Score and Velocity Checks                | backend     | 8  | US-048     |
 | US-081 | Block Transactions for Users Under Invest      | backend     | 5  | US-052     |
 | US-051 | Progressive Penalties for Violations           | backend     | 5  | US-052     |
+| US-109 | Mobile App Security Hardening                  | mobile      | 5  | US-001     |
+| US-110 | Registration UI Accessibility and Readability Review | mobile | 8  | US-001     |
 
 ## Exit Criteria
 
@@ -327,6 +329,8 @@ Implement fraud detection and safety measures.
 * Image validation working
 * Velocity checks implemented
 * Penalty system functional
+* Mobile app security controls in place: SSL pinning, root/jailbreak detection, device ID (US-109)
+* Registration screens meet the contrast, touch target, text size and screen reader standards in the design system (US-110)
 
 ---
 
@@ -346,6 +350,7 @@ Build admin dashboard and moderation tools.
 | US-057 | Admin Content Moderation         | backend,web | 5  | US-016     |
 | US-056 | Admin Transaction Monitoring     | backend,web | 5  | US-023     |
 | US-100 | Admin Analytics Dashboard        | backend,web | 8  | US-056     |
+| US-116 | Admin Manage Listing Plans and Tax Settings | backend,web | 5  | US-078, US-053 |
 
 ## Exit Criteria
 
@@ -353,6 +358,7 @@ Build admin dashboard and moderation tools.
 * Moderation queues working
 * Analytics and monitoring in place
 * Audit trail complete
+* Management can change listing plans, features, prices and the GST setting from the admin console (US-116)
 
 ---
 
@@ -482,28 +488,28 @@ Add advanced features and optimize platform.
 | Sprint | Focus Area                          | Stories | SP  | Duration |
 | ------ | ----------------------------------- | ------- | --- | -------- |
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
-| S1     | Identity & User Management          | 13      | 62* | 2 weeks  |
-| S2     | Seller Listing Creation             | 10      | 52  | 2 weeks  |
+| S1     | Identity & User Management          | 13      | 59  | 2 weeks  |
+| S2     | Seller Listing Creation             | 13      | 65* | 2 weeks  |
 | S3     | Discovery & Search                  | 5       | 29  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
 | S5     | Cart, Checkout & Payments           | 13      | 62* | 2 weeks  |
 | S6     | Shipping & Delivery                 | 11      | 49  | 2 weeks  |
 | S7     | Order Cancellation & Returns        | 6       | 34  | 2 weeks  |
 | S8     | Ratings & Disputes                  | 5       | 27  | 2 weeks  |
-| S9     | Trust & Safety                      | 7       | 39  | 2 weeks  |
-| S10    | Admin Operations                    | 6       | 39  | 2 weeks  |
+| S9     | Trust & Safety                      | 9       | 52* | 2 weeks  |
+| S10    | Admin Operations                    | 7       | 44* | 2 weeks  |
 | S11    | Support & Notifications             | 7       | 32  | 2 weeks  |
 | S12    | Premium Features (Buyer)            | 4       | 19  | 2 weeks  |
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **116** | **616*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **120** | **644*** | **32 weeks** |
 
-\* Sprint 1 and total points add US-108 (3), US-109 (5, proposed) and US-110 (8, proposed) to the previous figures. Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total).
+\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total).
 
 ## Coverage
 
-### Stories Planned: 116 / 113 total user stories
+### Stories Planned: 120 / 117 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -515,10 +521,14 @@ Add advanced features and optimize platform.
 - Profile Management Extensions (US-103 to US-105): ✅ 3 stories
 - Authentication Extensions (US-106 to US-107): ✅ 2 stories
 - Address Management (US-108, US-113): ✅ 2 stories (US-108 in Sprint 1, US-113 in Sprint 5)
-- Mobile App Security (US-109): ✅ 1 story (Sprint 1)
-- UI Quality (US-110): ✅ 1 story (Sprint 1)
+- Mobile App Security (US-109): ✅ 1 story (Sprint 9)
+- UI Quality (US-110): ✅ 1 story (Sprint 9)
 - Home (US-111): ✅ 1 story (Sprint 3)
 - Seller Order Management (US-112): ✅ 1 story (Sprint 6)
+- Listing Details (US-114): ✅ 1 story (Sprint 2)
+- Listing Notifications (US-115): ✅ 1 story (Sprint 2)
+- Plan Administration (US-116): ✅ 1 story (Sprint 10)
+- Payment Gateway (US-117): ✅ 1 story (Sprint 2)
 
 **Not Yet Planned (Future Backlog):**
 - US-061: Screen Reader Compatibility (merged into US-099)

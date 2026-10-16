@@ -3,7 +3,7 @@
 **Document Version:** 2.0
 **Product:** ValueX
 **Sprint:** Sprint 2 - Seller Listing Creation
-**Stories Covered:** US-004, US-005, US-006, US-007, US-089, US-084, US-078, US-008, US-009, US-010
+**Stories Covered:** US-004, US-114, US-005, US-006, US-007, US-089, US-078, US-008, US-009, US-084, US-010
 **Repos:** valuex-backend, valuex-mobile, valuex-ai
 **Sprint Goal:** Allow sellers to create and publish listings, with AI-assisted metadata, moderation, and paid plan monetization.
 
@@ -24,16 +24,22 @@
 
 ```mermaid
 graph LR
-    US004[US-004 Create Listing<br/>with Photo Capture] --> US005[US-005 AI-Assisted<br/>Listing Creation]
+    US004[US-004 Create Listing<br/>with Photo Capture] --> US114[US-114 Listing Item<br/>Details Entry]
+    US114 --> US005[US-005 AI-Assisted<br/>Listing Creation]
     US004 --> US006[US-006 Multi-Category<br/>Tagging]
     US005 --> US007[US-007 Restricted Items<br/>Prevention]
+    US114 --> US007
     US004 --> US089[US-089 Lifecycle State<br/>Listing]
-    US007 --> US084[US-084 Pre-Publication<br/>Trust & Safety Review]
     US004 --> US078[US-078 Listing Plan<br/>Features and Pricing]
     US078 --> US008[US-008 Seller Chooses<br/>Listing Plan]
-    US008 --> US009[US-009 Listing Publication<br/>After Payment]
-    US009 --> US010[US-010 Edit/Delete<br/>Listing]
+    US007 --> US008
+    US008 --> US009[US-009 Payment Success<br/>and Publication]
+    US009 --> US084[US-084 Trust & Safety<br/>Review after payment]
+    US084 --> US009P[US-009 Publish<br/>on approval]
+    US009P --> US010[US-010 Edit/Delete<br/>Listing]
 ```
+
+**Seller flow (product owner decision, 2026-10-16):** photos and item details (US-004, US-114, US-005) → restricted item check (US-007) → plan selection and payment (US-008, US-009) → Trust & Safety review (US-084) → publication on approval (US-009). The review runs **after payment and before publishing**. A rejected listing is revised by the seller and resubmitted for review without paying again.
 
 This document contains one self-contained LLD section per story, in dependency order. Each section has its own Overview, Data Model, API Contracts, Service Logic, Sequence Diagram, Validation Rules, Error Handling, and NFR/Security notes. Shared infrastructure (Listing module package layout, `ApiResponse` envelope, `AiGatewayClient`) is defined once in the US-005 section (§B) and reused by reference from later sections.
 
@@ -1664,7 +1670,7 @@ sequenceDiagram
 
 **As a** platform **I want to** prevent listing of restricted items **so that** the platform remains compliant and safe. Unlike US-005 (advisory), this check is **blocking**: per [HLD §8 Restricted Item & Content Moderation AI](../HLD/04-AI-Architecture.md#8-restricted-item--content-moderation-ai), a `Restricted` result blocks listing creation outright, `Unclear` routes to manual review, and `Severe violation` restricts the seller account (US-088 lifecycle transition to `UNDER_REVIEW`).
 
-This check runs at photo/text submission time (before plan selection), independently of and prior to US-084's broader Trust & Safety review — US-007 is the narrow "is this item outright prohibited" gate; US-084 is the fuller fraud/reputation/price review layered on top after this passes.
+This check runs at item details submission (US-114, **Choose Listing Plan**), before plan selection and payment, independently of and prior to US-084's broader Trust & Safety review — US-007 is the narrow "is this item outright prohibited" gate, run early so a seller does not pay for a listing that cannot be published; US-084 is the fuller fraud/reputation review that runs after plan payment and before publication. It runs again before a revised listing is resubmitted for review.
 
 ## D.2 Scope
 
@@ -1843,18 +1849,22 @@ Per [user-stories.md US-089](../user-stories.md#us-089-lifecycle-state---listing
 
 ```text
 DRAFT -> PLAN_SELECTION_PENDING -> PLAN_PAYMENT_PENDING -> {PLAN_PAYMENT_FAILED | PLAN_PAYMENT_SUCCESS}
-PLAN_PAYMENT_SUCCESS -> MEDIA_UPLOAD_PENDING -> AI_DETAILS_GENERATED -> PRICE_PENDING
-PRICE_PENDING -> TRUST_SAFETY_REVIEW -> {APPROVED | REJECTED | REVISION_REQUIRED}
+PLAN_PAYMENT_SUCCESS -> TRUST_SAFETY_REVIEW -> {APPROVED | REVISION_REQUIRED | REJECTED}
+REVISION_REQUIRED -> TRUST_SAFETY_REVIEW (review attempt 1 or 2 failed: the seller revises and resubmits without paying again)
+REJECTED (third failed review attempt: final, the plan fee is refunded)
 APPROVED -> PUBLISHED
 PUBLISHED -> BUYER_INQUIRY_PENDING -> NEGOTIATION_IN_PROGRESS -> OFFER_ACCEPTED -> ORDER_CREATED -> SOLD
 PUBLISHED -> EXPIRED | DEACTIVATED_BY_SELLER | REMOVED_BY_ADMIN
+EXPIRED -> PLAN_SELECTION_PENDING (manual renewal only)
 ```
 
-Note: the acceptance-criteria state list is presented linearly, but in practice Sprint 2's actual seller flow (Parts A/B/C/D/F/G/H/I) only exercises: `DRAFT → TRUST_SAFETY_REVIEW → APPROVED → PLAN_SELECTION_PENDING → PLAN_PAYMENT_PENDING → PLAN_PAYMENT_SUCCESS → PUBLISHED`, plus `REJECTED`/`REVISION_REQUIRED` branches. States from `BUYER_INQUIRY_PENDING` onward are driven by Sprint 3/4 stories and are included here only so the enum and transition table are complete and forward-compatible — this LLD does not implement their triggering logic.
+Note: Sprint 2's seller flow (updated 2026-10-16 to payment first, review before publishing) exercises: `DRAFT → PLAN_SELECTION_PENDING → PLAN_PAYMENT_PENDING → PLAN_PAYMENT_SUCCESS → TRUST_SAFETY_REVIEW → APPROVED → PUBLISHED`, plus the `REJECTED`/`REVISION_REQUIRED` branches. The listing is a `DRAFT` while photos, item details (US-114) and the restricted item check (US-007) happen, so `MEDIA_UPLOAD_PENDING`, `AI_DETAILS_GENERATED` and `PRICE_PENDING` stay in the enum but are not reachable in Sprint 2. States from `BUYER_INQUIRY_PENDING` onward are driven by Sprint 3/4 stories and are included here only so the enum and transition table are complete and forward-compatible — this LLD does not implement their triggering logic. The delivered implementation uses the in-code `ListingStateMachine` (see the US-089 implementation plan) in place of the `listing_status_transitions` table below; the allowed transitions are the same.
 
 ## E.3 Data Model
 
 The `listing_status` enum was already defined in Part A §A.3. This story adds the governed transition table and enforcement:
+
+> **Decided 2026-10-16:** the transitions are kept in code (`ListingStateMachine`) and statuses stay `VARCHAR`, so the `listing_status` enum and the `listing_status_transitions` table below are **not built**. The list is kept as the reference for the allowed moves. The only migration is a nullable `action` column on `listing_status_history` (V13).
 
 ```sql
 -- V{N}__add_listing_status_transitions.sql
@@ -1866,25 +1876,27 @@ CREATE TABLE listing_status_transitions (
 
 INSERT INTO listing_status_transitions (from_status, to_status) VALUES
     (NULL, 'DRAFT'),
-    ('DRAFT', 'TRUST_SAFETY_REVIEW'),
-    ('TRUST_SAFETY_REVIEW', 'APPROVED'),
-    ('TRUST_SAFETY_REVIEW', 'REJECTED'),
-    ('TRUST_SAFETY_REVIEW', 'REVISION_REQUIRED'),
-    ('REVISION_REQUIRED', 'DRAFT'),
-    ('APPROVED', 'PLAN_SELECTION_PENDING'),
+    ('DRAFT', 'PLAN_SELECTION_PENDING'),
     ('PLAN_SELECTION_PENDING', 'PLAN_PAYMENT_PENDING'),
     ('PLAN_PAYMENT_PENDING', 'PLAN_PAYMENT_FAILED'),
     ('PLAN_PAYMENT_PENDING', 'PLAN_PAYMENT_SUCCESS'),
+    ('PLAN_PAYMENT_FAILED', 'PLAN_PAYMENT_PENDING'),
     ('PLAN_PAYMENT_FAILED', 'PLAN_SELECTION_PENDING'),
-    ('PLAN_PAYMENT_SUCCESS', 'PUBLISHED'),
+    ('PLAN_PAYMENT_SUCCESS', 'TRUST_SAFETY_REVIEW'),
+    ('TRUST_SAFETY_REVIEW', 'APPROVED'),
+    ('TRUST_SAFETY_REVIEW', 'REJECTED'),
+    ('TRUST_SAFETY_REVIEW', 'REVISION_REQUIRED'),
+    ('REVISION_REQUIRED', 'TRUST_SAFETY_REVIEW'),
+    ('APPROVED', 'PUBLISHED'),
     ('PUBLISHED', 'SOLD'),
     ('PUBLISHED', 'EXPIRED'),
     ('PUBLISHED', 'DEACTIVATED_BY_SELLER'),
-    ('PUBLISHED', 'REMOVED_BY_ADMIN');
+    ('PUBLISHED', 'REMOVED_BY_ADMIN'),
+    ('EXPIRED', 'PLAN_SELECTION_PENDING');
 -- (Sprint 3+ transitions BUYER_INQUIRY_PENDING..ORDER_CREATED added by those sprints' migrations)
 ```
 
-`listing_status_history` (defined in Part A §A.3) records every actual transition; `listing_status_transitions` is the whitelist checked before allowing one.
+`listing_status_history` (defined in Part A §A.3) records every actual transition; the whitelist is checked in code by `ListingStateMachine` before allowing one.
 
 ## E.4 Service Logic — Central Transition Guard
 
@@ -1896,7 +1908,7 @@ Every module that changes `listings.status` (Listing, Plan/Entitlement, Payment,
 public class ListingLifecycleService {
 
     private final ListingRepository listingRepository;
-    private final ListingStatusTransitionRepository transitionRepository;
+    private final ListingStateMachine stateMachine;
     private final ListingStatusHistoryRepository historyRepository;
     private final ApplicationEventPublisher events;
 
@@ -1906,10 +1918,8 @@ public class ListingLifecycleService {
                 .orElseThrow(() -> new NotFoundException("LISTING_NOT_FOUND", "Listing not found"));
 
         var from = listing.getStatus();
-        if (!transitionRepository.existsByFromStatusAndToStatus(from, toStatus)) {
-            throw new BusinessException("INVALID_LISTING_STATE_TRANSITION",
-                    "Cannot move listing from %s to %s".formatted(from, toStatus));
-        }
+        // In-code ListingStateMachine; an invalid move raises the shared 400 INVALID_STATE_TRANSITION.
+        stateMachine.transition(from, toStatus, action);
 
         listing.setStatus(toStatus);
         listingRepository.save(listing);
@@ -1925,8 +1935,8 @@ public class ListingLifecycleService {
 
 | Rule | Enforcement Point |
 |---|---|
-| Cannot publish without successful plan payment | `transition(..., PUBLISHED, ...)` only reachable from `PLAN_PAYMENT_SUCCESS` per whitelist |
-| Must pass `TRUST_SAFETY_REVIEW` before `PUBLISHED` | No whitelist row skips directly from `DRAFT`/`APPROVED` around review |
+| Cannot publish without successful plan payment | `TRUST_SAFETY_REVIEW` is reachable only from `PLAN_PAYMENT_SUCCESS` (or `REVISION_REQUIRED` after an earlier payment), and `PUBLISHED` only from `APPROVED`, per whitelist |
+| Must pass `TRUST_SAFETY_REVIEW` before `PUBLISHED` | No whitelist row skips around review: `PUBLISHED` is reachable only from `APPROVED` |
 | `PUBLISHED` listings visible in search | Search indexing (Sprint 3) subscribes to `ListingStatusChangedEvent`, indexes only when `toStatus == PUBLISHED`, de-indexes on any exit from `PUBLISHED` |
 | `SOLD` listings archived | Search/listing read APIs filter `status NOT IN ('SOLD','EXPIRED','REMOVED_BY_ADMIN','DEACTIVATED_BY_SELLER')` by default |
 | Expired listings not auto-renewed | No whitelist transition from `EXPIRED` back to `PUBLISHED`; only back to `PLAN_SELECTION_PENDING` (manual renew, modeled as a fresh plan purchase) |
@@ -1942,14 +1952,14 @@ sequenceDiagram
 
     Caller->>Lifecycle: transition(listingId, toStatus, changedBy, reason)
     Lifecycle->>DB: SELECT listings ... FOR UPDATE
-    Lifecycle->>Lifecycle: check listing_status_transitions whitelist
+    Lifecycle->>Lifecycle: check ListingStateMachine (in code)
     alt valid transition
         Lifecycle->>DB: UPDATE listings SET status
         Lifecycle->>DB: INSERT listing_status_history
         Lifecycle->>Bus: publish ListingStatusChangedEvent
         Bus-->>Caller: (async) notification/search-index/analytics subscribers react
     else invalid transition
-        Lifecycle-->>Caller: 409 INVALID_LISTING_STATE_TRANSITION
+        Lifecycle-->>Caller: 400 INVALID_STATE_TRANSITION
     end
 ```
 
@@ -1957,7 +1967,7 @@ sequenceDiagram
 
 | HTTP | Code | Trigger |
 |---|---|---|
-| 409 | `INVALID_LISTING_STATE_TRANSITION` | attempted transition not in whitelist |
+| 400 | `INVALID_STATE_TRANSITION` | attempted transition not allowed by `ListingStateMachine` (shared behaviour, decided 2026-10-16; replaces the 409 `INVALID_LISTING_STATE_TRANSITION` first drafted) |
 | 404 | `LISTING_NOT_FOUND` | listingId doesn't exist |
 
 ## E.8 Observability & Audit
@@ -1971,15 +1981,15 @@ sequenceDiagram
 # Part F - US-084: Pre-Publication Trust & Safety Review
 
 **Story Points:** 5 | **Repos:** valuex-backend, valuex-ai
-**Dependency:** US-007 (Restricted Items Prevention) — this review runs only after the narrower restricted-item gate has already passed
+**Dependency:** US-007 (Restricted Items Prevention) — the narrower restricted-item gate has already passed before plan selection; US-009 — this review starts only after the plan payment has succeeded (`PLAN_PAYMENT_SUCCESS`), and publication happens only after approval
 
 ## F.1 Story Overview
 
-**As a** platform **I want** all listings reviewed before publication **so that** prohibited items and fraud are prevented. Where US-007 is a binary restricted-item gate, US-084 computes a holistic **fraud score** (image analysis, text analysis, price reasonableness, seller reputation) and routes based on a threshold: score < 70 auto-approves; score ≥ 70 queues for manual admin review within a 24-hour SLA. Trusted sellers (rating > 4.5, 50+ sales) bypass to auto-approval regardless of score.
+**As a** platform **I want** all listings reviewed before publication **so that** prohibited items and fraud are prevented. The review runs **after the seller has paid for the listing plan and before the listing is published** (product owner decision, 2026-10-16). Where US-007 is a binary restricted-item gate, US-084 computes a holistic **fraud score** (image analysis, text analysis, price reasonableness, seller reputation) and routes based on a threshold: score < 70 auto-approves; score ≥ 70 queues for manual admin review within a 24-hour SLA. Trusted sellers (rating > 4.5, 50+ sales) bypass to auto-approval regardless of score.
 
 ## F.2 Scope
 
-**In scope:** `POST /api/v1/listings/{id}/trust-safety-review` (orchestration, transitions listing via `ListingLifecycleService` from Part E), fraud score computation call, admin approve/reject endpoints, appeal flow.
+**In scope:** `POST /api/v1/listings/{id}/trust-safety-review` (orchestration, called when plan payment succeeds; transitions the listing via `ListingLifecycleService` from Part E), fraud score computation call, admin approve/reject endpoints, appeal flow, resubmission of a revised listing without a second payment.
 **Out of scope:** Admin review console UI (Sprint 10, US-054), fraud/velocity scoring shared with post-publication monitoring (Sprint 9, US-052 — this story's score is listing-specific, not account-wide).
 
 ## F.3 Data Model
@@ -1989,6 +1999,7 @@ sequenceDiagram
 CREATE TABLE listing_trust_safety_reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id UUID NOT NULL REFERENCES listings(id),
+    attempt_number INTEGER NOT NULL DEFAULT 1, -- 1..3 per paid plan; a seller gets 3 review attempts
     fraud_score NUMERIC(5,2) NOT NULL,       -- 0-100
     auto_decision VARCHAR(20) NOT NULL,      -- AUTO_APPROVED | QUEUED_FOR_REVIEW | TRUSTED_SELLER_BYPASS
     admin_id UUID,
@@ -2025,7 +2036,7 @@ Reject request:
 public TrustSafetyReviewResult review(UUID listingId) {
     var listing = listingRepository.findById(listingId)
             .orElseThrow(() -> new NotFoundException("LISTING_NOT_FOUND", "Listing not found"));
-    lifecycleService.transition(listingId, ListingStatus.TRUST_SAFETY_REVIEW, listing.getSellerId(), "review_started");
+    lifecycleService.transition(listingId, ListingStatus.TRUST_SAFETY_REVIEW, listing.getSellerId(), "payment_succeeded_review_started");
 
     var seller = sellerReputationClient.getReputation(listing.getSellerId());
     if (seller.rating() > 4.5 && seller.completedSales() >= 50) {
@@ -2048,7 +2059,7 @@ private TrustSafetyReviewResult approve(UUID listingId, UUID sellerId, String de
 }
 ```
 
-Admin approve/reject reuses `lifecycleService.transition(..., APPROVED|REJECTED, adminId, reason)`, guaranteeing the same audit trail (`listing_status_history`) whether approval was automated or manual.
+Admin approve/reject reuses `lifecycleService.transition(..., APPROVED|REJECTED, adminId, reason)`, guaranteeing the same audit trail (`listing_status_history`) whether approval was automated or manual. `APPROVED` is what triggers publication (Part I §I.5): the plan is already paid, so no further payment step follows. Each review that does not approve the listing is one failed attempt (`attempt_number` on `listing_trust_safety_reviews`); a seller gets at most **3 attempts** per paid plan. After attempt 1 or 2 the listing moves to `REVISION_REQUIRED`, the seller is notified with the reason, edits the listing (US-114 page) and resubmits it for review (`REVISION_REQUIRED → TRUST_SAFETY_REVIEW`) without paying again; the restricted item check (US-007) runs again before resubmission. After the 3rd failed attempt the listing moves to `REJECTED` (final), the seller is notified (`LISTING_REJECTED_FINAL`) and a `ListingRefundDueEvent` is published so the payment moves to `REFUND_REVIEW` (Part I). Whether the refund is then issued automatically or by finance is decided later (product owner, 2026-10-16).
 
 ## F.6 Sequence Diagram
 
@@ -2062,7 +2073,7 @@ sequenceDiagram
     participant Admin
     participant DB as PostgreSQL
 
-    Seller->>Backend: submit listing (post US-007 pass)
+    Seller->>Backend: plan payment succeeded (US-009 hands the listing over)
     Backend->>Lifecycle: transition -> TRUST_SAFETY_REVIEW
     Backend->>Backend: check trusted-seller bypass
     alt trusted seller
@@ -2089,7 +2100,8 @@ sequenceDiagram
 | Condition | Code | HTTP |
 |---|---|---|
 | Listing under review | `LISTING_UNDER_REVIEW` | 200 (advisory) |
-| Admin rejects | `LISTING_REJECTED` | 200 (seller notified with `rejection_reason`) |
+| Admin rejects (attempt 1 or 2) | `LISTING_REJECTED` | 200 (seller notified with `rejection_reason`; listing becomes `REVISION_REQUIRED`) |
+| Admin rejects (attempt 3) | `LISTING_REJECTED_FINAL` | 200 (seller notified; listing becomes `REJECTED`; payment becomes `REFUND_REVIEW`) |
 | Seller appeals rejection | `APPEAL_SUBMITTED` | 201 |
 | Review SLA breach (>24h unresolved) | internal alert only, not user-facing error | n/a |
 | AI fraud scoring unavailable | fail closed → queue for manual review (never auto-approve on failure) | 200, `auto_decision=QUEUED_FOR_REVIEW`, `score_breakdown=null` |
@@ -2111,6 +2123,8 @@ Unlike US-007 (hard fail-closed reject), a fraud-scoring outage here **queues fo
 
 **Story Points:** 3 | **Repos:** valuex-backend, valuex-mobile
 **Dependency:** US-004 (listing draft must exist to select a plan for it)
+
+> **Update 2026-10-16 (dynamic plans and GST):** Plans, features and prices are data managed from the admin console (US-116), not fixed values, so the seed in §G.3 is only the starting catalog (Basic ₹49, original ₹99; no free plan; a plan whose price is set to zero is free). Plan codes carry no behavior. The catalog is read from `GET /api/v1/plans/seller` (cached, evicted on every admin save). Prices include GST for now: a `platform_settings` table (created with the `plans` table) holds `GST_MODE` (`INCLUSIVE` or `EXCLUSIVE`) and `GST_RATE_PERCENT`, and the catalog response adds `priceIncludesGst`, `gstRatePercent` and the GST part of the price. Plans have `display_order`, `badge` and a `version` column for concurrent edit checks. `FeaturedListingRotationService` and the `PLAN_EXPIRED` read check move to Sprint 3. When a seller selects a plan, US-008 copies the price, validity days and tax mode onto the listing, so later changes never alter existing listings or open payments.
 
 ## G.1 Story Overview
 
@@ -2198,7 +2212,7 @@ public class FeaturedListingRotationService {
 
 | Rule | Enforcement | Error Code |
 |---|---|---|
-| Validity starts from successful payment | `listings.expires_at` set by US-009 on `PLAN_PAYMENT_SUCCESS`, not at catalog-read time | n/a (informational here) |
+| Validity starts from publication | `listings.expires_at` set by US-009 when the listing is published (after payment and approval), not at payment or catalog-read time | n/a (informational here) |
 | Plan features non-transferable | No "transfer plan" endpoint exists | n/a |
 | Max 20 featured on landing page | `FeaturedListingRotationService` | n/a (silent cap, not a user-facing error) |
 | Payment required before plan activates | Enforced downstream in US-008/US-009 | `ERROR_PAYMENT_REQUIRED` |
@@ -2214,11 +2228,13 @@ public class FeaturedListingRotationService {
 # Part H - US-008: Seller Chooses Listing Plan
 
 **Story Points:** 5 | **Repos:** valuex-backend, valuex-mobile
-**Dependency:** US-078 (plan catalog must exist); listing must be `APPROVED` (post Part F trust & safety review) before plan selection, per the `listing_status_transitions` whitelist (Part E §E.3)
+**Dependency:** US-078 (plan catalog must exist); listing must be a `DRAFT` that has passed the restricted item check (US-007) and has complete item details (US-114) before plan selection, per the transition whitelist (Part E §E.3). The Trust & Safety review (Part F) runs **after** payment.
+
+> **Update 2026-10-16 (gateway-neutral):** The payment gateway is not chosen. The payment port, sandbox adapter, `payments` and `payment_attempts` tables, callback handling, refund and checkout wrapper are now **US-117**; read `razorpayOrderId`, `razorpayKeyId` and the Razorpay SDK in this part as the gateway-neutral order ID, public key and checkout wrapper of US-117. This story keeps plan selection, the listing plan snapshot (`plan_price`, `plan_validity_days`, `plan_price_includes_gst` on `listings`) and the zero-price path (no payment, straight to `ListingPaymentCompletedHandler`). No logic depends on a plan being named Basic or being free.
 
 ## H.1 Story Overview
 
-**As a** seller **I want to** choose a listing plan (Basic/Boosted/Priority) **so that** I can control visibility and reach. This story owns plan selection and payment initiation; **actual publication** on payment success is US-009's responsibility — this separation matches the lifecycle split between `PLAN_PAYMENT_PENDING`/`PLAN_PAYMENT_SUCCESS` (this story) and `PUBLISHED` (US-009).
+**As a** seller **I want to** choose a listing plan (Basic/Boosted/Priority) **so that** I can control visibility and reach. This story owns plan selection and payment initiation; **review and publication** after payment success belong to US-084 and US-009 — this separation matches the lifecycle split between `PLAN_PAYMENT_PENDING`/`PLAN_PAYMENT_SUCCESS` (this story), `TRUST_SAFETY_REVIEW` (US-084) and `PUBLISHED` (US-009, on approval).
 
 ## H.2 Scope
 
@@ -2286,8 +2302,9 @@ Paid plan response — redirect to gateway:
 @Transactional
 public PlanSelectionResult selectPlan(UUID listingId, UUID sellerId, String planCode) {
     var listing = requireOwnedListing(listingId, sellerId);
-    if (listing.getStatus() != ListingStatus.APPROVED)
+    if (listing.getStatus() != ListingStatus.DRAFT)
         throw new BusinessException("ERROR_INCOMPLETE_LISTING", "Complete all required fields before selecting plan");
+    restrictedItemGate.requireCleared(listingId); // US-007 check passed for the current title, description and category
 
     long activeCount = listingRepository.countBySellerIdAndStatusIn(sellerId, ACTIVE_STATUSES);
     if (activeCount >= 50)
@@ -2327,7 +2344,7 @@ sequenceDiagram
 
     Seller->>Mobile: Select plan (Basic/Boosted/Priority)
     Mobile->>Backend: POST /listings/{id}/plan-selection
-    Backend->>Backend: check APPROVED status, active-listing cap
+    Backend->>Backend: check DRAFT status, restricted item gate cleared, active-listing cap
     Backend->>Lifecycle: transition -> PLAN_SELECTION_PENDING
     alt Basic (free)
         Backend->>Lifecycle: transition -> PLAN_PAYMENT_SUCCESS
@@ -2348,9 +2365,9 @@ sequenceDiagram
 
 | Rule | Error Code | Message |
 |---|---|---|
-| Draft must be `APPROVED` before plan selection | `ERROR_INCOMPLETE_LISTING` | "Complete all required fields before selecting plan" |
+| Draft must be complete and cleared by US-007 before plan selection | `ERROR_INCOMPLETE_LISTING` | "Complete all required fields before selecting plan" |
 | Free plan requires no payment | n/a — handled by `signum() == 0` branch | — |
-| Paid plans require successful payment before publishing | Enforced by lifecycle whitelist (Part E) — `PUBLISHED` unreachable without `PLAN_PAYMENT_SUCCESS` | — |
+| Paid plans require successful payment before publishing | Enforced by lifecycle whitelist (Part E) — review is reachable only from `PLAN_PAYMENT_SUCCESS`, and `PUBLISHED` only from `APPROVED` | — |
 | Max 50 active listings per seller | `ERROR_MAX_LISTINGS_REACHED` | "You've reached the maximum listing limit" |
 | Payment fails | `ERROR_PAYMENT_FAILED` | "Payment unsuccessful. Please try again" |
 
@@ -2369,13 +2386,15 @@ sequenceDiagram
 **Story Points:** 5 | **Repos:** valuex-backend
 **Dependency:** US-008 (plan selection + payment order must already be created)
 
+> **Update 2026-10-16 (gateway-neutral):** The webhook endpoint, signature check (`X-Razorpay-Signature` in this part is the gateway's signature header), amount check, idempotency and payment settling are now **US-117**, which publishes `PaymentSucceededEvent` and `PaymentFailedEvent`. This story listens for those events for reference type `LISTING_PLAN`, owns the hand-over to review, the publish step, the refund flag and the recovery jobs, and sets `expires_at` from `published_at` plus the validity days snapshotted on the listing (not the current catalog value). A plan priced at zero follows the same hand-over without a payment. Migration order: V17 plans and settings (US-078), V18 payments (US-117), V19 listing plan snapshot (US-008), V20 review (US-084), V21 `published_at` (US-009).
+
 ## I.1 Story Overview
 
-**As a** seller **I want** my listing to be published immediately after successful payment **so that** buyers can discover it right away. This story owns the Razorpay webhook, the transactional publish operation, and the rollback/refund path if publish fails after payment succeeds — a scenario the acceptance criteria explicitly calls out ("Payment succeeds but listing publish fails").
+**As a** seller **I want** my listing to be published immediately after successful payment **so that** buyers can discover it right away. Updated 2026-10-16 (payment first, then review, then publish): this story owns the Razorpay webhook, the hand-over to the Trust & Safety review (Part F) when payment succeeds, and the transactional publish operation that runs as soon as the review approves the listing. It also owns the recovery path when something fails after payment succeeds — a scenario the acceptance criteria explicitly calls out ("Payment succeeds but listing publish fails").
 
 ## I.2 Scope
 
-**In scope:** `POST /api/v1/webhooks/payment` (Razorpay webhook per [HLD §21](../HLD/07-API-Integrations-Release-Risk.md#21-payment-gateway-integration)), idempotent publish transaction, plan feature activation, refund-and-rollback on publish failure, publish confirmation notification.
+**In scope:** `POST /api/v1/webhooks/payment` (Razorpay webhook per [HLD §21](../HLD/07-API-Integrations-Release-Risk.md#21-payment-gateway-integration)), idempotent payment-success handling with hand-over to the Trust & Safety review, idempotent publish transaction on approval, plan feature activation, recovery when the hand-over or the publish fails, review-pending and published notifications.
 **Out of scope:** Escrow (unrelated payment domain, Sprint 5), the actual Razorpay checkout SDK integration on mobile (US-008's concern).
 
 ## I.3 Data Model
@@ -2431,25 +2450,40 @@ public class PaymentWebhookService {
         paymentRepository.save(payment);
 
         var listingId = payment.getReferenceId();
+        lifecycleService.transition(listingId, ListingStatus.PLAN_PAYMENT_SUCCESS, null, "payment_captured");
         try {
-            lifecycleService.transition(listingId, ListingStatus.PLAN_PAYMENT_SUCCESS, null, "payment_captured");
-            publishListing(listingId); // sets PUBLISHED + expires_at + plan feature flags
-            notificationService.notifySeller(listingId, "LISTING_PUBLISHED");
+            trustSafetyReviewService.review(listingId); // PLAN_PAYMENT_SUCCESS -> TRUST_SAFETY_REVIEW (Part F)
+            notificationService.notifySeller(listingId, "LISTING_UNDER_REVIEW");
         } catch (Exception e) {
-            log.error("Listing publish failed after successful payment, listingId={}", listingId, e);
-            paymentGatewayClient.refund(razorpayPaymentId, amount, "PUBLISH_FAILED_AUTO_REFUND");
-            payment.setStatus("REFUNDED");
-            paymentRepository.save(payment);
-            lifecycleService.transition(listingId, ListingStatus.PLAN_SELECTION_PENDING, null, "rollback_publish_failure");
-            notificationService.notifySeller(listingId, "PUBLISH_FAILED_REFUND_INITIATED");
+            // The payment record and PLAN_PAYMENT_SUCCESS are already committed; a reconciliation job
+            // retries the hand-over for listings stuck in PLAN_PAYMENT_SUCCESS and raises an alert.
+            log.error("Review hand-over failed after successful payment, listingId={}", listingId, e);
         }
     }
 
-    private void publishListing(UUID listingId) {
-        var listing = listingRepository.findById(listingId).orElseThrow();
-        var plan = planRepository.findByCode(listing.getPlanType()).orElseThrow();
-        listing.setExpiresAt(Instant.now().plus(Duration.ofDays(plan.getValidityDays())));
-        lifecycleService.transition(listingId, ListingStatus.PUBLISHED, null, "auto_publish_on_payment");
+    /** Runs when Part F approves the listing (ListingStatusChangedEvent with toStatus = APPROVED). */
+    @Transactional
+    public void publishApprovedListing(UUID listingId) {
+        try {
+            var listing = listingRepository.findById(listingId).orElseThrow();
+            var plan = planRepository.findByCode(listing.getPlanType()).orElseThrow();
+            listing.setExpiresAt(Instant.now().plus(Duration.ofDays(plan.getValidityDays()))); // validity starts from publication
+            lifecycleService.transition(listingId, ListingStatus.PUBLISHED, null, "auto_publish_on_approval"); // plan features go live
+            notificationService.notifySeller(listingId, "LISTING_PUBLISHED");
+        } catch (Exception e) {
+            // The listing stays APPROVED and is paid for; a retry job publishes it. If it cannot be published
+            // after the retries, an alert is raised and finance refunds the payment manually.
+            log.error("Publish failed after approval, listingId={}", listingId, e);
+        }
+    }
+
+    /** Runs when Part F rejects the listing for the third time (ListingRefundDueEvent). */
+    @Transactional
+    public void startRefundReview(UUID listingId) {
+        var payment = paymentRepository.findByReferenceTypeAndReferenceId("LISTING_PLAN", listingId).orElseThrow();
+        payment.setStatus("REFUND_REVIEW"); // existing PaymentState.REFUND_REVIEW; whether the refund is issued automatically or manually is decided later
+        paymentRepository.save(payment);
+        notificationService.notifySeller(listingId, "LISTING_REFUND_DUE");
     }
 }
 ```
@@ -2475,34 +2509,30 @@ sequenceDiagram
     else first delivery
         Backend->>DB: UPDATE payments SET status=PAYMENT_SUCCESS, webhook_processed_at
         Backend->>Lifecycle: transition -> PLAN_PAYMENT_SUCCESS
-        alt publish succeeds
-            Backend->>Lifecycle: transition -> PUBLISHED (+ expires_at, plan features)
-            Backend->>Notify: notifySeller(LISTING_PUBLISHED)
-            Backend-->>Razorpay: 200
-        else publish fails
-            Backend->>Razorpay: refund(paymentId)
-            Backend->>DB: UPDATE payments SET status=REFUNDED
-            Backend->>Lifecycle: transition -> PLAN_SELECTION_PENDING (rollback)
-            Backend->>Notify: notifySeller(PUBLISH_FAILED_REFUND_INITIATED)
-            Backend-->>Razorpay: 200
-        end
+        Backend->>Lifecycle: review hand-over: transition -> TRUST_SAFETY_REVIEW (Part F)
+        Backend->>Notify: notifySeller(LISTING_UNDER_REVIEW)
+        Backend-->>Razorpay: 200
     end
-    Notify-->>Seller: push/in-app confirmation
+    Notify-->>Seller: push/in-app "payment received, listing under review"
+    Note over Backend,Lifecycle: Later, when Part F approves the listing (transition -> APPROVED)
+    Backend->>Lifecycle: transition -> PUBLISHED (+ expires_at, plan features active)
+    Backend->>Notify: notifySeller(LISTING_PUBLISHED)
+    Notify-->>Seller: push/in-app publish confirmation
 ```
 
 ## I.7 Validation Rules & Error Codes
 
 | Rule | Error Code | Detail |
 |---|---|---|
-| Payment must be confirmed before publishing | Webhook-driven only; no client-triggered publish endpoint exists | — |
-| Rollback to draft-equivalent state + refund if publish fails after payment | `PaymentWebhookService.handlePaymentCaptured` catch block | `ERROR_PUBLISH_FAILED`: "Payment successful but listing failed to publish. Refund initiated" |
+| Payment must be confirmed before review and publishing | Webhook-driven only; no client-triggered publish endpoint exists; review starts only from `PLAN_PAYMENT_SUCCESS` and publication only from `APPROVED` | — |
+| Listing stays safe if the review hand-over or the publish fails after payment | `handlePaymentCaptured` keeps `PLAN_PAYMENT_SUCCESS` and `publishApprovedListing` keeps `APPROVED`; retry jobs complete the step; unrecoverable cases are refunded manually | `ERROR_PUBLISH_FAILED`: "Payment successful but listing failed to publish. Refund initiated" (shown only if the refund is issued) |
 | Duplicate payment for same listing | `uq_payments_gateway_payment_id` + `webhookProcessedAt` idempotency guard | `ERROR_DUPLICATE_PAYMENT` (silently absorbed, not surfaced as user error) |
-| Plan activation within 5 minutes of payment | Webhook processing is synchronous and typically completes in milliseconds; SLA is a monitoring target (`payment_to_publish_latency_ms` metric), not a hard timeout in code |
+| Plan activation within 5 minutes of approval | Publication runs synchronously on the approval event and typically completes in milliseconds; SLA is a monitoring target (`payment_to_publish_latency_ms` metric, which now also includes the review time), not a hard timeout in code |
 | Network interruption after payment | Razorpay retries webhook delivery on non-2xx/timeout; idempotency guard makes retries safe |
 
 ## I.8 Resilience & Consistency
 
-- The publish operation and the payment status update happen in **one database transaction** with the lifecycle transition — a crash between "payment marked success" and "listing published" is impossible to observe as a partial state; either both commit or both roll back, and the `catch` block's refund path only triggers for exceptions *after* the initial commit (e.g., a downstream `plan.getValidityDays()` lookup failure), which is why refund + rollback happens in a **separate** transaction from the initial payment-success commit — the record of successful payment must survive even if publish itself fails, so a refund can be correctly issued against it.
+- Payment-success handling and the review hand-over are separate steps from publication. The payment record and the `PLAN_PAYMENT_SUCCESS` transition commit in their own transaction, so the record of successful payment survives even if the hand-over to review fails; a reconciliation job retries the hand-over for listings stuck in `PLAN_PAYMENT_SUCCESS`. Publication is triggered by the `APPROVED` event in its own transaction; if it fails the listing stays `APPROVED` and a retry job publishes it. A listing that is rejected in review is not published and is not charged again: the seller edits it and resubmits it for review (Part F §F.5), up to 3 review attempts in total. After the third failed attempt Part F publishes a `ListingRefundDueEvent`, `startRefundReview` moves the payment to `REFUND_REVIEW` and tells the seller, and the refund itself (automatic or manual) is decided later. Plan validity (`expires_at`) starts when the listing is published, so review time and revision time do not use up the seller's plan.
 - Refund calls to Razorpay are themselves idempotent on `razorpayPaymentId` (gateway-side guarantee); a retry of the rollback path (e.g., after an app restart mid-handling) won't double-refund.
 
 ## I.9 Observability & Security
