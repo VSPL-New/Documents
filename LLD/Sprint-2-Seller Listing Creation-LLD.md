@@ -1860,6 +1860,10 @@ APPROVED -> PUBLISHED
 PUBLISHED -> BUYER_INQUIRY_PENDING -> NEGOTIATION_IN_PROGRESS -> OFFER_ACCEPTED -> ORDER_CREATED -> SOLD
 PUBLISHED -> EXPIRED | DEACTIVATED_BY_SELLER | REMOVED_BY_ADMIN
 EXPIRED -> PLAN_SELECTION_PENDING (manual renewal only)
+PLAN_PAYMENT_PENDING -> PLAN_SELECTION_PENDING (PAYMENT_TIMEOUT after 30 minutes, or RESELECT_PLAN before paying)
+PLAN_PAYMENT_FAILED -> PLAN_SELECTION_PENDING (RESELECT_PLAN)
+PUBLISHED -> TRUST_SAFETY_REVIEW (EDIT_FOR_REVIEW: major edit by the seller, US-010)
+DRAFT | PLAN_SELECTION_PENDING | PLAN_PAYMENT_FAILED | REVISION_REQUIRED | EXPIRED -> DEACTIVATED_BY_SELLER (DELETE, US-010)
 ```
 
 Note: Sprint 2's seller flow (updated 2026-10-16 to payment first, review before publishing) exercises: `DRAFT → PLAN_SELECTION_PENDING → PLAN_PAYMENT_PENDING → PLAN_PAYMENT_SUCCESS → TRUST_SAFETY_REVIEW → APPROVED → PUBLISHED`, plus the `REJECTED`/`REVISION_REQUIRED` branches. The listing is a `DRAFT` while photos, item details (US-114) and the restricted item check (US-007) happen, so `MEDIA_UPLOAD_PENDING`, `AI_DETAILS_GENERATED` and `PRICE_PENDING` stay in the enum but are not reachable in Sprint 2. States from `BUYER_INQUIRY_PENDING` onward are driven by Sprint 3/4 stories and are included here only so the enum and transition table are complete and forward-compatible — this LLD does not implement their triggering logic. The delivered implementation uses the in-code `ListingStateMachine` (see the US-089 implementation plan) in place of the `listing_status_transitions` table below; the allowed transitions are the same.
@@ -1914,24 +1918,31 @@ public class ListingLifecycleService {
     private final ListingRepository listingRepository;
     private final ListingStateMachine stateMachine;
     private final ListingStatusHistoryRepository historyRepository;
-    private final ApplicationEventPublisher events;
+    private final DomainEventPublisher eventPublisher;
 
+    /** changedBy is null for system actions (expiry, scheduled jobs). */
     @Transactional
-    public void transition(UUID listingId, ListingStatus toStatus, UUID changedBy, String reason) {
+    public Listing transition(UUID listingId, ListingState target, String action, UUID changedBy, String reason) {
         var listing = listingRepository.findByIdForUpdate(listingId) // SELECT ... FOR UPDATE
                 .orElseThrow(() -> new NotFoundException("LISTING_NOT_FOUND", "Listing not found"));
 
         var from = listing.getStatus();
         // In-code ListingStateMachine; an invalid move raises the shared 400 INVALID_STATE_TRANSITION.
-        stateMachine.transition(from, toStatus, action);
+        stateMachine.transition(from, target, action);
 
-        listing.setStatus(toStatus);
-        listingRepository.save(listing);
-        historyRepository.save(new ListingStatusHistory(listingId, from, toStatus, changedBy, reason));
-        events.publishEvent(new ListingStatusChangedEvent(listingId, from, toStatus));
+        listing.setStatus(target);
+        var saved = listingRepository.save(listing);
+        // reason is trimmed to 255 characters; the history row also records the action
+        historyRepository.save(ListingStatusHistory.builder()
+                .listingId(listingId).fromStatus(from).toStatus(target)
+                .changedBy(changedBy).action(action).reason(reason).build());
+        eventPublisher.publish(new ListingStatusChangedEvent(this, listingId, from, target, action, changedBy, reason));
+        return saved;
     }
 }
 ```
+
+`ListingStatusChangedEvent` extends `DomainEvent` (as `UserStateChangedEvent` does) and carries the listing ID, from, to, action, who changed it and the reason. Listeners must use `@TransactionalEventListener(phase = AFTER_COMMIT)`. Buyer visibility is defined in one place, `ListingState.isLiveForBuyers()` (`PUBLISHED` only), and `ListingState.isTerminal()` marks `SOLD`, `DEACTIVATED_BY_SELLER`, `REMOVED_BY_ADMIN` and `REJECTED`.
 
 `findByIdForUpdate` (pessimistic row lock) prevents a race between, e.g., a seller-initiated delete (US-010) and an admin rejection (US-084) landing concurrently on the same listing.
 
