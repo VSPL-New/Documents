@@ -188,13 +188,12 @@ public interface AadhaarVerificationPort {
 - After mobile and email OTP, account state = `IDENTITY_VERIFICATION_PENDING`; skipping or completing Aadhaar moves it to `SIGNUP_PENDING`, and the Sign Up form (§3.1 step 6) moves it to `ACTIVE`
 - A JWT is issued with `aadhaarVerified: false` claim
 - User can browse, view listings, and use the app freely
-- `@RequiresIdentityVerification` annotation on listing creation and buy endpoints
+- `@RequiresIdentityVerification` annotation on listing submit (`POST /listings/{id}/submit`; draft creation is not gated) and buy endpoints
 - When an unverified user hits a gated endpoint → HTTP 403 with `AADHAAR_VERIFICATION_REQUIRED` and deep link hint to the verification flow
 
 ```
 Transaction Gating Flow:
-User hits POST /api/v1/listings
-  → AadhaarGatingInterceptor checks JWT claim
+User hits POST /api/v1/listings/{id}/submit  → AadhaarGatingInterceptor checks JWT claim
   → aadhaarVerified=false → 403 AADHAAR_VERIFICATION_REQUIRED
   → Client shows "Complete Aadhaar verification to continue"
 ```

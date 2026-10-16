@@ -195,7 +195,7 @@ Base path `/api/v1/listings`, package `com.valuex.listing`.
 
 | Method & Path | Purpose | Auth |
 |---|---|---|
-| `POST /api/v1/listings` | Create draft listing (empty shell); `@RequiresIdentityVerification` (403 `AADHAAR_VERIFICATION_REQUIRED` if not verified) | `SELLER`, `ACTIVE` |
+| `POST /api/v1/listings` | Create draft listing (empty shell); not Aadhaar-gated, so a seller can start a listing before verifying | `SELLER`, `ACTIVE` |
 | `POST /api/v1/media/uploads` | Create `PENDING_UPLOAD` media asset and return short-lived upload URL (rejects when the listing already has 10 READY photos) | authenticated owner |
 | `POST /api/v1/media/{mediaId}/complete` | Read the stored object, verify real type/size/dimensions, mark `READY` or `REJECTED` (idempotent when already `READY`) | authenticated owner |
 | `GET /api/v1/media/{mediaId}` | Media metadata; variants exposed as CDN URLs only for public media | authenticated owner |
@@ -204,6 +204,7 @@ Base path `/api/v1/listings`, package `com.valuex.listing`.
 | `POST /api/v1/listings/{id}/images` | Associate a READY `LISTING_IMAGE` media asset with the listing | `SELLER`, owner |
 | `DELETE /api/v1/listings/{id}/images/{imageId}` | Remove an image while in `DRAFT`, re-sequence the rest and delete its media | `SELLER`, owner |
 | `GET /api/v1/listings/{id}` | Fetch draft to resume editing | `SELLER`, owner |
+| `POST /api/v1/listings/{id}/submit` | Seller submits the draft after capturing photos (min 1, `ERROR_PHOTO_REQUIRED`); `@RequiresIdentityVerification` (403 `AADHAAR_VERIFICATION_REQUIRED` if not verified). This is the first Aadhaar gate in the seller journey, ahead of plan selection | `SELLER`, owner |
 
 Create draft request/response:
 
@@ -256,7 +257,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Seller->>Mobile: Tap "Sell Item" -> capture/select photos
-    Mobile->>Backend: POST /listings (create draft)
+    Mobile->>Backend: POST /listings (create draft, not Aadhaar-gated)
     Backend->>DB: INSERT listings (status=DRAFT)
     Backend-->>Mobile: listingId
     loop per photo (max 10)
@@ -270,6 +271,8 @@ sequenceDiagram
         Backend->>Backend: validate owner, READY status, count/size/resolution
         Backend->>DB: INSERT listing_images(media_asset_id)
     end
+    Mobile->>Seller: Photos captured; Submit
+    Mobile->>Backend: POST /listings/{id}/submit (Aadhaar-gated: 403 -> Aadhaar screen -> back to Sell)
     Mobile->>Seller: Proceed to item details (US-005/US-006)
 ```
 
@@ -308,7 +311,8 @@ sequenceDiagram
 - Upload authorization verifies that a `LISTING` media request targets an existing `DRAFT` listing owned by the authenticated seller, requires `LISTING_IMAGE` media to be owned by a `LISTING`, and rejects new uploads once the listing has 10 READY photos. Listing attachment additionally verifies the READY media belongs to that listing, is not already attached, and that a requested `sortOrder` is free.
 - Attach/delete take a `PESSIMISTIC_WRITE` lock on the listing row (`findByIdAndSellerIdForUpdate`) so concurrent uploads cannot exceed 10 photos or collide on `sort_order`. Re-sequencing after a delete runs in two flushed passes (negative positions first) because the unique `(listing_id, sort_order)` index is checked per row.
 - Removing a listing image also deletes its media asset; `DELETE /media/{id}` refuses attached media (`MEDIA_IN_USE`), is a no-op for already deleted media, and marks the asset `DELETION_PENDING` when the store is unavailable.
-- `createDraft` writes the initial `listing_status_history` row (`null → DRAFT`, reason `DRAFT_CREATED`) and is annotated `@RequiresIdentityVerification`.
+- `createDraft` writes the initial `listing_status_history` row (`null → DRAFT`, reason `DRAFT_CREATED`) and is **not** Aadhaar-gated; the gate sits on `POST /listings/{id}/submit` (`@RequiresIdentityVerification`), which only validates ownership/`DRAFT` state and the 1-photo minimum.
+- Aadhaar detour (mobile): on `AADHAAR_VERIFICATION_REQUIRED` from submit, `CreateListingController` is kept alive, the app opens the Aadhaar screen and stores the Sell route as the post-Aadhaar destination (`postAadhaarRouteProvider`). After verification (or "Not now") the router returns to Sell with the photos intact; when verified the submit is retried automatically.
 - `MediaAssetResponse.variants` contains CDN URLs (`cdn-base-url` + variant key) only for `PUBLIC_DERIVATIVE` media; bucket object keys are never returned.
 - Asynchronous derivative generation (AVIF/WebP), EXIF stripping and server-side perceptual hashing remain deferred follow-ups; the lifecycle/schema is ready for them.
 - Flutter client: `features/listing` (repository + `CreateListingController` + `CreateListingScreen`) implements the flow in §A.6 from the bottom-nav **Sell** tab; see the US-004 implementation plan.

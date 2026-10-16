@@ -221,6 +221,18 @@ POST /api/v1/users/me/payout-methods
 POST /api/v1/listings
 ```
 
+Not Aadhaar-gated; the seller is asked to verify Aadhaar at submit.
+
+---
+
+## Submit Listing
+
+```http
+POST /api/v1/listings/{id}/submit
+```
+
+Requires Aadhaar verification (`403 AADHAAR_VERIFICATION_REQUIRED` otherwise) and at least one photo.
+
 ---
 
 ## Upload Images

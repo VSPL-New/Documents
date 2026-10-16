@@ -363,7 +363,7 @@ The profile details screen edits only name and avatar and shows no city, date of
 
 ### Home Location (US-111)
 
-The Home location header opens a sheet with exactly two options: "Use my current location" and "Use my saved location". There is no address entry, no Google Places and no address verification on Home. "Use my saved location" opens a pop-up listing the saved addresses (name and full address) from `GET /api/v1/users/me/addresses`; picking one uses only its city, state and pincode to find listings near it. With no saved address the pop-up says an address is saved when the user buys or sells. The chosen place is kept on the device only and is never saved as an address or sent to the server. Search and listing location filters and distance ranking use this Home location.
+The Home location header opens a sheet with exactly two options: "Use my current location" and "Use my saved location". There is no address entry, no Google Places and no address verification on Home. "Use my saved location" opens a pop-up listing all the saved addresses (name and full address, one radio button each, default pre-selected) from `GET /api/v1/users/me/addresses`; confirming the selected one with "Use this address" uses only its city, state and pincode to find listings near it. With no saved address the pop-up says an address is saved when the user buys or sells. The chosen place is kept on the device only and is never saved as an address or sent to the server. Search and listing location filters and distance ranking use this Home location.
 
 The shared address component (search field, verification, state picker) is not used on Sign Up or Home; it is reused at checkout and listing creation.
 

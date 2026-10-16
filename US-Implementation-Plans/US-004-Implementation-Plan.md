@@ -85,6 +85,7 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part A](../LLD/Spri
   - `POST /api/v1/listings/{id}/images`
   - `DELETE /api/v1/listings/{id}/images/{imageId}`
   - `GET /api/v1/listings/{id}`
+  - `POST /api/v1/listings/{id}/submit`
   - `@PreAuthorize` role check + `SecurityContext.getCurrentUserId()` for ownership (never a client-supplied `sellerId`), consistent with the rest of the codebase.
 - [x] `com.valuex.media.api.MediaController`:
   - `POST /api/v1/media/uploads`
@@ -152,7 +153,7 @@ Non-item/random-photo detection is **not** testable here (LLD §A.1.1: AI's advi
 
 1. ~~No object storage backend exists yet~~ — **Resolved:** shared Media Module with `ObjectStoragePort`; Cloudflare R2 by default. Local development uses a RustFS S3-compatible container from `docker-compose.yml` (host port 9300, because SonarQube uses 9000).
 2. ~~`valuex-mobile` is a React/Vite prototype~~ — **Resolved:** `valuex-mobile` is the Flutter app; mobile wiring is implemented in this story.
-3. ~~Seller account-status gating~~ — **Resolved:** `createDraft` requires `ACTIVE` (`ACCOUNT_NOT_ACTIVE`) and is annotated `@RequiresIdentityVerification` (`AADHAAR_VERIFICATION_REQUIRED`); the app also blocks Sell until Aadhaar is verified.
+3. ~~Seller account-status gating~~ — **Resolved:** `createDraft` requires `ACTIVE` (`ACCOUNT_NOT_ACTIVE`) and is not Aadhaar-gated; `POST /listings/{id}/submit` is annotated `@RequiresIdentityVerification` (`AADHAAR_VERIFICATION_REQUIRED`). The app lets Sell open and asks for Aadhaar only after the seller submits, then returns to Sell with the photos kept.
 4. ~~Migration version number~~ — **Resolved:** `V10`.
 
 ---
@@ -179,7 +180,7 @@ Gaps found in review and fixed:
 | 7 | Deleting attached media orphaned `listing_images`; deleting twice called storage again | `MEDIA_IN_USE`, no-op for already deleted, `DELETION_PENDING` when storage is down; removing a listing image now deletes its media |
 | 8 | Signed download URL issued for non-READY media | `MEDIA_NOT_READY` |
 | 9 | No `listing_status_history` row for draft creation | `null → DRAFT` row with `DRAFT_CREATED` |
-| 10 | Aadhaar gate not applied to listing creation | `@RequiresIdentityVerification` on `POST /listings` |
+| 10 | Aadhaar gate not applied to listing creation | `@RequiresIdentityVerification` on `POST /listings/{id}/submit` (not on draft creation) |
 | 11 | Object key extension came from the client file name; file name unbounded | Extension from validated content type; file name sanitised/truncated; `@Size` on request fields; HEIF normalised to HEIC |
 | 12 | Max-10 only checked at attach, so unlimited uploads were possible | Upload authorization refuses once 10 READY photos exist; listing photos must be owned by a `LISTING` |
 | 13 | Variant map exposed raw bucket object keys | CDN URLs for public media only |
