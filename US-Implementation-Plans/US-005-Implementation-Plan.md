@@ -8,25 +8,32 @@
 | Title | AI-Assisted Listing Creation |
 | Sprint | Sprint 2 — Seller Listing Creation |
 | Story Points | 8 |
-| Repos | valuex-backend, valuex-ai; `valuex-mobile` excluded per `CLAUDE.md` §6 |
-| Dependency | US-004 — Create Listing with Photo Capture; draft must be `DRAFT` with at least one READY listing media asset |
+| Repos | valuex-backend, valuex-mobile (only the Submit to AI wiring and unavailable message). `valuex-ai` is out of scope (built separately by another team, integrated later) |
+| Dependency | US-004 — Create Listing with Photo Capture; draft must be `DRAFT` with at least one READY listing media asset. US-089 is built first (listing states); US-114 (Listing Item Details Entry) provides the Item Details page |
 
 Sprint 2 goal: allow sellers to create and publish listings. US-005 provides advisory metadata suggestions for the US-004 draft flow and must never prevent manual listing creation.
+
+**Scope decisions (2026-10-15):**
+1. The AI service (image analysis, categorization, text generation) is developed separately and arrives later. This plan delivers only the backend side of the boundary: persistence, the three seller endpoints, the AI Gateway client against the LLD §6.2 contract, fallback/resilience and feedback capture.
+2. **Every Sprint 2 story assumes AI is disabled or down and works manually.** A single configuration switch, `valuex.ai.enabled` (default `false`), turns AI assistance on or off. When off, nothing calls the AI service, nothing fails, and the seller fills in item details, category and description by hand. When on, the AI fills those fields and the seller reviews them.
+3. **Price suggestion is on hold** (still in design discussion). It is removed from this story's implementation until the design is settled: no price range in the persisted suggestion, no price feedback field, no price re-validation, no price warnings.
+4. **Unavailable message.** When the seller taps **Submit to AI** and AI is disabled, down, or its usage quota is exhausted, the app shows: "AI Service is not available at this moment or your usage quota has exhausted, please do manual entry". The backend sends the same text as the degraded response `message` (error code `ERROR_AI_SERVICE_UNAVAILABLE`); a quota-exhausted or HTTP 429 reply from the AI Gateway is treated like any other unavailable result.
 
 ## 2. Story Recap
 
 **As a** seller **I want** AI to suggest item details from my photos **so that** I can create listings faster with accurate information.
 
 **Acceptance Criteria** (`Documents/user-stories.md`):
-- Given uploaded item photos, AI suggests category, title, condition, price range, and description.
+- Given uploaded item photos, AI suggests category, title, condition, and description. (Price range is on hold, see Scope decisions.)
 - Seller can accept, edit, or reject each suggestion independently.
 - Seller can manually enter any field.
+- Added by scope decision: with AI disabled or unavailable, the seller completes every field manually and nothing fails.
 
-**Edge Cases:** AI cannot identify item · wrong category · unrealistic price · multiple items in photos · unique/rare item without comparables · AI timeout/failure.
+**Edge Cases:** AI cannot identify item · wrong category · multiple items in photos · AI disabled · AI timeout/failure. (Unrealistic price and unique/rare item without comparables are deferred with price suggestion.)
 
-**Validation Rules:** suggestions optional/manual entry always allowed · price suggestion within 20% of similar listings · category from predefined list · title max 100 characters · description max 2000 characters.
+**Validation Rules:** suggestions optional/manual entry always allowed · category from predefined list · title max 100 characters · description max 2000 characters. (The 20% price rule is deferred with price suggestion.)
 
-**Error Scenarios:** `ERROR_AI_SERVICE_UNAVAILABLE` · `WARNING_UNABLE_TO_IDENTIFY` · `WARNING_PRICE_OUT_OF_RANGE`.
+**Error Scenarios:** `ERROR_AI_SERVICE_UNAVAILABLE` · `WARNING_UNABLE_TO_IDENTIFY`. (`WARNING_PRICE_OUT_OF_RANGE` is deferred.)
 
 ## 3. Design Reference
 
@@ -47,37 +54,42 @@ Supporting references:
 - AI service endpoint is internal-only: `POST /ai/v1/listings/suggest` through the AI Gateway.
 - Listing images are passed across the AI boundary as `mediaIds`; the Media Module issues short-lived authorized reads. No provider URLs or signed URLs are persisted as business data.
 - AI failures return an HTTP 200 degraded advisory payload with manual entry available; circuit breaker and 5-second time limiter protect the backend.
-- Backend independently checks AI price range against comparable listings and appends `WARNING_PRICE_OUT_OF_RANGE` when needed.
 - AI suggestions and per-field feedback are append-oriented records for later quality/retraining analysis.
-
+- **Master AI switch.** `valuex.ai.enabled` (env `VALUEX_AI_ENABLED`, default `false`) is checked by `ListingAiService` before any AI call. Disabled: no gateway call, no suggestion row persisted, the rate limit is not consumed, and the endpoint returns the same HTTP 200 degraded payload (`fallback: true`, manual-entry message). Enabled but the service is down, slow or its circuit is open: the call falls back the same way and a `FAILED` row is persisted. The switch is a shared `AiProperties` in `common.infrastructure.ai` so later Sprint 2 stories reuse it. The LLD §6.2 request/response JSON (minus price) is the contract handed to the AI team.
+- **Manual fallbacks for the other AI-using Sprint 2 stories (decided 2026-10-15/16; implemented in their own plans, see [US-007](US-007-Implementation-Plan.md) and [US-084](US-084-Implementation-Plan.md); this story only provides the shared `valuex.ai.enabled` switch):**
+  - **US-007 Restricted Items:** when AI is disabled or unavailable, a rule-based check against a `restricted_items` table of terms runs on title, description and category, and a match is treated as an AI `RESTRICTED` result.
+  - **US-084 Trust & Safety Review:** when AI is disabled or unavailable, no fraud score is computed. Until the admin console arrives the listing is auto-approved (recorded as such); manual moderation is switched on later by configuration.
 ## 4. Implementation Steps
 
 ### Database Migration — `valuex-backend`
-- [ ] Identify the next Flyway version after the current migrations; add the US-005 migration (the LLD uses `V{N}` as a placeholder).
-- [ ] Add `listing_ai_suggestions` with status (`PENDING`, `COMPLETED`, `FAILED`, `TIMEOUT`), category JSON, title, condition, description, price range/currency, warnings, confidence, model name/version, inference ID, latency, fallback flag, and timestamp.
-- [ ] Add `listing_ai_suggestion_feedback` with suggestion ID, field (`CATEGORY`, `TITLE`, `CONDITION`, `DESCRIPTION`, `PRICE`), action (`ACCEPTED`, `EDITED`, `REJECTED`), original/final values, and timestamp.
-- [ ] Add `listings.ai_assisted BOOLEAN NOT NULL DEFAULT FALSE` if not already present from US-004.
+- [ ] Add the US-005 migration as `V15__listing_ai_suggestions.sql` (after US-089's `V13` and US-114's `V14`; renumber to the next free version at implementation time).
+- [ ] Add `listing_ai_suggestions` with status (`PENDING`, `COMPLETED`, `FAILED`, `TIMEOUT`), category JSON, title, condition, description, warnings, confidence, model name/version, inference ID, latency, fallback flag, and timestamp. No price columns; they are added by a later migration once the price design is agreed.
+- [ ] Add `listing_ai_suggestion_feedback` with suggestion ID, field (`CATEGORY`, `TITLE`, `CONDITION`, `DESCRIPTION`), action (`ACCEPTED`, `EDITED`, `REJECTED`), original/final values, and timestamp.
+- [ ] Do not add `listings.ai_assisted`; it already exists (`V10__listing_media_schema.sql`, `Listing.aiAssisted`).
 - [ ] Add indexes on suggestion listing/status and feedback suggestion ID.
 - [ ] Keep the migration compatible with the US-004 `listings` and media-ID model; do not introduce raw image URL columns.
 
 ### Backend — Domain, Persistence, DTOs
-- [ ] Add `ListingAiSuggestion`, `ListingAiSuggestionFeedback`, `ListingAiSuggestionStatus`, `ListingAiFeedbackField`, and `ListingAiFeedbackAction` under the existing listing module conventions.
+- [ ] Add `ListingAiSuggestion`, `ListingAiSuggestionFeedback`, `ListingAiSuggestionStatus`, `ListingAiFeedbackField`, and `ListingAiFeedbackAction` under the existing listing module layers (`domain`, `application`, `api`, `infrastructure/persistence`).
 - [ ] Add repositories for latest suggestion lookup, per-listing hourly trigger count, and feedback persistence.
-- [ ] Add response DTOs: `ListingAiSuggestionResponse`, `CategorySuggestionDto`, `PriceRangeDto`, and `SuggestionFeedbackRequest`.
+- [ ] Add response DTOs: `ListingAiSuggestionResponse`, `CategorySuggestionDto`, and `SuggestionFeedbackRequest`.
 - [ ] Add internal AI transport models using `mediaIds`, listing ID, seller ID, seller location, and optional text hint; map AI response model/version/inference metadata without exposing provider internals.
 
-### Backend — AI Gateway Integration
-- [ ] Add `AiGatewayClient` under shared infrastructure, using the existing HTTP-client conventions and internal `X-Internal-Api-Key` configuration.
-- [ ] Call `POST /ai/v1/listings/suggest` with the listing’s READY media IDs and optional `textHint` (max 500 characters).
-- [ ] Configure Resilience4j circuit breaker `aiGateway` and 5-second time limiter per the LLD; do not add blind retries.
-- [ ] Implement `ListingSuggestResponse.unavailable()` fallback and persist a `FAILED`/fallback suggestion while returning manual-entry guidance.
-- [ ] Propagate request/inference identifiers in structured logs without logging signed URLs, image bytes, credentials, or PII.
+### Backend — AI Switch and Gateway Client (no AI logic)
+- [ ] Add `AiProperties` (`valuex.ai.enabled` default `false`, `gateway.base-url`, `gateway.api-key` from environment, `gateway.timeout-seconds` default 5) in `common.infrastructure.ai`, bound through `ValuexProperties`; add the keys to `application.yml`. Base URL and API key are not required while `enabled=false`.
+- [ ] Add `AiGatewayClient` in `common.infrastructure.ai` using `RestClient` (as in `GoogleAddressVerificationAdapter`) to call `POST /ai/v1/listings/suggest` with `X-Internal-Api-Key`, READY media IDs and optional `textHint` (max 500 characters). `ListingSuggestRequest` / `ListingSuggestResponse` records follow LLD §6.2 without the price range, plus `ListingSuggestResponse.unavailable()`.
+- [ ] Add `io.github.resilience4j:resilience4j-spring-boot3` (plus `spring-boot-starter-aop`, which its annotations need) to `pom.xml`, and configure the `aiGateway` circuit breaker per the LLD (sliding window 20, failure threshold 50%, 30s open) with the 5-second timeout on the `RestClient`; no blind retries. Wrap `AiGatewayClient.suggestListing` with `@CircuitBreaker(name = "aiGateway")` and a fallback returning `unavailable()`.
+- [ ] Map timeout, HTTP error, malformed body and open circuit to `unavailable()`.
+- [ ] Verify the client with a mocked HTTP server only; it is not run against a real AI service in this story.
+- [ ] Log inference IDs and listing ID in structured logs without signed URLs, image bytes, credentials, or PII.
 
 ### Backend — `ListingAiService`
-- [ ] Validate authenticated seller ownership, listing status `DRAFT`, and at least one listing media ID before calling AI.
+- [ ] Validate authenticated seller ownership, listing status `DRAFT`, and at least one listing media ID.
+- [ ] If `valuex.ai.enabled=false`, return the degraded manual-entry response immediately: no gateway call, no row persisted, no rate-limit consumption, `ai_assisted` stays false.
 - [ ] Enforce the LLD trigger limit of 5 generations per listing per hour with `AI_SUGGESTION_RATE_LIMITED`.
+- [ ] If the call fails, times out or the circuit is open, persist a `FAILED`/fallback suggestion and return the same degraded response.
 - [ ] Persist completed suggestions with warnings, confidence, model/version, inference ID, latency, and `ai_assisted=true`.
-- [ ] Independently validate the AI price range against comparable active listings using the ±20% band and append `WARNING_PRICE_OUT_OF_RANGE` when applicable.
+- [ ] Truncate title to 100 and description to 2000 characters, and accept only valid condition values, before persistence.
 - [ ] Ensure low-confidence/unclear and multiple-item cases remain successful advisory responses, not hard failures.
 - [ ] Record accept/edit/reject feedback per field and verify the suggestion belongs to the requested listing and authenticated seller.
 - [ ] Keep suggestion feedback separate from applying final values; final seller values continue through the existing listing update flow.
@@ -89,24 +101,25 @@ Supporting references:
   - `PATCH /api/v1/listings/{listingId}/ai-suggestions/{suggestionId}/feedback`
 - [ ] Use the standard `ApiResponse` envelope and existing centralized exception handling.
 - [ ] Return `LISTING_NOT_FOUND`, `LISTING_HAS_NO_IMAGES`, `LISTING_NOT_IN_DRAFT`, `AI_SUGGESTION_RATE_LIMITED`, and `AI_SUGGESTION_NOT_FOUND` according to the LLD.
-- [ ] Keep AI unavailable, unable-to-identify, multiple-item, and price-warning cases in successful advisory payloads.
+- [ ] Keep AI disabled, AI unavailable, unable-to-identify and multiple-item cases in successful advisory payloads.
 
-### AI Service — `valuex-ai`
-- [ ] Add the internal FastAPI listing router at `/ai/v1/listings/suggest`, protected by the internal API-key dependency.
-- [ ] Add Pydantic request/response models with `mediaIds`, category suggestions, title, condition, description, price range, warnings, confidence, model name/version, and inference ID.
-- [ ] Implement provider-neutral Listing Intelligence Service orchestration: authorized media retrieval → image analysis → category classification → comparable price estimation → title/description generation.
-- [ ] Add warnings for low confidence, unclear images, and multiple detected items; skip title/description generation when identification confidence is below the configured threshold.
-- [ ] Return low-comparable results with low-confidence handling instead of fabricating a precise price.
-- [ ] Add AI configuration for vision timeout, minimum identification confidence, minimum comparables, Media API URL, and internal credentials through environment variables.
-- [ ] Never write backend-owned listing state directly from Python.
+### AI Service — `valuex-ai` (OUT OF SCOPE, separate team)
+Not implemented in this story. Image identification, categorization, text generation, the FastAPI router, Pydantic models, media retrieval and AI configuration (LLD Part B §6) belong to the AI team. Price estimation is on hold.
+- [ ] Hand the AI team the contract: LLD §6.2 request/response models (without price), the `X-Internal-Api-Key` header, the 5s backend timeout, and the warning codes (`MULTIPLE_ITEMS_DETECTED`, `WARNING_UNABLE_TO_IDENTIFY`, `WARNING_IMAGE_UNCLEAR`).
+- [ ] Integration (later, separate task): set `VALUEX_AI_ENABLED=true`, point to the AI Gateway, run an end-to-end check with the real service.
 
-### Mobile/Web
-- [ ] No mobile implementation in this pass. `valuex-mobile` is a React trial/prototype; the real client will be Flutter and is being developed separately. Future Flutter work will render the suggestions, allow per-field accept/edit/reject, and use the backend’s manual-entry path.
+### Mobile (Flutter)
+Only the **Submit to AI** wiring in `valuex-mobile/lib/features/listing`; per-field accept/edit/reject UI for real AI suggestions is built when the AI service is integrated.
+- [ ] Add a `ListingRepository` method for `POST /api/v1/listings/{listingId}/ai-suggestions` and call it from `_submit` in `create_listing_screen.dart` after photos are uploaded.
+- [ ] When the response is the degraded one (`fallback: true`) or the call fails, show the message "AI Service is not available at this moment or your usage quota has exhausted, please do manual entry" and continue to manual entry.
+- [ ] Add the message as an l10n string in `app_en.arb` and `app_hi.arb` (Hindi translation to be confirmed) and map `ERROR_AI_SERVICE_UNAVAILABLE` in `listing_error_messages.dart`.
+- [ ] When a real suggestion comes back, hold it for the later review UI; no suggestion UI in this story.
+- [ ] Follow `Documents/CODING_STANDARDS.md` and the design system (`valuex-mobile/docs/Flutter-Design-System.md`): tokens only, 48 dp tap targets, labelled controls.
 
 ### Documentation/Quality
-- [ ] Add/update OpenAPI examples for the three backend endpoints and internal AI contract.
-- [ ] Update the Sprint 2 LLD if implementation deviates from the Part B design.
-- [ ] After implementation, create `Documents/US-Implementation-Plans/US-005-Testing-Guide.md` with manual/API test steps.
+- [ ] Add/update OpenAPI examples for the three backend endpoints.
+- [ ] Update the Sprint 2 LLD if implementation deviates from the Part B design (e.g. the `valuex.ai.enabled` switch, price suggestion removed, RestClient instead of WebClient, package layout).
+- [ ] After implementation, create `Documents/Manual Testing Guides/US-005-Testing-Guide.md` with manual/API test steps.
 
 ## 5. Test Plan
 
@@ -114,12 +127,11 @@ Target >90% coverage for new backend/AI service logic, consistent with `CLAUDE.m
 
 ### Backend Unit Tests
 
-- [ ] Happy path returns category, title, condition, price range, description, confidence, model/version, and persists the suggestion.
-- [ ] Rejects missing listing, non-owner listing, non-`DRAFT` listing, and listing with no READY images.
+- [ ] Happy path (AI enabled, mocked client) returns category, title, condition, description, confidence, model/version, and persists the suggestion.
+- [ ] AI disabled: no gateway call, no row persisted, rate limit untouched, degraded manual-entry response returned, `ai_assisted` unchanged.
+- [ ] Rejects missing listing, non-owner listing, non-`DRAFT` listing, and listing with no READY images (also when AI is disabled).
 - [ ] Enforces the 5-per-hour per-listing trigger limit.
-- [ ] Appends `WARNING_PRICE_OUT_OF_RANGE` when AI range falls outside the comparable ±20% band.
-- [ ] Does not add a price warning when no comparable listings exist.
-- [ ] Returns fallback/manual-entry payload for AI timeout, gateway error, and open circuit.
+- [ ] Returns fallback/manual-entry payload and persists `FAILED` for AI timeout, gateway error, gateway quota/429 reply, and open circuit.
 - [ ] Persists `ai_assisted=true` only after a completed AI response.
 - [ ] Persists one feedback row for each accepted/edited/rejected field.
 - [ ] Rejects feedback for a suggestion belonging to another listing or seller.
@@ -127,52 +139,60 @@ Target >90% coverage for new backend/AI service logic, consistent with `CLAUDE.m
 
 ### Backend Integration/Contract Tests
 
-- [ ] `POST /ai-suggestions` happy path with a mocked AI Gateway and Testcontainers PostgreSQL.
+- [ ] `POST /ai-suggestions` happy path with `valuex.ai.enabled=true`, a mocked AI Gateway server and Testcontainers PostgreSQL.
 - [ ] AI Gateway 5xx/timeout returns HTTP 200 degraded advisory response and persists fallback status.
+- [ ] Default configuration (`valuex.ai.enabled=false`, no gateway URL or key set) starts the app, and `POST /ai-suggestions` returns the degraded response while the draft stays manually editable.
 - [ ] `GET /ai-suggestions` returns the latest attempt and returns `AI_SUGGESTION_NOT_FOUND` when none exists.
 - [ ] Feedback endpoint validates field/action values and standard error envelope.
-- [ ] Internal AI request/response JSON contract matches the Python Pydantic models, including `mediaIds` and model metadata.
+- [ ] `AiGatewayClient` request/response JSON matches the LLD §6.2 contract (camelCase `mediaIds`, model metadata), verified against a mocked HTTP server, including the `X-Internal-Api-Key` header, timeout and malformed-body handling.
 - [ ] Seller ownership prevents IDOR access to another seller’s listing/suggestion.
 
-### AI Service Tests (`pytest`)
+### AI Service Tests
 
-- [ ] Internal API key is required.
-- [ ] Valid media IDs produce the expected response contract.
-- [ ] Low identification confidence produces `WARNING_UNABLE_TO_IDENTIFY` and no title/description.
-- [ ] Multiple items produce `MULTIPLE_ITEMS_DETECTED`.
-- [ ] Insufficient comparables produce low-confidence/no precise range behavior.
-- [ ] Text hint is bounded at 500 characters.
-- [ ] Model name/version and inference ID are present in every successful response.
-- [ ] Image/media access failure and model timeout produce the contract expected by the backend fallback path.
+Out of scope; the AI team owns the `pytest` suite. Backend tests cover how the backend handles each AI outcome:
+- [ ] AI response with `WARNING_UNABLE_TO_IDENTIFY` and empty category suggestions persists as `COMPLETED`, not `FAILED`.
+- [ ] AI response with `MULTIPLE_ITEMS_DETECTED` persists and is returned unchanged.
+- [ ] Over-long title (>100) and description (>2000) from the AI are truncated before persistence; unknown condition values are rejected or dropped.
+- [ ] Model name/version and inference ID are stored with every completed suggestion.
+
+### Mobile Tests (Flutter)
+
+- [ ] Widget test: tapping **Submit to AI** with a degraded/failed response shows the unavailable message and does not crash or lose the uploaded photos.
+- [ ] Repository test: the endpoint call parses both a normal and a degraded response.
+- [ ] Message exists in English and Hindi and passes the accessibility guideline checks (tap target, label, contrast).
 
 ## 6. Validation Checklist
 
-- [ ] Category suggestion comes from the predefined category taxonomy.
+- [ ] Category suggestion is stored as returned by the AI; validating it against the predefined taxonomy depends on US-006 (Open Gap 3) and the AI team's classifier.
 - [ ] Title is never persisted above 100 characters.
 - [ ] Description is never persisted above 2,000 characters.
 - [ ] Condition is constrained to `NEW`, `LIKE_NEW`, `GOOD`, `FAIR`, or `POOR`.
-- [ ] Price range is checked against similar listings using the 20% rule.
+- [ ] No price suggestion, price column, price feedback or price warning exists (on hold).
 - [ ] AI remains advisory; manual entry works without a successful AI response.
 - [ ] Seller can independently accept, edit, or reject every suggested field through feedback records and the existing listing update path.
 - [ ] Low-confidence, multiple-item, unique-item, and wrong-category cases remain recoverable without blocking draft creation.
 - [ ] AI timeout/failure returns `ERROR_AI_SERVICE_UNAVAILABLE` guidance and leaves the draft manually editable.
-- [ ] AI Gateway is internal-only and authenticated.
-- [ ] Media access uses `mediaIds` and short-lived authorization; no raw provider URL or signed URL is persisted/logged.
+- [ ] AI Gateway calls are internal-only and authenticated; the API key comes from environment configuration.
+- [ ] Only `mediaIds` cross the boundary; no raw provider URL or signed URL is persisted/logged.
 - [ ] Listing ownership is derived from the authenticated security context.
 - [ ] Suggestion and feedback records retain model/version/inference/latency metadata for observability.
-- [ ] No direct Python write path exists to `listings`.
-- [ ] `valuex-mobile` remains unchanged.
+- [ ] With `valuex.ai.enabled=false` (default) the app starts and works end to end without any AI configuration, and every suggestion request degrades to manual entry.
+- [ ] Switching `valuex.ai.enabled` needs no code change.
+- [ ] Tapping **Submit to AI** with AI off or down shows exactly: "AI Service is not available at this moment or your usage quota has exhausted, please do manual entry".
+- [ ] `valuex-ai` remains unchanged.
 - [ ] Checkstyle, full tests, coverage, and SonarQube checks pass before push.
 
 ## 7. Open Gaps / Questions
 
-1. **AI repository is not implemented yet.** `valuex-ai` currently contains only `README.md`; the exact provider SDK, media client, model hosting, and Python package layout are not established in the repository. Implement against the LLD’s endpoint/schema boundary and record the selected provider/layout in the LLD.
-2. **Exact AI model/provider is intentionally unspecified.** The LLD permits a managed multimodal API or self-hosted/provider-neutral implementation. This decision must be made during implementation without changing the internal contract.
-3. **Comparable-listing access from Python is not operationally specified.** The LLD describes a read-only PostgreSQL query, but connection ownership/credentials and whether the query should instead be exposed through a backend service are not defined. Do not grant broader database access without a security decision.
-4. **Media completion/derivative timing.** US-004 currently exposes media lifecycle/API foundations; asynchronous AVIF/WebP worker processing is a documented follow-up. US-005 must consume only media assets that the Media Module reports as READY.
-5. **Listing update endpoint implementation.** The LLD references the existing `PATCH /api/v1/listings/{id}` path for applying final seller values, but the US-004 backend slice does not implement full listing metadata editing. Confirm whether US-005 should add the minimum draft-field update path or defer final-value application to US-010.
-6. **Flyway version.** Replace `V{N}` with the next available migration version at implementation time.
-
+1. **AI service contract ownership.** The AI team must agree to the LLD §6.2 contract (or propose changes) before integration. Any contract change updates the Part B LLD and the gateway client.
+2. **Circuit breaker mechanism (decided).** Add `resilience4j-spring-boot3` and wrap `AiGatewayClient`, as in the Implementation Steps. The same dependency is reused by later AI-calling stories (each with its own breaker instance).
+3. **Category data.** `listings` has no category column and there is no taxonomy table (US-006 owns them), so suggested categories are stored as returned and cannot yet be validated against a predefined list.
+4. **Price suggestion (on hold).** When the design is settled: add price columns, a `PRICE` feedback field, comparable-listings access for the AI team (credentials, or via a backend endpoint) and the ±20% re-validation (LLD §5.7.1, §6.3.1). Not built now.
+5. **US-007 and US-084 manual fallbacks (decided).** Details are in their own plans. Nothing further is needed for US-005.
+6. **How the app learns AI is off (decided).** The app always shows **Submit to AI** and learns the state from the response and the message above, so no `aiSuggestionsAvailable` flag is added.
+7. **Manual entry screen (decided).** [US-114](US-114-Implementation-Plan.md) "Listing Item Details Entry" builds the Flutter Item Details page from the Figma Make screen in the brand theme. After the unavailable message the app opens it with empty fields; with AI on it opens prefilled. This story only needs to hand the suggestion (or none) to that page.
+8. **Media completion/derivative timing.** US-004 currently exposes media lifecycle/API foundations; asynchronous AVIF/WebP worker processing is a documented follow-up. US-005 must consume only media assets that the Media Module reports as READY.
+9. **Listing update endpoint (decided).** [US-114](US-114-Implementation-Plan.md) adds `PATCH /api/v1/listings/{listingId}` (title, category, condition, description, price, location city) for drafts and listings in revision, and applies the seller's final values; US-010 later extends it to published listings.
 ---
 
-**Status:** Draft
+**Status:** Revised

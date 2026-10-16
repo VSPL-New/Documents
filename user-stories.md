@@ -30,6 +30,10 @@
 21. [UI Quality](#ui-quality)
 22. [Home](#home)
 23. [Seller Order Management](#seller-order-management)
+24. [Listing Details](#listing-details)
+25. [Listing Notifications](#listing-notifications)
+26. [Plan Administration](#plan-administration)
+27. [Payment Gateway](#payment-gateway)
 
 ---
 
@@ -225,7 +229,7 @@
 - Given I am logged in as a seller
 - When I tap "Sell Item"
 - Then camera opens for photo capture
-- When I capture at least 1 photo (max 10 photos)
+- When I capture at least 2 photos (max 10 photos)
 - Then photos are uploaded to the system
 - And I can proceed to add item details
 - When I post the listing and have no saved address
@@ -251,7 +255,7 @@
 - Seller leaves the Aadhaar verification step half-way or closes the app (the draft stays; the check is asked again on the next submit)
 
 **Validation Rules:**
-- Minimum 1 photo required
+- Minimum 2 photos required
 - Maximum 10 photos allowed
 - Photo format: JPG, PNG, HEIC
 - Max size per photo: 10MB
@@ -402,16 +406,13 @@
 - Given I have completed my listing draft
 - When I proceed to publish
 - Then, if I have not completed Aadhaar verification, I am first asked to complete it (US-004) and only then shown the plan options
-- Then I am shown 3 listing plan options with features:
-  - **Basic** (Free): Standard visibility, limited inquiries
-  - **Boosted** (Paid): Higher ranking for 7 days, increased visibility
-  - **Priority** (Paid): Top placement for 30 days, "Featured" badge, verified
+- Then I am shown the listing plans that are available (the plans, their features and prices are managed by the platform and can change; today Basic, Boosted and Priority, see US-078 and US-116)
 - When I select a plan
-- Then I see the pricing
-- When I select a paid plan
-- Then I am redirected to payment
+- Then I see the price, shown as including GST, and the plan's features
+- When I select a plan that has a price
+- Then I am redirected to payment (US-117)
 - When payment succeeds
-- Then listing is published with selected plan features
+- Then my listing goes to the Trust & Safety review (US-084) and is published when it is approved (US-009)
 
 **Edge Cases:**
 - Seller cancels payment
@@ -422,9 +423,10 @@
 
 **Validation Rules:**
 - Draft must be complete before plan selection
-- Free plan has no payment requirement
+- A plan priced at zero needs no payment (none is free today; management can set a price to zero in the admin console, US-116)
 - Paid plans require successful payment before publishing
-- Plan duration starts from successful payment
+- Plan duration starts from publication of the listing
+- The price and validity I am charged are the ones shown to me when I choose, even if the plan is changed later
 - Seller can have max 50 active listings
 
 **Error Scenarios:**
@@ -440,8 +442,11 @@
 **So that** buyers can discover it right away
 
 **Acceptance Criteria:**
-- Given I have selected a paid listing plan
-- When payment is successful
+- Given I have selected a listing plan
+- When payment is successful (or my chosen plan is priced at zero)
+- Then my listing goes to the Trust & Safety review (US-084)
+- And I receive a notification that it is under review (usually within a few hours)
+- When the review approves my listing
 - Then listing is published instantly
 - And listing appears in search results
 - And plan features are activated (boosted/priority placement)
@@ -454,12 +459,14 @@
 - Listing published but features not activated
 - Duplicate payment for same listing
 - Network interruption after payment
+- Listing is rejected after payment (the seller edits it and resubmits it for review without paying again, up to 3 review attempts in total; after the 3rd failed review the plan fee is refunded)
 
 **Validation Rules:**
-- Payment must be confirmed before publishing
-- Listing status: Draft → Processing → Published
-- Rollback to draft if publish fails after payment (with refund)
-- Plan activation within 5 minutes of payment
+- Payment must be confirmed before the review and before publishing
+- Listing status: Draft → Plan payment → Trust & Safety review → Approved → Published
+- If publishing fails after approval, the listing stays approved and publishing is retried; a payment that cannot be turned into a published listing is refunded
+- Plan duration starts from publication of the listing
+- Plan activation within 5 minutes of approval
 
 **Error Scenarios:**
 - `ERROR_PUBLISH_FAILED`: "Payment successful but listing failed to publish. Refund initiated"
@@ -3163,10 +3170,12 @@
 **I want to** understand differences between listing plans  
 **So that** I can choose the right plan for my item
 
+**Design Note (2026-10-16):** Listing plans, their features and their prices are dynamic: management changes them from the admin console (US-116) as business decisions change, so the app never hard-codes them and the values below are the current ones, not fixed rules. Basic is paid (₹49); there is no free plan today, and a plan whose price is set to zero is free. Prices include GST for now; the tax setting is also managed from the admin console. Until the admin console exists, plan changes are made through a database change.
+
 **Acceptance Criteria:**
 - Given I am creating a listing
 - When I reach plan selection step
-- Then I see three plan options with clear comparison:
+- Then I see the plan options configured by the platform with a clear comparison (the current plans are shown below):
   
 **Basic Plan (₹49 after discount, originally ₹99):**
   - Listed in chronological order
@@ -3185,7 +3194,7 @@
   - AI + Email + Chat + On-call support
 
 - When I select a plan
-- Then I see payment breakdown before confirming
+- Then I see payment breakdown before confirming, with the price shown as including GST
 - When payment succeeds
 - Then selected plan features activate immediately
 
@@ -3196,7 +3205,9 @@
 - Multiple items with different plans
 
 **Validation Rules:**
-- Validity starts from successful payment
+- Validity starts from publication of the listing
+- Plans, features and prices come from the platform's plan settings and can change; a listing keeps the price and validity that applied when the seller chose the plan
+- Prices include GST (the tax setting is managed from the admin console, US-116)
 - Plan features non-transferable
 - Featured items shown max 20 on landing page (rotation basis)
 - Support level determines response time SLA
@@ -3425,8 +3436,8 @@
 **So that** prohibited items and fraud are prevented
 
 **Acceptance Criteria:**
-- Given a seller completes listing creation
-- When seller submits for publication
+- Given a seller has paid for the listing plan (US-008, US-009)
+- When payment succeeds
 - Then listing enters "TRUST_SAFETY_REVIEW" state
 - And AI performs automated checks:
   - Restricted item detection (weapons, drugs, etc.)
@@ -3443,7 +3454,9 @@
 - Then listing publishes
 - When admin rejects
 - Then seller is notified with reason
-- And can revise and resubmit
+- And can revise and resubmit without paying again (3 review attempts in total)
+- When the third review attempt also fails
+- Then the listing is closed, the seller is notified, and the plan fee is refunded
 
 **Edge Cases:**
 - AI false positive on legitimate item
@@ -3458,11 +3471,13 @@
 - Manual review SLA: 24 hours
 - Rejection reason must be specific
 - Seller can appeal rejection
+- A seller has 3 review attempts per paid plan; after the third failed attempt the plan fee is refunded (automatic or manual refund is decided later)
 - Appeals reviewed by senior moderator
 
 **Error Scenarios:**
 - `LISTING_UNDER_REVIEW`: "Your listing is under review. You'll be notified within 24 hours"
 - `LISTING_REJECTED`: "Listing rejected: [specific reason]. Revise and resubmit"
+- `LISTING_REJECTED_FINAL`: "Listing rejected after 3 review attempts. Your plan fee will be refunded"
 - `APPEAL_SUBMITTED`: "Appeal submitted. Senior team will review within 48 hours"
 
 ---
@@ -5013,11 +5028,374 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+## Listing Details
+
+### US-114: Listing Item Details Entry
+**As a** seller  
+**I want** to enter or review my item's title, category, condition, description, location and price on one screen  
+**So that** my listing is complete and I can move on to choose a listing plan
+
+**Design Note:** Built from the Figma Make `CreateListingScreen` "Item Details" step (Make file `tzrpUwfrR0SYeyKkv1p0co`), with the content of Make's "Set Your Price" step added to the same page (product owner decision, 2026-10-16). The page has two variants. When AI is disabled or unavailable (the default), the fields start empty and the subtitle reads "Fill in the details". When AI has filled the fields (US-005), they are prefilled, the subtitle reads "AI filled these from your photos" and a banner says "AI filled these from your photos. Review and edit as needed." Make's AI price suggestion card is not part of this story because price suggestion is on hold. Where Make differs from `valuex-mobile/docs/Flutter-Design-System.md`, the design system wins. Order of the seller flow: Photos, Item Details (this story), Listing Plan, Review and Pay, then the Trust and Safety review after payment (US-084), then publication.
+
+**Related User Stories:**
+- US-004: delivers the photo step; its minimum is raised to 2 photos by this decision
+- US-005: fills this page when AI is enabled; when it is not, the seller types everything
+- US-006: later extends the single category to a primary plus up to 3 additional categories from the taxonomy
+- US-007: the restricted item check runs on the entered title, description and category when the seller continues
+- US-008: the next step, Listing Plan
+- US-089, US-084: listing states and the review after payment
+- US-108, US-113: when addresses are delivered, the pickup address replaces the temporary location below
+- US-111: Home's location is reused here
+- US-010: edit uses the same page for published listings
+
+**Acceptance Criteria:**
+- Given I have uploaded at least 2 photos and tapped Submit to AI (US-004, US-005)
+- When AI is disabled, unavailable or out of quota
+- Then I see the message from US-005 and the Item Details page opens with empty fields
+- When AI is available
+- Then the page opens with the title, category, condition and description filled in, the AI banner shown, and every field editable
+- Given I am on the Item Details page
+- Then I can enter or change the title, choose one category, choose a condition, write a description and enter my price
+- And the condition options are Brand New, Like New, Good, Fair and Poor
+- And my price is entered in rupees with a ₹ prefix, with the note "Buyers can negotiate. You can accept, counter, or reject any offer."
+- And the location shows the area and city of my current location, taken from Home (US-111), with an action to use my current location if it is not known yet
+- When the title, category, condition, description or price is missing
+- Then the "Choose Listing Plan" button is disabled and the missing fields are shown under the field
+- When I tap "Choose Listing Plan" with the required fields filled
+- Then my details are saved to the draft
+- And the restricted item check (US-007) runs on them
+- And if it passes I continue to listing plan selection (US-008, after the Aadhaar check of US-004 where it applies)
+- When I leave the page and come back to the draft
+- Then my saved details are shown again
+- Given my listing was sent back for revision (US-084)
+- Then I can change the same fields, and I resubmit the listing without paying the plan again
+
+**Edge Cases:**
+- AI fills a field with text over the allowed length (it is shortened before it is shown)
+- Seller clears a field that AI filled
+- Seller changes details after returning from the plan screen (allowed while the listing is a draft or in revision)
+- Location permission denied, location service off or location unavailable (the same prompts as Home)
+- Seller has fewer than 2 photos when continuing (blocked, with a message)
+- Price has more than 2 decimals, is zero or negative, or is extremely large
+- Network failure when saving (the typed values stay on screen so nothing is lost)
+- Text 200% size and Hindi text (US-110 rules apply)
+- Title or description contains a restricted word (blocked by the US-007 check, with the same message as AI would give)
+
+**Validation Rules:**
+- Title: required, up to 100 characters, spaces trimmed
+- Category: required, one category until US-006; chosen from the same category list Home shows
+- Condition: required, one of NEW, LIKE_NEW, GOOD, FAIR, POOR (shown as Brand New, Like New, Good, Fair, Poor)
+- Description: required, up to 2000 characters
+- Price: required, greater than zero, at most 2 decimal places, in rupees, up to ₹1,00,00,000
+- Location: the city of the Home location; the device coordinates are never sent to the server or stored
+- At least 2 photos must be on the listing to continue (the server checks this too)
+- Details can be changed only while the listing is a draft or needs revision
+
+**Error Scenarios:**
+- `ERROR_MIN_PHOTOS_REQUIRED`: "At least 2 photos required"
+- `ERROR_TITLE_REQUIRED`: "Enter a title for your item"
+- `ERROR_CATEGORY_REQUIRED`: "Choose a category"
+- `ERROR_CONDITION_REQUIRED`: "Choose the condition of your item"
+- `ERROR_DESCRIPTION_REQUIRED`: "Describe your item"
+- `ERROR_PRICE_INVALID`: "Enter a valid price"
+- `ERROR_LISTING_NOT_EDITABLE`: "This listing can no longer be edited"
+- `ERROR_RESTRICTED_ITEM`: shown from US-007 when the check fails
+
+**Flutter Implementation Notes:**
+- Page `ItemDetailsScreen` under `lib/features/listing/`, opened after Submit to AI on the photo page; the progress bar has 4 steps (Photos, Details, Plan, Review) because Make's separate Price step is merged into this page
+- Layout from Make: header with back and progress bar over the page background, a scrolling form (title input, category chips, condition chips, description box, location field, then the price block), and a bottom button "Choose Listing Plan"
+- Design system mapping: Poppins title and DM Sans text; inputs use the theme input style; chips follow the existing chip style with the brand blue for category and the success green for condition; the bottom button is `BrandGradientButton`; the AI banner and the negotiation note use the existing info-card style; tap targets at least 48 dp
+- Location reuses the Home location controller and its prompts; it shows the area and city and never shows or sends coordinates
+- Photos: the minimum on `ListingPhotoRules` changes from 1 to 2 and the Submit to AI button follows it
+- All strings in the English and Hindi ARB files
+
+**Backend Notes:**
+- Needs a draft update endpoint (`PATCH /api/v1/listings/{listingId}`) that saves title, category, condition, description, price and location city for the owner while the listing is a draft or in revision, and returns them with the draft
+- Uses the existing `listings` columns `title`, `description`, `condition`, `price` and `seller_location`; adds a temporary `category_slug` column until US-006 replaces it with the taxonomy tables
+- The server rejects continuing with fewer than 2 photos
+
+**Decisions (product owner, 2026-10-16):**
+- The Trust and Safety review runs after payment and before publication; the restricted item check (US-007) runs before plan selection so a seller does not pay for a listing that cannot be published
+- Condition values are NEW, LIKE_NEW, GOOD, FAIR, POOR
+- One category for now, extended by US-006
+- Make's "Set Your Price" content is part of this page; manual price entry is part of this story
+- Location is the user's current location, as on Home, until the address stories are delivered
+- Minimum 2 photos; the review time shown to sellers is "a few hours"
+- Title, category, condition, description and price are all required; the highest price is ₹1,00,00,000; the progress bar has 4 steps
+- A listing rejected in review: the seller is notified to modify it and resubmits it for review without paying again, up to 3 review attempts in total; after the third failed review the plan fee is refunded (automatic or manual refund to be decided)
+
+**Open:**
+- None
+
+---
+
+## Listing Notifications
+
+### US-115: Listing Lifecycle Notifications
+**As a** seller  
+**I want** to be told, in the app and by email where it matters, what happens to my listing after I pay for a plan  
+**So that** I know what to do next without checking the app
+
+**Design Note:** US-077 covers account, cart, order, payment, offer and dispute events but not the listing lifecycle. This story adds the notifications for the Sprint 2 listing flow (payment, Trust and Safety review, publication, revision, final rejection, refund, expiry and removal) so the messages, channels and wording are defined in one place. The stories that cause these events (US-008, US-009, US-084, US-089) only publish events; this story turns them into notifications. The existing notification module has in-app, SMS and email channels and no push channel yet; push is added to these messages when push infrastructure exists (US-077).
+
+**Related User Stories:**
+- US-077: the notification centre, channels, priorities and 90-day history this story reuses
+- US-087: the seller's notification preferences
+- US-089: the listing status change events that trigger most messages
+- US-008, US-009: payment events (payment received, payment failed, refund due)
+- US-084: review outcomes (revision required, final rejection)
+- US-114: the Item Details page that the revision message opens
+- US-044: language; Hindi wording needs native-speaker review
+
+**Acceptance Criteria:**
+- Given I paid for a listing plan (or chose the free plan)
+- When the payment succeeds
+- Then I get "under review" in the app, saying it will be checked within a few hours
+- Given my listing is approved and published
+- Then I get "your listing is live" in the app, and tapping it opens the listing
+- Given a review does not approve my listing (review 1 or 2)
+- Then I get "needs changes" in the app and by email, with the reason and how many reviews I have used out of 3
+- And it says I can update the listing and resubmit without paying again
+- And tapping it opens the Item Details page of that listing (US-114)
+- Given my third review fails
+- Then I get "not approved after 3 reviews" in the app, by email and by SMS
+- And when I paid, it says the plan fee will be refunded, with the amount
+- And when I used the free plan, it says nothing about a refund
+- Given my plan fee is being refunded
+- Then I get "refund is being processed" in the app and by email, with the amount; when the refund is issued, I get "refund issued" (added when the refund step is built)
+- Given my payment fails
+- Then I get "payment unsuccessful" in the app, and tapping it opens plan selection
+- Given my listing expires or an admin removes it
+- Then I get "listing expired" (with a renew action) or "listing removed" (with a link to support) in the app, and the removal also by email
+- When I open Notifications (US-077)
+- Then these messages appear in my history with the listing title, newest first, and unread ones are marked
+- And one event never creates more than one notification, even if the event is received twice
+
+**Messages (English text is the source; Hindi is a draft for native-speaker review):**
+
+| Event (`eventType`) | Channels | English | Hindi (draft) |
+|---|---|---|---|
+| `LISTING_UNDER_REVIEW` | in-app | "Payment received. Your listing is under review and will be checked within a few hours." | "भुगतान प्राप्त हुआ। आपकी लिस्टिंग की समीक्षा चल रही है, कुछ घंटों में जाँच हो जाएगी।" |
+| `LISTING_PUBLISHED` | in-app | "Your listing \"{title}\" is now live. Buyers can find it." | "आपकी लिस्टिंग \"{title}\" अब लाइव है। खरीदार इसे देख सकते हैं।" |
+| `LISTING_REVISION_REQUIRED` | in-app, email | "Your listing \"{title}\" needs changes: {reason}. Update it and resubmit (review {n} of 3). You will not be charged again." | "आपकी लिस्टिंग \"{title}\" में बदलाव ज़रूरी हैं: {reason}। इसे सुधारकर दोबारा भेजें (समीक्षा {n}/3)। दोबारा भुगतान नहीं करना होगा।" |
+| `LISTING_REJECTED_FINAL` | in-app, email, SMS | "Your listing \"{title}\" was not approved after 3 reviews. Your plan fee of ₹{amount} will be refunded." (free plan: no refund sentence) | "आपकी लिस्टिंग \"{title}\" 3 समीक्षाओं के बाद भी स्वीकृत नहीं हुई। आपके प्लान शुल्क ₹{amount} की वापसी की जाएगी।" |
+| `LISTING_REFUND_DUE` | in-app, email | "Your refund of ₹{amount} for the listing plan is being processed." | "लिस्टिंग प्लान के ₹{amount} की वापसी प्रक्रिया में है।" |
+| `LISTING_PAYMENT_FAILED` | in-app | "Your payment was unsuccessful. Please try again or choose another plan." | "आपका भुगतान सफल नहीं हुआ। कृपया दोबारा कोशिश करें या दूसरा प्लान चुनें।" |
+| `LISTING_EXPIRED` | in-app | "Your listing \"{title}\" has expired. Renew it to make it visible again." | "आपकी लिस्टिंग \"{title}\" की अवधि समाप्त हो गई है। फिर से दिखाने के लिए इसे रिन्यू करें।" |
+| `LISTING_REMOVED_BY_ADMIN` | in-app, email | "Your listing \"{title}\" was removed by ValueX. Contact support for details." | "आपकी लिस्टिंग \"{title}\" को ValueX ने हटा दिया है। विवरण के लिए सहायता से संपर्क करें।" |
+
+**Edge Cases:**
+- The same event is delivered twice (retry, webhook repeat, job re-run): only one notification
+- Listing title is very long, contains quotes or non-Latin text (shortened for display)
+- Review reason is long (shown in full in the app and email, shortened in a push or SMS)
+- Seller has turned off email or in-app notifications (US-087): the preference is followed; the messages that tell the seller to act (needs changes, final rejection, refund, removal) are always kept in the in-app history
+- Seller's email is missing or bounces (the in-app message is still created)
+- A seller whose listing was approved while the app was closed (the message waits in history)
+- Notification arrives after the listing was already deleted
+
+**Validation Rules:**
+- Channels and priority follow US-077: high priority (needs changes, final rejection, refund, removal) uses in-app and email, plus SMS for the final rejection; medium (under review, published, payment failed, expired) is in-app only until push exists
+- One notification per event, identified by listing, event type and review attempt
+- No card, bank or Aadhaar data in any message
+- The title and reason are plain text; HTML is not allowed
+- Messages carry the event type and its values (title, reason, attempt, amount) so the app can show them in the user's language; email and SMS are sent in English until a language preference is stored on the server
+- Each message opens the right screen through a deep link (listing, Item Details, plan selection, support)
+- Notification history is kept for 90 days (US-077)
+
+**Error Scenarios:**
+- `ERROR_NOTIFICATION_FAILED`: logged, not shown to the user; email and SMS failures never block the listing flow (US-077)
+
+**Flutter Implementation Notes:**
+- Notifications page (US-077) renders these types from the event type and values with English and Hindi strings in the ARB files; deep links open `valuex://listing/{listingId}`, the Item Details page, plan selection or support
+- Unread badge and grouping follow US-077
+- Hindi strings need native-speaker review before release
+
+**Backend Notes:**
+- A listener in the notification module (same pattern as `AccountEventNotificationListener`) subscribes to the listing status change event (US-089), the payment events (US-009) and the refund-due event (US-084), and dispatches through `NotificationDispatcher`
+- The notification record gets an optional `params` value (title, reason, attempt, amount) so the app can localize; this needs a small migration
+- The existing account notification copy still says "JustQlic"; it is changed to "ValueX" when this listener is added, as the product name is ValueX
+- Duplicate protection: a unique key of listing, event type and attempt
+
+**Decisions (product owner, 2026-10-16):**
+- Listing lifecycle notifications are a separate story from US-077
+- Review-attempt rule behind the messages: 3 reviews in total, then a refund (US-084)
+
+**Open:**
+- Push notifications for these messages once push infrastructure exists
+- Whether email and SMS should be in the seller's language (needs a language preference stored on the server)
+- Whether the final-rejection SMS is wanted or in-app and email are enough
+- Hindi wording to be reviewed by a native speaker
+
+---
+
+## Plan Administration
+
+### US-116: Admin - Manage Seller Listing Plans and Tax Settings
+**As an** admin with plan management permission  
+**I want to** create, change and switch off seller listing plans, and set how GST is applied, from the admin console  
+**So that** management decisions on plans, features and prices take effect without an app or server release
+
+**Design Note (2026-10-16):** Management changes listing plans, their features and their prices as business decisions change. The plan catalog (US-078) is therefore data, edited here. Today Basic is ₹49 and no plan is free; if management decides a plan should be free, its price is set to zero here and the plan then needs no payment (US-008). Prices include GST for now; the GST setting is also configured here. Until this story is built, plans and the GST setting are changed by a database change.
+
+**Related User Stories:**
+- US-078: the plan catalog this console edits
+- US-008, US-009: use the plan's price and validity when a seller chooses it
+- US-053, US-054: the admin console, admin login and roles this story is part of
+- US-083: every change is written to the audit trail
+- US-064: plan upgrades use the plan prices
+
+**Acceptance Criteria:**
+- Given I am an admin with plan management permission
+- When I open Plan Management
+- Then I see all seller plans, active and inactive, with name, price, original price, validity, support level, badge, display order and features
+- When I change a plan's price, original price, validity, features, support level, badge, name or order and save
+- Then new listing purchases use the new values after the change is saved
+- And listings that already chose or paid for the plan keep the price and validity that applied at the time
+- When I set a plan's price to zero
+- Then that plan is free and sellers who choose it are not asked to pay
+- When I add a new plan
+- Then it appears for sellers once I mark it active
+- When I switch a plan off
+- Then sellers no longer see it, and listings that already have it are unaffected
+- And at least one plan always stays active
+- When I open Tax Settings
+- Then I can set whether prices include GST or GST is added on top, and the GST rate
+- And sellers see the price breakdown according to that setting
+- When another admin saved a change to the same plan after I opened it
+- Then my save is refused with a message to reload
+- When a change is saved
+- Then it is written to the audit trail with who changed what, the old value and the new value
+
+**Edge Cases:**
+- A seller is in the middle of choosing or paying for a plan when its price changes (the order keeps the amount shown when the order was created)
+- A price is set to zero while unpaid orders for that plan exist
+- An admin tries to switch off the last active plan
+- Original price lower than the price, or a negative price
+- Very long or empty feature lines; feature text in Hindi
+- A plan is renamed after listings used it
+- Two admins editing at once
+- The plan catalog is cached (a change must show to sellers within a few minutes at most, and the cache is cleared on save)
+
+**Validation Rules:**
+- Price is zero or more with 2 decimal places; original price is not lower than the price; validity is at least 1 day
+- Plan code is unique and cannot be changed after it is created; plans cannot be deleted, only switched off
+- At least one plan stays active at all times
+- GST rate is between 0 and 28 percent; the tax mode is "prices include GST" or "GST added on top"
+- Only admins with plan management permission can read or change plans (US-053 roles)
+- Every change is audited (US-083)
+- A change never alters amounts of orders already created or of listings already purchased
+
+**Error Scenarios:**
+- `ERROR_UNAUTHORIZED`: "You don't have permission for this action"
+- `ERROR_PLAN_NOT_FOUND`: "Plan not found"
+- `ERROR_PLAN_INVALID_PRICE`: "Enter a valid price"
+- `ERROR_LAST_ACTIVE_PLAN`: "At least one plan must stay active"
+- `ERROR_PLAN_CODE_EXISTS`: "A plan with this code already exists"
+- `ERROR_CONCURRENT_EDIT`: "This plan was changed by someone else. Reload and try again"
+
+**Backend Notes:**
+- Admin endpoints under `/api/v1/admin/plans` and `/api/v1/admin/settings/tax`, protected by the admin roles of US-053; the seller catalog endpoint of US-078 reads the same data and its cache is cleared on every save
+- Uses the `plans` table and the platform settings table created for US-078; plan changes use a version number to detect concurrent edits
+
+**Web Notes:**
+- Pages in the admin console (`valuex-web`): plans list, plan edit form with feature lines, tax settings page
+
+**Open:**
+- Plan and feature text in Hindi (whether the console stores translations)
+- Scheduled price changes (an effective date) and time-limited promotional prices
+- Whether tax settings are global or per plan
+
+---
+
+## Payment Gateway
+
+### US-117: Payment Gateway Integration
+**As a** platform  
+**I want** one payment integration that creates payment orders, takes the payment in the app, confirms it from the gateway's signed callback, refunds, and reconciles  
+**So that** listing plan payments, checkout and subscriptions all use one tested integration, and the gateway can be chosen or changed by configuration
+
+**Design Note (2026-10-16):** The payment gateway has not been chosen yet (Razorpay is assumed in the architecture documents but is not decided). This story delivers a gateway-neutral integration: a payment port, a sandbox adapter for development and tests, the callback and refund handling, and the app's checkout wrapper. The real gateway adapter is added as soon as the gateway is chosen, without changing the stories that use payments. US-008 (listing plans) is the first user; US-021, US-022, US-035 and US-038 follow.
+
+**Related User Stories:**
+- US-008, US-009: listing plan payment, confirmation and refund after failed reviews
+- US-021, US-022, US-075: buyer payment, retry
+- US-035: refunds; US-038, US-042: subscriptions
+- US-071: payment and transaction history
+- US-091: payment lifecycle states
+- US-083: audit trail
+- US-109: screenshot protection on payment screens
+
+**Acceptance Criteria:**
+- Given a feature needs a payment (for example a listing plan)
+- When it asks for one
+- Then a payment record is created in the state `PAYMENT_INITIATED` with a gateway order, and the app receives what its checkout needs (order ID, amount, currency, the gateway's public key)
+- When the user completes or cancels the checkout in the app
+- Then the app reports only what the user did; it never marks a payment as successful
+- When the gateway sends its signed callback
+- Then the server verifies the signature, checks the amount, and moves the payment to success or failure
+- And a repeated or late callback changes nothing
+- And the callback is always acknowledged so the gateway does not keep retrying
+- Given a callback never arrives
+- Then a scheduled check asks the gateway about payments that are still pending and settles them
+- Given a captured payment must be refunded (US-009, US-035)
+- When a refund is requested, in full or in part
+- Then the refund is sent to the gateway, tracked through the refund states, and its result is recorded
+- Given the gateway is not configured or is a sandbox
+- Then the sandbox adapter is used and no real money moves
+- And with a real gateway, keys come from the environment and are never stored in the code or logs
+
+**Edge Cases:**
+- Callback arrives before the app returns from checkout
+- The app reports success but no callback ever arrives (the scheduled check settles it)
+- Callback amount differs from the order amount (rejected and flagged)
+- Duplicate callbacks and replayed callbacks
+- Gateway timeout or outage while creating an order (the feature gets a clear error and can retry)
+- User closes the app during payment (the payment is settled by the callback)
+- Gateway order expires unpaid
+- Partial refund, refund failure, refund callback arriving twice
+- Two payments for the same reference (listing plan) at once
+
+**Validation Rules:**
+- All amounts are decided by the server, in rupees with 2 decimals, and sent to the gateway in the smallest currency unit; the app can never set an amount
+- Callbacks are trusted only after their signature check passes, using a constant-time comparison
+- Card, UPI and bank details never reach ValueX servers or logs
+- Secrets (keys, webhook secret) are read from the environment or secret store
+- Payment records and attempts are never deleted and are kept for 7 years (US-071)
+- Payment and refund states follow US-091
+- The provider is selected by configuration; with no provider set, the sandbox adapter is used only in non-production profiles
+
+**Error Scenarios:**
+- `ERROR_GATEWAY_UNAVAILABLE`: "Payment service temporarily unavailable"
+- `ERROR_PAYMENT_FAILED`: "Payment unsuccessful. Please try again"
+- `ERROR_PAYMENT_TIMEOUT`: "Payment timed out. Please try again"
+- `ERROR_DUPLICATE_PAYMENT`: absorbed silently for repeated callbacks
+- `ERROR_REFUND_FAILED`: "Refund failed. Our team has been notified"
+
+**Flutter Implementation Notes:**
+- A payment checkout interface in the app with a sandbox implementation for development and a gateway implementation added when the gateway is chosen; features call the interface and do not know which gateway is used
+- The interface returns completed, cancelled or failed as reported by the checkout; the app then asks the server for the real status
+- Payment screens enable screenshot protection (US-109)
+
+**Backend Notes:**
+- A payment port (create order, fetch payment status, refund, verify and parse callbacks) with a sandbox adapter, in the existing `payment` module with its payment state machine
+- Tables `payments` and `payment_attempts`, with idempotency columns for callbacks; one generic callback endpoint, with the signature header and format handled by the adapter
+- Scheduled reconciliation of pending payments; the refund methods are used by US-009 and US-035
+
+**Decisions (product owner, 2026-10-16):**
+- The gateway is not decided; the integration is gateway-neutral and starts with the sandbox adapter
+
+**Open:**
+- Which gateway to use, its fees and its refund and settlement rules
+- Payouts to sellers (US-072) are separate from this story
+- Whether refunds for failed listing reviews are automatic or manual (US-084)
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 113  
+**Total User Stories:** 117  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -5047,6 +5425,10 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - **UI Quality (US-110):** 1 story - Contrast, touch target, text size and screen reader fixes for the registration screens, and the design system rules for later screens
 - **Home (US-111):** 1 story - Home page: location header, search with photo search, promo card, category browsing, featured deals near you and bottom navigation
 - **Seller Order Management (US-112):** 1 story - Seller's Incoming Orders list reached from the Profile hub: orders grouped as New, Packing, Scheduled and Shipped, with Start Packing, Reject, Continue Packing, Schedule Pickup and View Schedule
+- **Listing Details (US-114):** 1 story - One Item Details page for title, category, condition, description, location and price, filled by AI when it is enabled and by the seller otherwise
+- **Listing Notifications (US-115):** 1 story - Notifications for the listing lifecycle after payment: under review, published, needs changes, final rejection, refund, payment failed, expired and removed, in English and Hindi
+- **Plan Administration (US-116):** 1 story - Admin console pages to create, change and switch off seller listing plans (prices, features, validity) and to set the GST setting
+- **Payment Gateway (US-117):** 1 story - Gateway-neutral payment integration: payment orders, signed callbacks, refunds, reconciliation and the app checkout wrapper, with a sandbox adapter until the gateway is chosen
 
 ---
 
