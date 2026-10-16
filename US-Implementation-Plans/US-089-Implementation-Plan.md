@@ -134,4 +134,4 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 ---
 
-**Status:** Draft
+**Status:** Implemented on branch `feature/US-089-lifecycle-state-listing` (valuex-backend); unit tests, checkstyle and coverage pass. Pending: Docker integration tests and the SonarQube scan (neither could run locally), then commit approval. No deviation from this plan; LLD Part E and the testing guide are updated.
