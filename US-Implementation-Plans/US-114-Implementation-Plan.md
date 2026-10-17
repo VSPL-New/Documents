@@ -11,6 +11,8 @@
 | Repos | valuex-backend, valuex-mobile. `valuex-ai` out of scope |
 | Dependency | US-004 (draft listing and photos); US-089 (listing states; `REVISION_REQUIRED` editing). Built after US-089 and before US-005 and US-007 |
 
+**Status (2026-10-17): implemented on branch `feature/US-114-listing-item-details` (backend and mobile), awaiting review and push.** Not done here, by design: the US-007 restricted check call (US-007 is not built; the page saves and shows 'Details saved. Choosing a plan is coming soon.' until US-008), the OpenAPI example, and the Figma MCP design-context read (the Figma tools could not be loaded; the page was built from the Make source notes in section 3 and the design system). Hindi strings need native-speaker review.
+
 **Scope decisions (product owner, 2026-10-16):**
 1. One Flutter page, **Item Details**, from the Figma Make `CreateListingScreen` "details" step, with the content of Make's "Set Your Price" step merged into it. Brand theme and the existing design system, not Make's raw styling.
 2. **Manual first.** With AI disabled or unavailable (default) the fields start empty. When AI has filled them (US-005) they are prefilled with a banner. Both variants are in the Make design.
@@ -132,4 +134,4 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 ---
 
-**Status:** Draft
+**Status:** Approved (2026-10-16)

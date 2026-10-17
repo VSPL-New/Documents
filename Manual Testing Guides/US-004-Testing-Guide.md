@@ -106,7 +106,7 @@ flutter test
 | M-08 | Not an image | Pick a renamed non-image | "Photo quality too low or invalid format" |
 | M-09 | Network failure | Stop the `object-storage` container, add a photo | Tile turns red with a retry icon; message reads "Failed to upload photo. Check your connection". Start the container, tap retry → photo becomes ready |
 | M-10 | Remove | Tap the × on a ready photo | Photo disappears; server image deleted; remaining photos keep order; MAIN moves to the new first photo |
-| M-11 | Submit to AI | With ≥1 ready photo, tap Submit to AI | "Photos saved. AI suggestions are coming soon." (AI analysis is US-005) |
+| M-11 | Submit to AI | With ≥2 ready photos, tap Submit to AI (with 1 photo it stays off and "Add at least 2 photos to continue" shows) | The Item Details page opens (US-114; see its testing guide). AI analysis is US-005 |
 | M-12 | Submit disabled | No photos, or a photo still uploading | Submit to AI is dimmed and does nothing |
 | M-13 | Camera permission denied (iOS / devices that ask) | Deny camera access | "Camera access required to capture photos"; gallery still works |
 | M-14 | Aadhaar not verified | Use an account that skipped Aadhaar → tap Sell | "Please complete Aadhaar verification to proceed"; Sell screen not opened |
@@ -142,7 +142,7 @@ flutter test
 | Acceptance criterion | Evidence |
 |---|---|
 | Tapping Sell opens the camera | M-01; screen test "Sell opens the camera…" |
-| At least 1 photo (max 10) is uploaded to the system | M-03–M-05, B-04, B-10; controller and integration tests |
+| At least 2 photos (max 10; minimum raised by US-114) are uploaded to the system | M-03–M-05, B-04, B-10; controller and integration tests |
 | Seller can proceed to item details | M-11 (Submit to AI enabled after ≥1 ready photo; details/AI screen is US-005) |
 | Edge cases: permission denied, camera failure, > 10 photos, poor quality, non-item photos, network failure | M-13, M-04 (gallery fallback), M-05, M-06–M-08, M-09; non-item detection is US-005/US-007 |
 | Error codes `ERROR_CAMERA_PERMISSION_DENIED`, `ERROR_MAX_PHOTOS_EXCEEDED`, `ERROR_PHOTO_UPLOAD_FAILED`, `ERROR_INVALID_PHOTO` | M-13, M-05/B-10, M-09/B-07, M-06/B-05/B-06 |

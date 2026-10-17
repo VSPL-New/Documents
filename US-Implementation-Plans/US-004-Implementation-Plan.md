@@ -135,7 +135,7 @@ Non-item/random-photo detection is **not** testable here (LLD §A.1.1: AI's advi
 
 ## 6. Validation Checklist
 
-- [x] Min 1 photo required before proceeding past capture step (client-gated; confirm backend intentionally allows a 0-image `DRAFT` to persist so a seller can resume later).
+- [x] Min photos required before proceeding past capture step (raised from 1 to 2 by US-114; client-gated; confirm backend intentionally allows a 0-image `DRAFT` to persist so a seller can resume later).
 - [x] Max 10 photos enforced both client- and server-side.
 - [x] Format restricted to JPG/PNG/HEIC (content-type validated server-side, not just filename extension, per `CODING_STANDARDS.md` §1.5).
 - [x] Max 10MB per photo enforced server-side.

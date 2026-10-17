@@ -280,7 +280,7 @@ sequenceDiagram
 
 | Rule | Error Code | Message |
 |---|---|---|
-| Min 1 photo before proceeding past capture step | `ERROR_MIN_PHOTOS_REQUIRED` (client-gated; backend allows 0 while `DRAFT`) | "At least 1 photo required" |
+| Min 2 photos before proceeding past capture step (US-114) | `ERROR_MIN_PHOTOS_REQUIRED` (client-gated on the photo page; the draft submit and the US-114 details save also check on the server) | "At least 2 photos required" |
 | Max 10 photos | `ERROR_MAX_PHOTOS_EXCEEDED` | "Maximum 10 photos allowed" |
 | Format JPG/PNG/HEIC only | `ERROR_INVALID_PHOTO` | "Photo quality too low or invalid format" |
 | Max 10MB per photo | `ERROR_INVALID_PHOTO` | "Photo exceeds 10MB limit" |
