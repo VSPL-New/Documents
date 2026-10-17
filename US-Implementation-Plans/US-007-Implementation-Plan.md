@@ -54,7 +54,7 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part D](../LLD/Spri
 ## 4. Implementation Steps
 
 ### Database Migration — `valuex-backend`
-- [ ] `V16__restricted_items_and_moderation_checks.sql` (after US-089's `V13`, US-114's `V14` and US-005's `V15`; renumber to the next free version at implementation time).
+- [ ] `V17__restricted_items_and_moderation_checks.sql` (after US-089's `V13`, US-114's `V14`, US-078's `V15` and US-005's `V16`; renumber to the next free version at implementation time).
 - [ ] `restricted_items`: `id`, `term` (stored normalised, unique among active rows), `restriction_category` (`WEAPONS`, `EXPLOSIVES`, `AMMUNITION`, `DRUGS`, `TOBACCO`, `ALCOHOL`, `ADULT`, `COUNTERFEIT`, `LIVE_ANIMALS`, `HUMAN_ORGANS`, `HAZARDOUS`, `DOCUMENTS`), `severity` (`RESTRICTED`, `SEVERE_VIOLATION`), `category_slug` (nullable), `active`, `created_at`. Index on `term`.
 - [ ] Seed rows in the same migration for typical items, for example: alcohol (wine, liquor, whisky, vodka, rum, beer), tobacco (cigarette, cigar, hookah tobacco), weapons (arms, gun, pistol, rifle, firearm, revolver), ammunition (bullet, cartridge, ammunition), explosives (explosive, dynamite, detonator), drugs (cocaine, heroin, marijuana, narcotics), counterfeit ("replica", "first copy" luxury items), documents (passport, aadhaar card, degree certificate), human organs, live animals. Seed terms and severities were approved as proposed on 2026-10-16: `SEVERE_VIOLATION` for explosives, narcotics and human organs, `RESTRICTED` for the rest; terms are English only for now.
 - [ ] `listing_moderation_checks` per LLD §D.3 plus `source` (`AI`, `RULES`); `result` as `VARCHAR` with a check constraint instead of a Postgres enum type (same approach as `listings.status`).

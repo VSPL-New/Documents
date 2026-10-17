@@ -46,7 +46,7 @@
 ## 4. Implementation Steps
 
 ### Database Migration — `valuex-backend`
-- [ ] `V17__seller_plans.sql` (after US-007's `V16`; renumber to the next free version at implementation time): `plans` table and the starting seller plan rows from LLD §G.3 with Basic changed to the decided value (`BASIC` ₹49, original ₹99, 7 days; `BOOSTED` ₹149, original ₹399, 7 days; `PRIORITY` ₹249, original ₹699, 30 days), with `audience`, `support_level`, `features` (JSONB), `display_order`, `badge`, `is_active` and a `version` column for concurrent edit checks (US-116). Price columns allow zero (a zero price means free); no code treats a plan code as special. Buyer plans (US-079) are not seeded here.
+- [x] `V15__seller_plans.sql` (built as `V15` on top of US-114's `V14`, ahead of US-005 and US-007, which take the next free versions): `plans` table and the starting seller plan rows from LLD §G.3 with Basic changed to the decided value (`BASIC` ₹49, original ₹99, 7 days; `BOOSTED` ₹149, original ₹399, 7 days; `PRIORITY` ₹249, original ₹699, 30 days), with `audience`, `support_level`, `features` (JSONB), `display_order`, `badge`, `is_recommended` (the plan the page selects first), `is_active` and a `version` column for concurrent edit checks (US-116). Price columns allow zero (a zero price means free); no code treats a plan code as special. Buyer plans (US-079) are not seeded here.
 - [ ] Same migration: a small `platform_settings` table (key, value, updated_at, updated_by) seeded with `GST_MODE = INCLUSIVE` and `GST_RATE_PERCENT = 18` (rate to be confirmed). Admin edits come with US-116; until then the values change by a database change.
 
 ### Backend — Catalog API
@@ -107,4 +107,4 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 ---
 
-**Status:** Draft
+**Status:** Implemented on `feature/US-078-listing-plan-pricing` (backend and mobile), awaiting review (2026-10-17). Approved 2026-10-17. Not done here, by design: the Figma-to-code mapping file entry, and the plan name and feature lines are English only because they come from the server (Hindi covers the labels, validity, support and badges).
