@@ -62,7 +62,7 @@ Supporting references:
 ## 4. Implementation Steps
 
 ### Database Migration — `valuex-backend`
-- [ ] Add the US-005 migration as `V15__listing_ai_suggestions.sql` (after US-089's `V13` and US-114's `V14`; renumber to the next free version at implementation time).
+- [ ] Add the US-005 migration as `V16__listing_ai_suggestions.sql` (after US-089's `V13`, US-114's `V14` and US-078's `V15`; renumber to the next free version at implementation time).
 - [ ] Add `listing_ai_suggestions` with status (`PENDING`, `COMPLETED`, `FAILED`, `TIMEOUT`), category JSON, title, condition, description, warnings, confidence, model name/version, inference ID, latency, fallback flag, and timestamp. No price columns; they are added by a later migration once the price design is agreed.
 - [ ] Add `listing_ai_suggestion_feedback` with suggestion ID, field (`CATEGORY`, `TITLE`, `CONDITION`, `DESCRIPTION`), action (`ACCEPTED`, `EDITED`, `REJECTED`), original/final values, and timestamp.
 - [ ] Do not add `listings.ai_assisted`; it already exists (`V10__listing_media_schema.sql`, `Listing.aiAssisted`).

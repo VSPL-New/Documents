@@ -495,7 +495,7 @@ Route `/seller/orders` is pushed from the Profile "Incoming Orders" row (`RouteN
 | "Continue Packing", "View Schedule" | amber and blue tints | `SingleToneButton` |
 | "Order Shipped" | green button-like label | non-interactive status row, no button styling |
 | Details chevron button | 40 px | 48 dp icon button with a label |
-| Price | blue `#2D6BFF` bold | `AppTextStyles.cardPrice` (`brandLink`) |
+| Price | blue `#135CFF` bold | `AppTextStyles.cardPrice` (`brandLink`) |
 | Buyer avatar | 20 px gradient circle, 9 px initials | 24 px circle with `AppGradients.brand`, white 12 px initials (decorative; the name is read from the text) |
 | Time text | `#94A3B8` 11 px | `hint` in `brandMutedText` |
 
