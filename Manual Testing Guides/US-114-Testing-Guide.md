@@ -45,7 +45,8 @@
 ## D. AI-filled variant (only once US-005 is on)
 | ID | Step | Expected |
 |---|---|---|
-| D-01 | Open with a suggestion | Banner; subtitle "AI filled these from your photos"; fields prefilled and editable |
+| D-01 | Open with a suggestion | Banner; subtitle "AI filled these from your photos"; fields prefilled and editable; a sparkle with "AI generated" under title, category, condition and description (not price) |
+| D-03 | Edit an AI-filled field; in manual mode check all fields | The mark under the edited field disappears; no mark anywhere in manual mode |
 | D-02 | Leave, edit or clear a suggested field, save | Feedback sent as accepted, edited or rejected; a feedback failure does not block saving |
 
 ## E. Accessibility
