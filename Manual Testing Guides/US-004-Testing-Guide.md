@@ -98,7 +98,7 @@ flutter test
 |---|---|---|---|
 | M-01 | Sell opens the camera | Sign in (Aadhaar verified) → tap **Sell** | Camera opens immediately; after cancelling, the Add Photos screen shows the AI card, empty photo area and photo tips |
 | M-02 | Screen matches design | Inspect the photo step | Back button, 5-step progress (first filled), "Add Photos", "Let AI do the work for you" card, "Photo tips for best results" with 4 ticked tiles, bottom button **Submit to AI** (no "Add at least 2 photos") |
-| M-03 | Capture one photo | Take a photo | Tile shows a spinner, then the photo with **MAIN**; subtitle "1/10 photos added"; Submit to AI becomes enabled |
+| M-03 | Capture one photo | Take a photo | Tile shows a spinner, then the photo with **MAIN**; count pill "1/10" in the **Your photos** row (the page subtitle stays "(min 2, max 10)"); Submit to AI stays off with "Add at least 2 photos to continue" until the second photo is added |
 | M-04 | Gallery multi-select | Add → Choose from gallery → pick 3 | 3 tiles upload in parallel; header shows the total |
 | M-05 | Max 10 | Add photos until 10, then pick more | Only 10 kept; "Maximum 10 photos allowed"; the Add tile disappears |
 | M-06 | Low resolution | Pick an image under 480×480 | "Photo quality too low or invalid format"; nothing uploaded |
