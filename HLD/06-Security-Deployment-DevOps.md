@@ -2,6 +2,8 @@
 
 # Part 6 – Security Architecture, Deployment Architecture, DevOps, CI/CD, Monitoring & Disaster Recovery
 
+> **Update (2026-10-25, category taxonomy):** Deployment adds an OpenSearch cluster (hosting to be decided in US-120) and a Shiprocket integration whose credentials live in the secret manager, with the bearer token cached securely and never stored in plaintext tables (US-122). Addresses, phone numbers and the seller pincode are never indexed in OpenSearch. Retention and limits for seller and buyer photos sent to the Vision AI service are defined in US-005 and US-039.
+
 **Document Version:** 1.0
 **Product:** ValueX
 **Cloud Strategy:** Cloud Native

@@ -2,6 +2,8 @@
 
 # Part 3 – Data Architecture, ERD, PostgreSQL Design, Redis, OpenSearch, pgvector & Cloudflare R2 Object Storage
 
+> **Update (2026-10-25, category taxonomy):** `categories` and `listing_categories` below are replaced by the taxonomy and metadata tables defined in `Documents/LLD/Sprint-2-Seller Listing Creation-LLD.md` Part C (a listing has one L3 category; common fields stay as listing columns; other details are typed attribute values). The OpenSearch listing index is updated accordingly. pgvector and `listing_image_embeddings` are deferred (not in MVP).
+
 **Document Version:** 1.0
 **Product:** ValueX
 **Database:** PostgreSQL 16
@@ -305,27 +307,28 @@ CREATE TABLE listing_images (
 
 ---
 
-### categories
+### categories and metadata (US-006)
 
 ```sql
 CREATE TABLE categories (
     id UUID PRIMARY KEY,
-    parent_id UUID,
-    name VARCHAR(255)
+    parent_id UUID REFERENCES categories(id),
+    code VARCHAR(120) NOT NULL UNIQUE,     -- immutable once used
+    name VARCHAR(180) NOT NULL,
+    slug VARCHAR(180) NOT NULL,
+    level SMALLINT NOT NULL,               -- 1 = L1, 2 = L2, 3 = L3
+    marketplace_status VARCHAR(20),        -- ALLOWED | CONDITIONAL
+    admin_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    ui_popular BOOLEAN NOT NULL DEFAULT FALSE,
+    ui_rank INTEGER
 );
+-- attribute_definitions, attribute_options, metadata_profiles, metadata_profile_attributes,
+-- profile_attribute_options, category_metadata_profiles, category_attribute_overrides,
+-- listing_attribute_values, listing_attribute_option_values, taxonomy_import_log:
+-- full DDL in the Sprint 2 LLD, Part C.3
 ```
 
----
-
-### listing_categories
-
-```sql
-CREATE TABLE listing_categories (
-    listing_id UUID,
-    category_id UUID,
-    PRIMARY KEY(listing_id, category_id)
-);
-```
+A listing points to one enabled L3 category (`listings.category_id`). Taxonomy changes are made by the importer (CSV seed) and by Admins (US-121); category codes are never changed.
 
 ---
 
@@ -791,16 +794,29 @@ Supports:
 ```json
 {
   "listingId": "uuid",
-  "title": "iPhone 14",
+  "status": "PUBLISHED",
+  "transactionIntent": "SALE",
+  "title": "Apple iPhone 14 128GB Blue",
   "description": "...",
-  "price": 50000,
+  "searchText": "apple iphone 14 128gb blue smartphone",
+  "category": {
+    "l1Code": "L1-MOBILES_TABLETS", "l2Code": "L2-MOBILES_TABLETS-MOBILE_PHONES", "l3Code": "CAT-0001",
+    "l1Name": "Mobiles & Tablets", "l2Name": "Mobile Phones", "l3Name": "Smartphones"
+  },
+  "price": 42000,
   "condition": "GOOD",
-  "location": "Bangalore",
-  "categories": [],
+  "location": { "city": "Pune", "locality": "Kothrud", "point": { "lat": 18.5, "lon": 73.8 } },
+  "attributes": [
+    { "key": "brand", "type": "KEYWORD", "keywordValue": "Apple" },
+    { "key": "storage_gb", "type": "INTEGER", "numberValue": 128 }
+  ],
   "sellerRating": 4.8,
-  "planType": "BOOSTED"
+  "planType": "BOOSTED",
+  "publishedAt": "2026-10-25T12:00:00Z"
 }
 ```
+
+`price` is the normalized listing price (`listing_price_inr`). Real Estate searches always filter on `transactionIntent` before any price range or sort. Attributes are nested typed records to avoid a field-mapping explosion. Addresses, phone numbers and the seller pincode are never indexed; the point is rounded. A disabled category (or any listing under a disabled parent) is excluded at query time. Indexing runs from an outbox after publication (US-120).
 
 ---
 
@@ -817,6 +833,8 @@ Supports:
 ---
 
 # 7. pgvector Design
+
+> **Deferred (2026-10-25):** not used in MVP. Photo search uses the Vision AI service plus OpenSearch. This section is kept for a later phase, to be introduced only for categories where metadata-only photo search proves insufficient.
 
 ## Purpose
 

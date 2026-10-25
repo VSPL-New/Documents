@@ -2,6 +2,8 @@
 
 # Part 5 – Mobile Architecture (Flutter) & Web Architecture (React)
 
+> **Update (2026-10-25, category taxonomy):** The mobile app gains a 3-level category picker (popular first, then Others), a dynamic Item Details form driven by the category's listing schema (required fields, optional fields under "More details", labels from the Metadata Dictionary), a Real Estate intent prompt (Buy, Rent or Lease) before prices are shown, and a Home Browse row of up to 15 popular L1 categories. Category and attribute names come from the server in English. In Dev builds the plan page shows "Plan is under revision until US-119". The admin web gains category, attribute, option and AI-setting screens (US-121).
+
 **Document Version:** 1.0
 **Product:** ValueX
 **Mobile Stack:** Flutter + Dart

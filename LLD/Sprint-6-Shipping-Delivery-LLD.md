@@ -1,10 +1,10 @@
 # Low Level Design - Sprint 6: Shipping & Delivery
 
-**Document Version:** 0.2 (design only, not implemented)
+**Document Version:** 0.3 (design only, not implemented)
 **Product:** ValueX
 **Sprint:** Sprint 6 - Shipping & Delivery
 **Stories Covered in this version:** US-112
-**Stories still to be designed in this document:** US-092, US-026, US-027, US-028, US-029, US-030, US-031, US-032, US-024, US-085
+**Stories still to be designed in this document:** US-092, US-026, US-027, US-028, US-029, US-030, US-031, US-032, US-024, US-085, US-122 (Shiprocket Delivery Integration)
 **Repos:** valuex-backend, valuex-mobile
 **Sprint Goal:** Enable the fulfilment workflow, from the seller's incoming order to payment release.
 
@@ -14,6 +14,7 @@
 |---|---|---|
 | 0.1 | Oct 2026 | Added Part A, US-112 Seller Incoming Orders, designed from the Figma Make `SellerIncomingOrdersScreen`. The remaining Sprint 6 stories get their own parts when they are designed. |
 | 0.2 | Oct 2026 | Address design change: the seller's pickup address is a saved address chosen when posting the item (US-004), preselected as the default and replaceable by a new named address; the profile and Sign Up hold no address. |
+| 0.3 | Oct 2026 | **Shiprocket (US-122, new):** the shipping partner is Shiprocket. US-026 to US-032, US-034 and US-060 are re-scoped inside US-122. The category taxonomy adds per-L3 delivery eligibility in the database, a packed weight and size captured on Item Details for delivery-eligible categories, Shiprocket serviceability and shipment calls behind a partner-neutral interface, pickup-location bindings per seller address, a quote cache, shipment persistence, and webhooks with polling as fallback. Whole vehicles and Real Estate are never delivery-eligible. The open items (launch eligibility states, prepaid only, who pays shipping, courier choice, pickup address and consent, account and limits, impact on the other Sprint 6 stories) are listed in US-122. Design only. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 6 section

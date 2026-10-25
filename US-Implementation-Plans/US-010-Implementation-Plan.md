@@ -1,5 +1,7 @@
 # US-010: Edit/Delete Listing — Implementation Plan
 
+> **Update (2026-10-25, category taxonomy):** A change of the L3 category is a major edit (re-moderation) and deletes attribute values outside the new category's schema (LLD Part C); metadata edits follow the category schema; the price maximum is ₹10,00,00,000. References to a primary category or US-006's old `V22` are superseded (US-006 takes `V16`; renumber at build time).
+
 ## 1. Header
 
 | Field | Value |

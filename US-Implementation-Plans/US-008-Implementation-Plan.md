@@ -1,5 +1,7 @@
 # US-008: Seller Chooses Listing Plan — Implementation Plan
 
+> **Update (2026-10-25, category taxonomy):** Plans will vary by L1 category (US-119); until then all categories use the current plans and Real Estate listings use them too. US-006 adds a Dev-only banner "Plan is under revision until US-119" to the plan page. "Item details complete" means every required field of the category's listing schema (US-006), and the primary-category check becomes the L3-category check. The price maximum is ₹10,00,00,000. Migration numbers shift.
+
 ## 1. Header
 
 | Field | Value |

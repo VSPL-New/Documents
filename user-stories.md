@@ -277,6 +277,7 @@
 ---
 
 ### US-005: AI-Assisted Listing Creation
+> **Update (2026-10-25, category taxonomy):** AI classifies the item to an L1/L2/L3 category in one stage from the taxonomy (category codes, never free text) and prefills the fields of that category's schema that the Metadata Dictionary marks AI-extractable (visible facts only; never ownership, legal status, IMEI, repair history or battery health unless visible). Confidence thresholds are configurable. An Admin switches AI on or off (US-121); when it is off, unavailable or low-confidence the seller enters everything, including the category. The price range uses comparables by category and metadata. The condition scale stays Brand New, Like New, Good, Fair, Poor. Retention and limits for seller photos sent to the Vision service (valuex-ai) are defined in this story. See US-006.
 **As a** seller  
 **I want** AI to suggest item details from my photos  
 **So that** I can create listings faster with accurate information
@@ -316,43 +317,75 @@
 
 ---
 
-### US-006: Multi-Category Tagging
+### US-006: Category Taxonomy and Category-driven Item Details
 **As a** seller  
-**I want to** tag my item with multiple categories  
-**So that** it appears in relevant search results
+**I want to** choose my item's category from the marketplace taxonomy and fill in the details that category needs  
+**So that** buyers can find my item and see accurate information
 
 **Acceptance Criteria:**
-- Given I am creating/editing a listing
-- When I select a primary category
-- Then I can add up to 3 additional related categories
-- When a buyer searches any of those categories
-- Then my listing appears in results
+- Given I am on the Item Details step for a draft listing (US-114)
+- When I open the category picker
+- Then I see up to 15 popular L1 categories followed by an "Others" control for the remaining enabled L1 categories; inside an L1, up to 10 popular L2 categories followed by "Others"; then the enabled L3 categories; and I can search by name
+- And only enabled categories are shown (a disabled parent hides its whole branch)
+- When I choose an L3 category
+- Then the page shows the common fields and that category's required fields, with its optional fields under "More details", labelled with the Metadata Dictionary display names
+- When I change the category after entering details
+- Then I am warned and the details that do not apply are cleared
+- When nothing fits, AI cannot categorize the item, or the category is missing or disabled
+- Then I pick the matching "Other ..." category and all non-common details are stored as special attributes
+- When I choose a Real Estate category
+- Then I choose a transaction intent allowed for that property family (Homes: Sale, Rent; New Developments: Sale; Land: Sale, Lease; Commercial: Sale, Rent, Lease; Shared and Managed Living: Rent) and enter the price for that intent, and the listing price is derived from it (Sale: sale price, or the minimum price for New Developments; Rent and Lease: monthly rent)
+- And "Choose Listing Plan" is enabled only when every required field is valid
 
 **Edge Cases:**
-- Seller selects duplicate categories
-- Seller selects unrelated categories (spam attempt)
-- Category tree is very deep (6+ levels)
-- Seller tries to add more than allowed categories
+- Category disabled by an Admin while the seller is on the page
+- Seller changes the category after entering details
+- Very long option lists (searchable select)
+- Search with no results
+- Out-of-range, unit-based or cross-field values (for example minimum price above maximum price)
+- An option removed after the seller chose it
+- Two fields with the same display name inside one profile (rejected at taxonomy import)
 
 **Validation Rules:**
-- Primary category is mandatory
-- Maximum 3 additional categories
-- Categories must be from predefined taxonomy
-- System flags suspicious category combinations for review
+- The listing's category must be an enabled L3 (L1 and L2 are derived)
+- Only attributes in the category's schema are accepted; required fields must be present
+- Types, units, ranges, options and cross-field rules are enforced on the server as well as in the app
+- Price above 0 and at most ₹10,00,00,000; title at most 100 and description at most 2000 characters
+- Condition values are Brand New, Like New, Good, Fair and Poor; photos 2 to 10 (unchanged)
 
 **Error Scenarios:**
-- `ERROR_DUPLICATE_CATEGORY`: "Category already selected"
-- `ERROR_MAX_CATEGORIES`: "Maximum 4 categories allowed"
-- `WARNING_UNRELATED_CATEGORIES`: "Selected categories seem unrelated. This may affect visibility"
+- `ERROR_CATEGORY_REQUIRED`: "Choose a category"
+- `CATEGORY_NOT_FOUND` (404): "This category is not available"
+- `ERROR_CATEGORY_DISABLED`: "This category is not available"
+- `ERROR_CATEGORY_NOT_LEAF`: "Choose a more specific category"
+- `ERROR_ATTRIBUTE_NOT_ALLOWED`: "This detail does not apply to the chosen category"
+- `ERROR_ATTRIBUTE_REQUIRED`: "Please fill in the required details"
+- `ERROR_ATTRIBUTE_INVALID`: "Please check this detail"
 
 **Flutter Implementation Notes:**
-- Multi-select category picker widget with hierarchical taxonomy
-- Primary category chip shown separately from additional tags
-- Tappable category tree with search/filter capability
+- A 3-level category picker (popular first, then Others) with search, built from the brand design system (no Figma frame)
+- A dynamic form built from the category's listing schema: one widget per UI control, required fields first, optional fields (including the optional common fields) under "More details", labels from the Metadata Dictionary
+- Changing the category warns and clears fields that no longer apply
+- `video_available` stays hidden until video upload is supported
+- In Dev builds only, the Choose Listing Plan page shows "Plan is under revision until US-119"
+
+**Backend Notes:**
+- The taxonomy and metadata come from the Category_Taxonomy_CSVs, loaded by an idempotent all-or-nothing importer (CSVs under the backend resources; Flyway creates the tables); the Metadata Dictionary is authoritative for the 492 attribute keys
+- A listing points to one L3 category; common fields stay as listing columns, everything else is a typed attribute value (multi-select values as rows)
+- `GET` category children (popular, others), category search, and the listing schema for a category; `PUT` the category of a listing; the details `PATCH` carries the new common fields and attributes
+- Real Estate and Conditional categories are enabled from day one; delivery fields (US-122), the Conditional compliance popup (US-007), buyer-side property flow (US-118), Admin screens (US-121) and OpenSearch (US-120) are separate stories
+
+**Decisions (product owner, 2026-10-25):**
+- Multi-category tagging is dropped; one L3 category per listing
+- 13 story points; implemented before US-005 and US-007
+- The existing lifecycle, plan selection and review stay; only the Item Details page changes
+- Category and attribute names are English only for now
+- Full decisions log: `Documents/Category_Taxonomy_Review_Drafts.md`; implementation plan: `Documents/US-Implementation-Plans/US-006-Implementation-Plan.md`
 
 ---
 
 ### US-007: Restricted Items Prevention
+> **Update (2026-10-25, category taxonomy):** Detection uses both AI and keywords. A Prohibited item is blocked with the Restrictions sheet message. A Conditional category (or a Conditional item detected in a listing) shows a compliance popup with the Restrictions sheet text and the seller continues only by choosing "Agree & Continue"; the acceptance is stored with the listing, category, policy version and time. The popup applies to all Real Estate categories; Solar Panels and Forklifts have none. The mapping of Conditional categories to Restrictions rows is in `Documents/Category_Taxonomy_Review_Drafts.md`. The list below is replaced by the Restrictions sheet.
 **As a** platform  
 **I want to** prevent listing of restricted items  
 **So that** platform remains compliant and safe
@@ -367,15 +400,9 @@
 - Then system prevents publication
 - And flags account for review
 
-**Restricted Item Categories:**
-- Weapons, explosives, ammunition
-- Drugs, narcotics, tobacco, alcohol
-- Adult content
-- Counterfeit/pirated goods
-- Live animals
-- Human body parts, organs
-- Hazardous materials
-- Documents (passports, IDs, degrees)
+**Restricted Item Categories (from the Restrictions sheet):**
+- Prohibited (blocked): firearms, ammunition, explosives and weapon parts; illegal drugs and controlled substances; prescription medicines and prescription-only medical products; alcohol and nicotine, tobacco or vaping products; live animals and wildlife products; counterfeit, replica and pirated goods; stolen goods or goods with removed identifying marks; pornographic and explicit adult products; human body parts, fluids and organs; hazardous chemicals, poisons and radioactive material; government IDs, bank accounts, SIM identities, credentials and non-transferable tickets; digital, game and software accounts or keys where transfer is not permitted
+- Conditional (compliance popup): opened cosmetics, skincare, fragrances and hygiene products; food, pet food and household consumables; high-value jewellery, luxury watches and collectibles; medical equipment; drones; used helmets, child car seats and safety-critical equipment; large batteries and lithium power packs; plants and seeds; real estate and property listings
 
 **Edge Cases:**
 - Item is borderline (e.g., toy weapon)
@@ -398,6 +425,7 @@
 ---
 
 ### US-008: Seller Chooses Listing Plan
+> **Update (2026-10-25, category taxonomy):** Plans will vary by L1 category (US-119). Until then all categories use the current plans, and Dev builds show "Plan is under revision until US-119" on this page. "Item details complete" means every required field of the category's schema (US-006).
 **As a** seller  
 **I want to** choose a listing plan (Basic/Boosted/Priority)  
 **So that** I can control visibility and reach
@@ -437,6 +465,7 @@
 ---
 
 ### US-009: Listing Publication After Payment
+> **Update (2026-10-25, category taxonomy):** Publication also queues the listing for OpenSearch indexing through an outbox with retries (US-120); search downtime never blocks publication.
 **As a** seller  
 **I want** my listing to be published immediately after successful payment  
 **So that** buyers can discover it right away
@@ -475,6 +504,7 @@
 ---
 
 ### US-010: Edit/Delete Listing
+> **Update (2026-10-25, category taxonomy):** A change of L3 category is a major edit (re-moderation) and clears fields that are not in the new category's schema; metadata edits follow the category schema; the price maximum is ₹10,00,00,000.
 **As a** seller  
 **I want to** edit or delete my listings  
 **So that** I can keep information accurate and remove sold items
@@ -520,6 +550,7 @@
 ## Buyer - Discovery & Search
 
 ### US-011: Browse and Search Listings
+> **Update (2026-10-25, category taxonomy):** Browsing goes L1 to L2 to L3 (popular first, then Others); search and filters run in OpenSearch (US-120) using the category, the profile's facets, location and the normalized listing price. Real Estate search always runs within one transaction intent: a search without an intent prompts the buyer to choose Buy, Rent or Lease, and price ranges and sorting apply only after that. Disabled categories never appear. Ranking follows the HLD (exact match, category relevance, seller rating, plan boost, recency).
 **As a** buyer  
 **I want to** browse and search for items  
 **So that** I can find what I need
@@ -556,6 +587,7 @@
 ---
 
 ### US-012: View Listing Details
+> **Update (2026-10-25, category taxonomy):** Details show the category path and the category's attributes (labels from the Metadata Dictionary). Real Estate shows the intent and the price by intent ("Starting from" for New Developments). The seller's pincode and the serial number value are never shown.
 **As a** buyer  
 **I want to** view complete listing details  
 **So that** I can make an informed decision
@@ -597,6 +629,7 @@
 ## Communication
 
 ### US-013: Chat with Seller
+> **Update (2026-10-25, category taxonomy):** For Real Estate listings the flow covers chat, calls, video calls and price negotiation only; there is no cart, checkout, payment or delivery. It ends when the seller marks the property Sold or Rented (US-118).
 **As a** buyer  
 **I want to** chat with the seller  
 **So that** I can ask questions about the item
@@ -635,6 +668,7 @@
 ---
 
 ### US-014: Masked Voice Call
+> **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
 **As a** buyer  
 **I want to** call the seller without revealing my number  
 **So that** I can discuss details while maintaining privacy
@@ -677,6 +711,7 @@
 ---
 
 ### US-015: Video Call with Recording
+> **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
 **As a** buyer  
 **I want to** video call the seller to see the item  
 **So that** I can verify condition before purchasing
@@ -761,6 +796,7 @@
 ## Negotiation & Cart
 
 ### US-017: Price Negotiation
+> **Update (2026-10-25, category taxonomy):** Applies to Real Estate listings against the normalized listing price (sale price, monthly rent or "starting from" price); the property flow ends after negotiation, with no checkout (US-118).
 **As a** buyer  
 **I want to** negotiate the price with the seller  
 **So that** I can get a better deal
@@ -840,6 +876,7 @@
 ---
 
 ### US-019: Add to Cart (Multi-Item)
+> **Update (2026-10-25, category taxonomy):** Real Estate listings cannot be added to a cart. Delivery options depend on category delivery eligibility and Shiprocket serviceability (US-122).
 **As a** buyer  
 **I want to** add multiple items to my cart  
 **So that** I can purchase them in one transaction
@@ -887,6 +924,7 @@
 ---
 
 ### US-020: Choose Delivery or Self-Pickup
+> **Update (2026-10-25, category taxonomy):** Home delivery is offered only for categories that are delivery-eligible in the database and where Shiprocket serviceability returns a valid courier for the seller's pickup PIN, the package and the buyer's PIN (US-122). Whole vehicles and Real Estate are never delivery-eligible.
 **As a** buyer  
 **I want to** choose between delivery or self-pickup  
 **So that** I have flexibility in receiving my item
@@ -981,6 +1019,7 @@
 ---
 
 ### US-022: Self-Pickup Payment Options
+> **Update (2026-10-25, category taxonomy):** Categories that are not delivery-eligible use self-pickup only. Online payment is prepaid only, with no COD (US-122 open item).
 **As a** buyer using self-pickup  
 **I want to** choose between advance payment or pay-at-pickup  
 **So that** I have flexibility in payment
@@ -1137,6 +1176,7 @@
 ## Shipping & Logistics
 
 ### US-026: Seller Prepares Package and Uploads Proof
+> **Update (2026-10-25, Shiprocket):** The shipping partner is Shiprocket (US-122). Packed weight and size are captured on Item Details for delivery-eligible categories and confirmed here before the shipment is created.
 **As a** seller  
 **I want to** upload package photos before pickup  
 **So that** there's proof of item condition at shipping
@@ -1177,6 +1217,7 @@
 ---
 
 ### US-027: Pickup Scheduling
+> **Update (2026-10-25, Shiprocket):** Pickups are arranged through Shiprocket with a pickup location bound to the seller's address and reused (US-122). Scope to be revisited inside US-122 (open item 7).
 **As a** seller  
 **I want to** schedule item pickup with logistics partner  
 **So that** the item is collected and shipped
@@ -1220,6 +1261,7 @@
 ---
 
 ### US-028: Item Pickup by Logistics Partner
+> **Update (2026-10-25, Shiprocket):** The logistics partner is Shiprocket (US-122). Scope to be revisited inside US-122 (open item 7).
 **As a** logistics partner  
 **I want to** collect item from seller  
 **So that** I can ship it to buyer
@@ -1256,6 +1298,7 @@
 ---
 
 ### US-029: Shipment Tracking
+> **Update (2026-10-25, Shiprocket):** Tracking comes from Shiprocket webhooks (raw events stored first) with polling as a fallback (US-122).
 **As a** buyer  
 **I want to** track my shipment in real-time  
 **So that** I know where my item is
@@ -1296,6 +1339,7 @@
 ---
 
 ### US-030: Buyer Receives Item and Uploads Proof
+> **Update (2026-10-25, Shiprocket):** Proof photos stay as described; shipment status comes from Shiprocket (US-122, open item 7).
 **As a** buyer  
 **I want to** upload proof images after receiving item  
 **So that** delivery is documented
@@ -1333,6 +1377,7 @@
 ---
 
 ### US-031: Delivery Confirmation via In-App Button
+> **Update (2026-10-25, Shiprocket):** The in-app confirmation stays; Shiprocket delivery status is an input, not a replacement (US-122, open item 7).
 **As a** buyer  
 **I want to** confirm delivery via in-app button  
 **So that** seller gets paid and transaction completes
@@ -1366,6 +1411,7 @@
 ---
 
 ### US-032: Failed Delivery and Rescheduling
+> **Update (2026-10-25, Shiprocket):** Failed delivery (NDR) and return-to-origin (RTO) handling follow Shiprocket's model (US-122, open item 7).
 **As a** buyer  
 **I want to** reschedule delivery if I'm unavailable  
 **So that** I don't miss my delivery
@@ -1450,6 +1496,7 @@
 ---
 
 ### US-034: Return Approval and Reverse Logistics
+> **Update (2026-10-25, Shiprocket):** Reverse pickups go through Shiprocket; the reverse model and costs are decided inside US-122 (open item 7).
 **As a** seller  
 **I want to** review return requests  
 **So that** I can accept valid returns
@@ -1641,6 +1688,7 @@
 ---
 
 ### US-039: Photo-Based Search (Premium Feature)
+> **Update (2026-10-25, category taxonomy):** MVP approach: the same Vision AI service (valuex-ai) extracts category candidates and attributes from the buyer's photo; a query builder turns them into OpenSearch filters and boosts, with relaxation when results are few (L3 plus attributes, then fewer attributes, then L2, then text). No image embeddings and no pgvector in MVP. The feature stays premium-gated. The extracted category and attributes are shown as editable chips; changing a chip re-runs the search without another Vision call. Retention and limits for buyer photos are defined in this story.
 **As a** premium buyer  
 **I want to** search using photos  
 **So that** I can find items visually without typing keywords
@@ -1688,6 +1736,7 @@
 ---
 
 ### US-040: Visual Search Results Ranking
+> **Update (2026-10-25, category taxonomy):** Ranking is metadata based (category match, attribute confidence, then the HLD ranking factors), not embedding similarity. Confidence thresholds are configuration.
 **As a** premium buyer  
 **I want** search results ranked by similarity  
 **So that** most relevant items appear first
@@ -1725,6 +1774,7 @@
 ---
 
 ### US-041: Search Refinement with Filters
+> **Update (2026-10-25, category taxonomy):** Filters and facets come from the category's profile (US-006) and OpenSearch (US-120), including the extracted chips from photo search.
 **As a** premium buyer  
 **I want to** apply filters after photo search  
 **So that** I can narrow down results
@@ -2215,6 +2265,7 @@
 ---
 
 ### US-054: Admin Dashboard - Listing Moderation
+> **Update (2026-10-25, category taxonomy):** Moderation also covers Conditional-category and Real Estate listings, including the seller's compliance acceptance (US-007).
 **As an** admin  
 **I want to** moderate flagged listings  
 **So that** platform remains safe
@@ -2466,6 +2517,7 @@
 ## Enhancement Stories (Backlog)
 
 ### US-060: Logistics Partner - View Assigned Tasks
+> **Update (2026-10-25, Shiprocket):** With Shiprocket as the partner this task view may become obsolete; to be decided inside US-122 (open item 7).
 **As a** logistics partner  
 **I want to** view all my assigned pickups and deliveries  
 **So that** I can plan my route efficiently
@@ -2632,6 +2684,7 @@
 ---
 
 ### US-065: Bulk Listing Upload
+> **Update (2026-10-25, category taxonomy):** Uploads use category codes (L3) and the category's profile fields, validated against the same listing schema as the Item Details page (US-006).
 **As a** power seller  
 **I want to** upload multiple listings via CSV  
 **So that** I can list many items quickly
@@ -2667,6 +2720,7 @@
 ---
 
 ### US-066: Saved Searches and Alerts
+> **Update (2026-10-25, category taxonomy):** A saved search stores the category code, the facets and, for Real Estate, the transaction intent. A search whose category is disabled or removed is marked invalid.
 **As a** buyer  
 **I want to** save my search criteria and get alerts  
 **So that** I'm notified when matching items are listed
@@ -2746,6 +2800,7 @@
 ## New Features - PRD v1.3 Alignment
 
 ### US-068: Direct Buy Now Flow
+> **Update (2026-10-25, category taxonomy):** Not available for Real Estate listings (no purchase flow, US-118). Delivery follows category eligibility (US-122).
 **As a** buyer  
 **I want to** purchase an item immediately at listed price  
 **So that** I can skip negotiation for items I want to buy quickly
@@ -2785,6 +2840,7 @@
 ---
 
 ### US-069: Buyer Initiates Contact from Listing
+> **Update (2026-10-25, category taxonomy):** For Real Estate listings contact leads to chat, calls, video calls and price negotiation only (US-118).
 **As a** buyer  
 **I want to** easily contact seller from listing page  
 **So that** I can inquire about item details
@@ -3065,6 +3121,7 @@
 ---
 
 ### US-076: Seller Negotiation Management
+> **Update (2026-10-25, category taxonomy):** For Real Estate listings the seller can mark the property Sold or Rented after an agreed price (US-118).
 **As a** seller  
 **I want to** manage buyer offers efficiently  
 **So that** I can accept, reject, or counter offers quickly
@@ -3273,6 +3330,7 @@
 ---
 
 ### US-080: Auto-Expire Inactive Negotiations
+> **Update (2026-10-25, category taxonomy):** Applies to Real Estate negotiations as well (US-118).
 **As a** platform  
 **I want to** auto-expire inactive negotiations  
 **So that** stale offers don't block transactions
@@ -3384,6 +3442,7 @@
 ---
 
 ### US-083: System Audit Trail
+> **Update (2026-10-25, category taxonomy):** The audit trail also records Admin changes to categories, attributes, options and AI settings (US-121).
 **As a** platform administrator  
 **I want** comprehensive audit logs of critical actions  
 **So that** I can investigate issues and ensure compliance
@@ -3431,6 +3490,7 @@
 ---
 
 ### US-084: Pre-Publication Trust & Safety Review
+> **Update (2026-10-25, category taxonomy):** The review also covers Conditional-category and Real Estate listings, including the seller's compliance acceptance (US-007). The "unrelated categories" signal no longer exists (multi-category tagging was dropped).
 **As a** platform  
 **I want** all listings reviewed before publication  
 **So that** prohibited items and fraud are prevented
@@ -4545,6 +4605,7 @@
 ## Address Management
 
 ### US-108: Address Entry with Google Places Autocomplete and Address Verification
+> **Update (2026-10-25, category taxonomy):** An item's location comes from an address chosen on Item Details. The public listing shows only locality and city for goods (the pincode is not public) and distance search uses rounded coordinates; the exact precision is set in the LLD. Real Estate shows the property's own city, locality and pincode.
 **As a** user entering an address (when I buy with home delivery or post an item to sell)  
 **I want to** search for my address with suggestions and have it verified  
 **So that** my address is accurate and deliveries and pickups can be completed
@@ -4804,11 +4865,11 @@
 - Then I see a promo card with its title, short text and a call-to-action button, and tapping it opens the promo's target
 - And when there is no active promo, the promo section is not shown
 - When I look at "Browse"
-- Then I see the first five categories from the backend, each with its image and name, and a "More" tile
+- Then I see up to 15 popular L1 categories from the backend (ordered by the Admin rank), each with its image and name, and an "Others" tile for the remaining enabled L1 categories
 - When I tap a category
 - Then I see listings in that category (US-011)
-- When I tap "More"
-- Then I see a category selection page that lists all categories from the backend, and tapping one opens its listings
+- When I tap "Others"
+- Then I see the remaining enabled L1 categories from the backend; tapping an L1 shows its up to 10 popular L2 categories followed by Others, then its L3 categories, and tapping an L3 opens its listings (US-011)
 - When I look at "Featured Deals Near You"
 - Then I see listing cards in two columns, each with an image, title, price in INR, city, seller rating and condition
 - And Boosted and Priority listings come first and show their badge
@@ -4833,7 +4894,7 @@
 - No saved location chosen and no location permission
 - User has no saved addresses, or the list of saved addresses fails to load
 - No listings near the chosen place
-- Fewer than five categories returned by the backend
+- Fewer than 15 popular L1 categories returned by the backend
 - Promo expired or removed while the user is on Home
 - A listing image fails to load (a placeholder is shown)
 - A listing is sold or removed while it is on screen
@@ -4848,7 +4909,7 @@
 - Listing prices are shown in INR with Indian digit grouping (for example ₹1,85,000)
 - Seller rating is shown with one decimal on a 0 to 5 scale; a seller with no rating shows no rating
 - Condition is one of the listing condition values (for example Good, Like New, Excellent)
-- Categories, their order, names and images come from the backend and are not hard-coded in the app
+- Categories, their order, names and images come from the backend and are not hard-coded in the app; popular flags, ranks and enabled flags are set by an Admin (US-121)
 - Promo content (text, image, target, start and end date) comes from the backend; the app shows at most the active promos
 - Location permission is requested on Home with a short explanation of why, not at app start
 - Only the area and city (or the city, state and pincode of a saved address) are used for listings; exact coordinates are not logged, and are not stored without consent
@@ -5031,6 +5092,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 ## Listing Details
 
 ### US-114: Listing Item Details Entry
+> **Update (2026-10-25, category taxonomy):** The category part of this story is superseded by US-006: the single category becomes one L3 category from the taxonomy and the page is driven by the category's schema (common fields, required fields and optional fields under "More details"). New common fields are condition notes, negotiable and quantity. The maximum price is now ₹10,00,00,000. The location, price note and plan flow stay as described below.
 **As a** seller  
 **I want** to enter or review my item's title, category, condition, description, location and price on one screen  
 **So that** my listing is complete and I can move on to choose a listing plan
@@ -5040,7 +5102,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 **Related User Stories:**
 - US-004: delivers the photo step; its minimum is raised to 2 photos by this decision
 - US-005: fills this page when AI is enabled; when it is not, the seller types everything
-- US-006: later extends the single category to a primary plus up to 3 additional categories from the taxonomy
+- US-006: replaces the single category with one L3 category and the category-driven fields (2026-10-25)
 - US-007: the restricted item check runs on the entered title, description and category when the seller continues
 - US-008: the next step, Listing Plan
 - US-089, US-084: listing states and the review after payment
@@ -5083,10 +5145,10 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 **Validation Rules:**
 - Title: required, up to 100 characters, spaces trimmed
-- Category: required, one category until US-006; chosen from the same category list Home shows
+- Category: required; one L3 category from the taxonomy (US-006)
 - Condition: required, one of NEW, LIKE_NEW, GOOD, FAIR, POOR (shown as Brand New, Like New, Good, Fair, Poor)
 - Description: required, up to 2000 characters
-- Price: required, greater than zero, at most 2 decimal places, in rupees, up to ₹1,00,00,000
+- Price: required, greater than zero, at most 2 decimal places, in rupees, up to ₹10,00,00,000
 - Location: the city of the Home location; the device coordinates are never sent to the server or stored
 - At least 2 photos must be on the listing to continue (the server checks this too)
 - Details can be changed only while the listing is a draft or needs revision
@@ -5117,11 +5179,11 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 **Decisions (product owner, 2026-10-16):**
 - The Trust and Safety review runs after payment and before publication; the restricted item check (US-007) runs before plan selection so a seller does not pay for a listing that cannot be published
 - Condition values are NEW, LIKE_NEW, GOOD, FAIR, POOR
-- One category for now, extended by US-006
+- Replaced by the L3 category and the category-driven fields (US-006)
 - Make's "Set Your Price" content is part of this page; manual price entry is part of this story
 - Location is the user's current location, as on Home, until the address stories are delivered
 - Minimum 2 photos; the review time shown to sellers is "a few hours"
-- Title, category, condition, description and price are all required; the highest price is ₹1,00,00,000; the progress bar has 4 steps
+- Title, category, condition, description and price are all required; the highest price is ₹10,00,00,000 (raised from ₹1,00,00,000 on 2026-10-25); the progress bar has 4 steps
 - A listing rejected in review: the seller is notified to modify it and resubmits it for review without paying again, up to 3 review attempts in total; after the third failed review the plan fee is refunded (automatic or manual refund to be decided)
 
 **Open:**
@@ -5231,6 +5293,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 ## Plan Administration
 
 ### US-116: Admin - Manage Seller Listing Plans and Tax Settings
+> **Update (2026-10-25, category taxonomy):** Plans will vary by L1 category (US-119); this story's screens are extended there.
 **As an** admin with plan management permission  
 **I want to** create, change and switch off seller listing plans, and set how GST is applied, from the admin console  
 **So that** management decisions on plans, features and prices take effect without an app or server release
@@ -5391,11 +5454,146 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-118: Real Estate Listing Specifics
+**As a** buyer and seller of property  
+**I want** property listings to follow a sale, rent or lease flow that ends at price negotiation  
+**So that** property can be advertised and negotiated without the goods checkout and delivery flow
+
+**Related User Stories:**
+- US-006: seller-side transaction intent and the `listing_price_inr` derivation are built there (Real Estate is enabled from day one)
+- US-011, US-012: search and details for property; US-013, US-014, US-015, US-017, US-069, US-076, US-080: contact and negotiation
+- US-007: the Real Estate compliance popup applies to all Real Estate categories
+
+**Acceptance Criteria:**
+- Given a buyer opens Real Estate search
+- When no transaction intent has been chosen
+- Then the app prompts for Buy, Rent or Lease before showing prices
+- And the intent filter is mandatory before any price range or sorting, so sale, rent and lease prices are never mixed
+- And New Developments show "Starting from" with the minimum price
+- When a buyer opens a property
+- Then they can chat, call or video call the seller and negotiate the price
+- And there is no cart, checkout, escrow, payment or delivery, and "Buy Now" is not shown
+- When the seller and buyer agree a price
+- Then the seller marks the property Sold or Rented
+
+**Edge Cases:** intent not supported by the property family; changing intent after entering prices; New Development with minimum price above maximum price; Commercial Lease without the optional total lease amount; buyer searches without choosing an intent.
+
+**Validation Rules:** supported intents by family are Homes: Sale, Rent; New Developments: Sale; Land: Sale, Lease; Commercial: Sale, Rent, Lease; Shared and Managed Living: Rent. `listing_price_inr` is system-derived (Sale: sale price or minimum price; Rent and Lease: monthly rent). The maximum price is ₹10,00,00,000.
+
+**Error Scenarios:**
+- `ERROR_INTENT_NOT_SUPPORTED`: "This option is not available for this property type"
+- `ERROR_PRICE_REQUIRED_FOR_INTENT`: "Enter the price for your option"
+- `ERROR_INVALID_PRICE_RANGE`: "Minimum price cannot be above maximum price"
+
+---
+
+### US-119: Category-wise Listing Plans
+**As a** platform owner  
+**I want** listing plans and prices to vary by L1 category  
+**So that** property and goods can be priced and featured differently
+
+**Acceptance Criteria:**
+- Given an Admin defines plans for an L1 category (the US-116 screens, extended)
+- When a seller reaches plan selection (US-008) for a listing in that L1
+- Then they see that L1's plans, features, price and tax
+- Until this story is built, all categories use the current plans and Dev builds show "Plan is under revision until US-119"
+
+**Edge Cases:** an L1 with no plan configured; a plan retired while a seller is on the page; a category change after a plan was chosen (US-010).
+
+**Validation Rules:** every enabled L1 has at least one active plan; GST follows US-078 and US-116.
+
+**Error Scenarios:**
+- `ERROR_NO_PLAN_FOR_CATEGORY`: "Listing plans are not available for this category"
+
+---
+
+### US-120: OpenSearch Setup and Listing Indexing
+**As a** platform  
+**I want** a managed listing search index  
+**So that** buyers get fast keyword, filter and facet search
+
+**Acceptance Criteria:**
+- Given a listing reaches `PUBLISHED`
+- Then it is indexed through an outbox with retries, and removed when it leaves `PUBLISHED`
+- And the document carries the category (L1, L2, L3 codes and names), the normalized listing price, transaction intent, condition, location at city and locality level (no street address), plan type, seller rating, recency and typed attributes
+- And ranking follows the HLD (exact match, category relevance, seller rating, plan boost, recency), with distance when a location is chosen
+- And a disabled category, or any listing under a disabled parent, is excluded
+- And OpenSearch downtime never blocks listing publication
+
+**Edge Cases:** reindex after taxonomy changes; mapping changes (versioned index behind an alias); attribute explosion (typed nested attributes); missing seller rating.
+
+**Validation Rules:** only published, non-expired listings are searchable; addresses and phone numbers are never indexed.
+
+**Open:** hosting (self-hosted or managed), development setup, sizing, backups and alerting.
+
+---
+
+### US-121: Admin - Categories, Attributes, Options and AI Settings
+**As an** Admin  
+**I want** to manage categories, attributes, options and AI settings  
+**So that** the marketplace can change without a release
+
+**Acceptance Criteria:**
+- Given I am an authorized Admin
+- When I enable or disable a category
+- Then all its descendants are runtime-disabled without rewriting their own flags
+- When I set a category popular and give it a rank
+- Then at most 15 L1 and 10 L2 per L1 are accepted
+- When I edit an attribute or its options, or bulk upload options from a file
+- Then the change applies to the Item Details form and to search facets
+- When I switch AI on or off and set confidence thresholds
+- Then the seller flow follows it: off, unavailable or low confidence means manual entry
+- And every change is recorded in the audit trail (US-083)
+
+**Edge Cases:** disabling a category with live listings (they stay stored but leave search and navigation); duplicate option codes in a bulk file; invalid rows (the whole file is rejected with row errors); two Admins editing at once.
+
+**Validation Rules:** a popular category must be enabled; popular ranks are unique among siblings; L3 popularity is ignored; Prohibited categories cannot be enabled for listing.
+
+**Error Scenarios:**
+- `ERROR_POPULAR_LIMIT_EXCEEDED`: "Too many popular categories"
+- `ERROR_DUPLICATE_RANK`: "This rank is already used"
+- `ERROR_INVALID_OPTION_FILE`: "The file has errors. Please fix and upload again"
+
+---
+
+### US-122: Shiprocket Delivery Integration
+**As a** buyer and seller  
+**I want** delivery to be offered only where it can actually be shipped  
+**So that** orders are picked up and delivered reliably
+
+**Acceptance Criteria:**
+- Given an L3 category is delivery-eligible (database policy, not hard-coded)
+- When the seller lists an item
+- Then the packed weight and size are captured on Item Details
+- When a buyer enters a delivery PIN
+- Then delivery options are shown only if Shiprocket serviceability returns a valid courier for the seller's pickup PIN, the package and the buyer's PIN
+- When an order is confirmed
+- Then a shipment is created, the seller pickup is arranged (pickup locations are reused per address) and tracking updates are stored locally
+- And whole vehicles and Real Estate are never delivery-eligible
+
+**Edge Cases:** PIN not serviceable; courier changes between quote and booking; partial failure creating a shipment (reconcile before retry); duplicate webhook events; weight or dimensions changed after listing.
+
+**Error Scenarios:**
+- `ERROR_DELIVERY_NOT_AVAILABLE`: "Delivery is not available for this item"
+- `ERROR_PIN_NOT_SERVICEABLE`: "Delivery is not available to this PIN code"
+- `ERROR_SHIPMENT_CREATION_FAILED`: "We could not arrange the shipment. Please try again"
+
+**Open items (to be decided inside this story):**
+1. Which delivery-eligibility states show delivery at launch (provisional or only partner-confirmed); whether `UNKNOWN` is hidden
+2. Prepaid only (no COD)
+3. Who pays shipping, any markup, and who absorbs quote-versus-actual differences (platform fee US-025, payout US-024)
+4. Courier choice (cheapest, fastest or buyer-picked)
+5. Pickup address (saved US-108 or US-113 address, at listing time or order time) and consent for sharing seller phone and email
+6. Shiprocket account (owner, plan, sandbox, pickup-location limits, webhooks)
+7. Impact on US-026 to US-032, US-034 and US-060 (reverse pickup, NDR, RTO; proof photos and in-app confirmation)
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 117  
+**Total User Stories:** 122  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)
@@ -5429,6 +5627,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - **Listing Notifications (US-115):** 1 story - Notifications for the listing lifecycle after payment: under review, published, needs changes, final rejection, refund, payment failed, expired and removed, in English and Hindi
 - **Plan Administration (US-116):** 1 story - Admin console pages to create, change and switch off seller listing plans (prices, features, validity) and to set the GST setting
 - **Payment Gateway (US-117):** 1 story - Gateway-neutral payment integration: payment orders, signed callbacks, refunds, reconciliation and the app checkout wrapper, with a sandbox adapter until the gateway is chosen
+- **Category Taxonomy (US-118 to US-122):** 5 stories - Real Estate listing specifics, category-wise plans, OpenSearch setup and indexing, Admin management of categories, attributes, options and AI settings, and the Shiprocket delivery integration
 
 ---
 

@@ -2,6 +2,8 @@
 
 # Part 4 - AI Architecture, Visual Search, Listing AI, Fraud Detection & AI Operations
 
+> **Update (2026-10-25, category taxonomy):** Listing AI classifies an item to an L1/L2/L3 taxonomy category in one stage (category codes, never free text) and prefills the attributes of that category's schema that the Metadata Dictionary marks AI-extractable (visible facts only). Confidence thresholds and the AI on/off switch are Admin configuration (US-121); when AI is off, unavailable or low-confidence the seller enters everything. Buyer photo search for MVP uses the same Vision AI service for category and attribute extraction followed by OpenSearch; **image embeddings and pgvector (sections 5.3, 5.4 ranking stage 1, 11.2) are deferred.** Restricted items follow the Restrictions sheet (section 8.1).
+
 **Document Version:** 1.0  
 **Product:** ValueX  
 **AI Stack:** Python 3.11+, FastAPI  
@@ -167,7 +169,7 @@ POST /ai/v1/support/respond
 ### Related User Stories
 
 - US-005: AI-Assisted Listing Creation
-- US-006: Multi-Category Tagging
+- US-006: Category Taxonomy and Category-driven Item Details
 - US-007: Restricted Items Prevention
 - US-084: Pre-Publication Trust & Safety Review
 
@@ -202,7 +204,7 @@ POST /ai/v1/support/respond
 {
   "categorySuggestions": [
     {
-      "categoryId": "uuid",
+      "categoryCode": "CAT-0001",
       "categoryPath": "Electronics > Mobile Phones",
       "confidence": 0.91
     }
@@ -281,6 +283,8 @@ sequenceDiagram
 ---
 
 ## 5.3 Image Embedding Generation
+
+> **Deferred (2026-10-25):** not used in MVP; photo search uses the Vision AI service plus OpenSearch.
 
 ### Listing Image Embeddings
 
@@ -495,17 +499,24 @@ sequenceDiagram
 
 ## 8.1 Restricted Item Categories
 
-- weapons
-- explosives
-- ammunition
-- drugs
-- tobacco
-- alcohol
-- adult content
-- counterfeit goods
-- live animals
-- documents
-- hazardous material
+Per the Restrictions sheet (detection by AI and keywords).
+
+**Prohibited (blocked):**
+
+- firearms, ammunition, explosives and weapon parts
+- illegal drugs and controlled substances
+- prescription medicines and prescription-only medical products
+- alcohol, tobacco, nicotine and vaping products
+- live animals and wildlife products
+- counterfeit, replica and pirated goods
+- stolen goods or goods with removed identifying marks
+- pornographic material and explicit adult products
+- human body parts, fluids and organs
+- hazardous chemicals, poisons and radioactive material
+- government IDs, bank accounts, SIM identities, credentials and non-transferable tickets
+- digital, game and software accounts or keys where transfer is not permitted
+
+**Conditional (compliance popup, seller must agree):** opened cosmetics and hygiene products; food, pet food and consumables; high-value jewellery, luxury watches and collectibles; medical equipment; drones; used helmets, child car seats and safety equipment; large batteries; plants and seeds; real estate.
 
 ---
 
@@ -719,6 +730,8 @@ Stores:
 ---
 
 ## 11.2 pgvector
+
+> **Deferred (2026-10-25):** not used in MVP.
 
 Stores:
 

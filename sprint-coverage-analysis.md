@@ -32,7 +32,7 @@
 ### Sprint 2 - Seller Listing Creation (9 stories)
 - US-004: Create Listing with Photo Capture
 - US-005: AI-Assisted Listing Creation
-- US-006: Multi-Category Tagging
+- US-006: Category Taxonomy and Category-driven Item Details (rewritten 2026-10-25; this analysis is a 2026-06-05 snapshot and is not otherwise updated)
 - US-007: Restricted Items Prevention
 - US-008: Seller Chooses Listing Plan
 - US-009: Listing Publication After Payment
