@@ -204,8 +204,9 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Listings
 - Photo-based listing creation
-- Multi-category tagging
+- Category taxonomy with category-specific details (one L3 category per listing; 39 L1, 157 L2, 907 L3)
 - AI-assisted metadata generation
+- Real Estate listings (sale, rent, lease) with chat, calls and price negotiation, but no checkout or delivery
 
 ### Communication
 - Chat (stored)
@@ -271,8 +272,8 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Listing
 - **FR-4:** Seller must capture item images via mobile camera
-- **FR-5:** System must allow multiple category tagging
-- **FR-6:** AI must suggest category, description, condition, price
+- **FR-5:** System must classify each listing under one category from the marketplace taxonomy (L1, L2, L3) and capture the details that category needs
+- **FR-6:** AI must suggest category, description, condition, price and category-specific details, when AI is enabled
 - **FR-6.1:** System must stop listing of restricted items
 - **FR-6.2:** Seller must purchase one listing plan out of 3
 - **FR-6.3:** System must allow listing as per purchased listing plan after successful payment
@@ -464,7 +465,7 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 - **User**
 - **IdentityVerification**
 - **Listing**
-- **Category**
+- **Category** (3-level taxonomy; each listing has one L3 category)
 - **Order**
 - **Cart**
 - **Payment**

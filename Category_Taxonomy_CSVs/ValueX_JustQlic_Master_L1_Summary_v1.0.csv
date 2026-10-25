@@ -1,0 +1,40 @@
+L1 Category,L2 Count,L3 Count (including catch-all),Allowed L3,Conditional L3,UI Popular L1 (Provisional)
+Mobiles & Tablets,4,24,24,0,Yes
+Computers & IT,8,56,56,0,Yes
+"TV, Audio & Home Entertainment",6,34,34,0,Yes
+Cameras & Photography,4,26,24,2,No
+Gaming,3,19,19,0,Yes
+Large Appliances,4,17,17,0,Yes
+Small & Home Appliances,4,29,28,1,Yes
+Furniture,6,35,35,0,Yes
+Home Decor & Furnishings,4,28,28,0,No
+Kitchen & Dining,6,29,29,0,No
+Home Improvement & Tools,5,29,29,0,No
+Garden & Outdoor,3,16,14,2,No
+Men's Fashion,4,24,24,0,Yes
+Women's Fashion,5,31,31,0,Yes
+Kids & Baby Clothing,3,19,19,0,No
+Footwear,3,21,21,0,Yes
+"Bags, Wallets & Luggage",4,22,22,0,No
+"Watches, Jewellery & Fashion Accessories",4,24,19,5,Yes
+Beauty & Personal Care,5,24,10,14,No
+Baby Gear & Nursery,4,18,16,2,No
+Toys & Games,3,19,19,0,No
+"Books, Stationery & Education",4,23,23,0,No
+"Sports, Fitness & Outdoor",6,34,34,0,No
+Musical Instruments & Pro Audio,6,34,34,0,No
+Cars,1,8,7,1,Yes
+Motorcycles & Scooters,3,12,12,0,Yes
+Commercial & Agricultural Vehicles,2,11,11,0,No
+Vehicle Parts & Accessories,3,23,22,1,No
+Bicycles & Micro-Mobility,3,17,14,3,Yes
+Office & Business Equipment,4,22,22,0,No
+Industrial & Commercial Equipment,6,32,31,1,No
+Health & Medical Equipment,4,18,10,8,No
+Pet Supplies,5,27,24,3,No
+"Art, Antiques & Collectibles",3,18,17,1,No
+"Arts, Crafts & Hobby Supplies",4,20,20,0,No
+"Religious, Festive & Party",3,15,15,0,No
+Packaged Grocery & Consumables (Optional),2,10,2,8,No
+Other,1,2,2,0,No
+Real Estate,5,37,30,7,Yes

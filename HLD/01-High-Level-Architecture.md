@@ -2,6 +2,8 @@
 
 # Part 1 – Executive Summary, System Overview, High-Level Architecture & Technology Decisions
 
+> **Update (2026-10-25, category taxonomy):** The marketplace now has a 3-level category taxonomy (39 L1, 157 L2, 907 L3) with category-specific metadata, covering physical goods and Real Estate (Real Estate has no cart, payment or delivery; its flow ends at price negotiation). Search is OpenSearch plus metadata. For MVP, photo search uses the Vision AI service (valuex-ai) to extract category and attributes and then OpenSearch; **image embeddings and pgvector are deferred** (mentions of pgvector below describe the later phase). Shiprocket is the shipping partner. See `Documents/Category_Taxonomy_Review_Drafts.md` and the stories US-006 and US-118 to US-122.
+
 **Document Version:** 1.0
 **Product:** ValueX
 **Company:** ValueQuo Solutions Pvt. Ltd.
@@ -502,7 +504,7 @@ Responsible for:
 | --------------- | --------------- |
 | AI Services     | Python          |
 | Framework       | FastAPI         |
-| Visual Search   | Provider-neutral image embeddings + pgvector |
+| Visual Search   | MVP: Vision AI (valuex-ai) + OpenSearch; embeddings + pgvector deferred |
 | Fraud Detection | ML Models       |
 | Listing AI      | LLM Integration |
 

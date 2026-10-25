@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 1: Identity & User Management
 
-**Document Version:** 1.16
+**Document Version:** 1.18
 **Product:** ValueX
 **Sprint:** Sprint 1 - Identity & User Management
 **Sprint Duration:** 2 Weeks
@@ -27,6 +27,7 @@
 | 1.15 | Oct 2026 | US-112 (Seller Incoming Orders) adds one Profile hub menu item. §8.3 gained the `INCOMING_ORDERS` badge key (count of New orders, supplied by the order module's `ProfileMenuBadgeProvider`, designed in LLD Sprint 6 Part A). No change to the SPI, `ProfileMenuService` or the `menu-summary` response; the key is simply absent until Sprint 6 registers the provider. |
 | 1.16 | Oct 2026 | US-077 mobile built (in-app Notifications page) and one endpoint added: `PATCH /api/v1/notifications/read-all` marks every unread notification of the user as read (through the same `NotificationStateMachine` transitions as the single read) and returns `{ markedRead }`. §6.5 lists it, §6.10 records the mobile behaviour (category tabs and deep-link mapping are client-side). |
 | 1.17 | Oct 2026 | **Sign Up no longer collects state, city, address, landmark, pincode or date of birth (US-001 design change):** `POST /register/complete` now takes `{ displayName, gender?, avatarId?, termsAccepted, consentGiven, termsVersion }`; `gender` is optional (omitted → `users.gender` stays NULL and the neutral default avatar `avatar-09` is used). `ERROR_INVALID_ADDRESS_STATE` and `ERROR_INVALID_DATE_OF_BIRTH` are no longer raised by this endpoint, and the service no longer calls `AddressService.saveDefaultAddress` (removed; `AddressService` keeps only `verify(...)` and `listAddresses(userId)`). New Flyway V12 (V9 and V11 stay untouched) drops `users.date_of_birth`, `address`, `city`, `state`, `pincode` and adds nullable `addresses.label`. `GET /users/me` no longer returns `city`, `state`, `address`, `pincode` or `dateOfBirth`; `PATCH /users/me` accepts only `displayName`. New `GET /users/me/addresses` lists the user's saved addresses (default first). §3.1 step 6, §3.2, §5.1, §5.3, §15 (new §8.5), §16.1, §16.3 and §17 test names updated. |
+| 1.18 | Oct 2026 | **Category taxonomy (US-108 update, design only):** an item's location comes from an address chosen on Item Details (US-006). The public listing shows only locality and city for goods; the seller pincode is not public (Common Metadata rule) and distance search uses rounded coordinates; Real Estate shows the property's own city, locality and pincode as listing fields. The exact coordinate rounding and the fields exposed by `AddressService` for this purpose are to be set when the update is built. No code or migration change yet. |
 
 **Reference Documents:**
 - PRD v1.4

@@ -94,7 +94,7 @@ Allow sellers to create and publish listings.
 | US-004 | Create Listing with Photo Capture     | mobile, backend | 8  | US-001     |
 | US-114 | Listing Item Details Entry            | backend, mobile | 5  | US-004     |
 | US-005 | AI-Assisted Listing Creation          | backend, AI     | 8  | US-004     |
-| US-006 | Multi-Category Tagging                | backend, mobile | 3  | US-004, US-114 |
+| US-006 | Category Taxonomy and Category-driven Item Details | backend, mobile | 13 | US-004, US-114, US-089 (built before US-005 and US-007) |
 | US-007 | Restricted Items Prevention           | backend, AI     | 5  | US-005, US-114 |
 | US-089 | Lifecycle State - Listing             | backend         | 5  | US-004     |
 | US-084 | Pre-Publication Trust & Safety Review | backend, AI     | 5  | US-007, US-009 (built together) |
@@ -108,7 +108,8 @@ Allow sellers to create and publish listings.
 ## Exit Criteria
 
 * Listings can be created and published
-* Sellers can enter item details (title, category, condition, description, location, price) by hand, or have AI fill them in when AI is enabled (US-114)
+* Sellers can enter item details by hand, or have AI fill them in when AI is enabled (US-114); the details come from the chosen L3 category's schema: common fields, required fields and optional fields under "More details" (US-006)
+* Sellers choose one L3 category from the marketplace taxonomy (popular first, then Others); Real Estate listings carry a transaction intent and a derived listing price (US-006)
 * AI-assisted metadata generation working
 * Moderation workflow operational
 * Payment integration for listing plans complete
@@ -125,7 +126,9 @@ Enable buyers to discover items.
 
 | ID     | Story                      | Repo            | SP | Dependency |
 | ------ | -------------------------- | --------------- | -- | ---------- |
-| US-011 | Browse and Search Listings | backend, mobile | 8  | US-009     |
+| US-120 | OpenSearch Setup and Listing Indexing | backend, infra | 8 | US-006, US-089 |
+| US-011 | Browse and Search Listings | backend, mobile | 8  | US-009, US-120 |
+| US-118 | Real Estate Listing Specifics | backend, mobile | 5 | US-006, US-011 |
 | US-012 | View Listing Details       | backend, mobile | 5  | US-011     |
 | US-073 | Save and Bookmark Listings | backend, mobile | 3  | US-012     |
 | US-066 | Saved Searches and Alerts  | backend, mobile | 5  | US-011     |
@@ -133,7 +136,8 @@ Enable buyers to discover items.
 
 ## Exit Criteria
 
-* Search operational with filters
+* Search operational with filters (OpenSearch, US-120)
+* Real Estate search runs within one transaction intent; the property flow ends at price negotiation (US-118)
 * Listing detail view complete
 * Saved items and search alerts working
 * Home page served by real endpoints for categories, featured listings near the user and promos, replacing the mock repository (US-111)
@@ -216,6 +220,7 @@ Enable fulfillment workflow.
 | ID     | Story                                     | Repo            | SP | Dependency |
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
 | US-092 | Lifecycle State - Shipping                | backend         | 3  | US-023     |
+| US-122 | Shiprocket Delivery Integration           | backend, mobile | 13 | US-006, US-021, US-023 |
 | US-112 | Seller Incoming Orders                    | backend, mobile | 5  | US-023, US-103 |
 | US-026 | Seller Prepares Package and Uploads Proof | backend, mobile | 5  | US-023     |
 | US-027 | Pickup Scheduling                         | backend, mobile | 5  | US-026     |
@@ -231,7 +236,7 @@ Enable fulfillment workflow.
 
 * End-to-end shipping operational
 * Sellers see every order grouped as New, Packing, Scheduled and Shipped on Incoming Orders (Profile > Selling) and can start packing, continue packing, schedule pickup and view the schedule from it (US-112). "Reject" on a New order opens US-059 and is enabled when Sprint 7 ships; until then it shows the coming-soon message
-* Logistics partner integration complete
+* Logistics partner integration complete (Shiprocket, US-122)
 * Payment release mechanism working
 * Seller Incoming Orders page reachable from the Profile hub (US-112)
 
@@ -351,6 +356,8 @@ Build admin dashboard and moderation tools.
 | US-056 | Admin Transaction Monitoring     | backend,web | 5  | US-023     |
 | US-100 | Admin Analytics Dashboard        | backend,web | 8  | US-056     |
 | US-116 | Admin Manage Listing Plans and Tax Settings | backend,web | 5  | US-078, US-053 |
+| US-119 | Category-wise Listing Plans      | backend,mobile,web | 5 | US-078, US-116 |
+| US-121 | Admin Categories, Attributes, Options and AI Settings | backend,web | 8 | US-006, US-053 |
 
 ## Exit Criteria
 
@@ -358,7 +365,8 @@ Build admin dashboard and moderation tools.
 * Moderation queues working
 * Analytics and monitoring in place
 * Audit trail complete
-* Management can change listing plans, features, prices and the GST setting from the admin console (US-116)
+* Management can change listing plans, features, prices and the GST setting from the admin console (US-116), per L1 category (US-119)
+* Admins can enable or disable categories, set popular categories, manage attributes and options (including bulk upload) and switch AI on or off (US-121)
 
 ---
 
@@ -489,27 +497,29 @@ Add advanced features and optimize platform.
 | ------ | ----------------------------------- | ------- | --- | -------- |
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
 | S1     | Identity & User Management          | 13      | 59  | 2 weeks  |
-| S2     | Seller Listing Creation             | 13      | 65* | 2 weeks  |
-| S3     | Discovery & Search                  | 5       | 29  | 2 weeks  |
+| S2     | Seller Listing Creation             | 13      | 75* | 2 weeks  |
+| S3     | Discovery & Search                  | 7       | 42  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
 | S5     | Cart, Checkout & Payments           | 13      | 62* | 2 weeks  |
-| S6     | Shipping & Delivery                 | 11      | 49  | 2 weeks  |
+| S6     | Shipping & Delivery                 | 12      | 62  | 2 weeks  |
 | S7     | Order Cancellation & Returns        | 6       | 34  | 2 weeks  |
 | S8     | Ratings & Disputes                  | 5       | 27  | 2 weeks  |
 | S9     | Trust & Safety                      | 9       | 52* | 2 weeks  |
-| S10    | Admin Operations                    | 7       | 44* | 2 weeks  |
+| S10    | Admin Operations                    | 9       | 57* | 2 weeks  |
 | S11    | Support & Notifications             | 7       | 32  | 2 weeks  |
 | S12    | Premium Features (Buyer)            | 4       | 19  | 2 weeks  |
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **120** | **644*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **125** | **693*** | **32 weeks** |
+
+\* Category taxonomy (2026-10-25): US-006 is rewritten and raised from 3 to 13 SP (Sprint 2 and total points +10). Added US-118 (5) and US-120 (8) in Sprint 3, US-122 (13) in Sprint 6, and US-119 (5) and US-121 (8) in Sprint 10. Story points for these are proposals.
 
 \* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total).
 
 ## Coverage
 
-### Stories Planned: 120 / 117 total user stories
+### Stories Planned: 125 / 122 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -529,6 +539,7 @@ Add advanced features and optimize platform.
 - Listing Notifications (US-115): ✅ 1 story (Sprint 2)
 - Plan Administration (US-116): ✅ 1 story (Sprint 10)
 - Payment Gateway (US-117): ✅ 1 story (Sprint 2)
+- Category Taxonomy (US-118 to US-122): ✅ 5 stories (US-118 and US-120 in Sprint 3, US-122 in Sprint 6, US-119 and US-121 in Sprint 10)
 
 **Not Yet Planned (Future Backlog):**
 - US-061: Screen Reader Compatibility (merged into US-099)

@@ -2,6 +2,8 @@
 
 # Part 2 – Backend Architecture, Service Decomposition, API Gateway & Event-Driven Design
 
+> **Update (2026-10-25, category taxonomy):** The Listing module owns the taxonomy and metadata tables (see Part 3) and the category, listing-schema and category-assignment APIs (US-006). Admin category, attribute, option and AI-setting endpoints come with US-121. OpenSearch indexing runs from a publication outbox (US-120). A Shipping module wraps Shiprocket behind a partner-neutral interface (US-122). Photo search uses the Vision AI service and OpenSearch for MVP; pgvector is deferred.
+
 **Document Version:** 1.0
 **Product:** ValueX
 **Backend Stack:** Java 21 + Spring Boot 3.x
@@ -260,7 +262,9 @@ Sign Up (`POST /api/v1/auth/register/complete`) no longer collects state, city, 
 
 * listings
 * listing_images
-* categories
+* categories, attribute_definitions, attribute_options, metadata_profiles, metadata_profile_attributes, profile_attribute_options, category_metadata_profiles, category_attribute_overrides
+* listing_attribute_values, listing_attribute_option_values
+* taxonomy_import_log
 * listing_plans
 * listing_status_history
 
@@ -273,6 +277,10 @@ POST   /api/v1/listings/{id}/submit
 PATCH  /api/v1/listings/{id}
 DELETE /api/v1/listings/{id}
 POST   /api/v1/listings/{id}/publish
+PUT    /api/v1/listings/{id}/category
+GET    /api/v1/categories/children
+GET    /api/v1/categories/search
+GET    /api/v1/categories/{code}/listing-schema
 ```
 
 ### Critical Rules
@@ -309,7 +317,7 @@ GET  /api/v1/search/saved
 POST /api/v1/search/photo
 ```
 
-Photo search is orchestrated by Spring Boot: account-state, entitlement/quota and rate-limit checks happen before a temporary private R2 query image is passed to Python Visual AI. pgvector returns visual candidates; OpenSearch applies marketplace filters/facets; PostgreSQL remains authoritative for listing eligibility.
+Photo search is orchestrated by Spring Boot: account-state, entitlement/quota and rate-limit checks happen before a temporary private query image is passed to the Vision AI service (valuex-ai), which returns category candidates and attributes. A query builder turns them into OpenSearch filters and boosts, with relaxation when results are few; PostgreSQL remains authoritative for listing eligibility. No image embeddings or pgvector in MVP (deferred).
 
 ---
 

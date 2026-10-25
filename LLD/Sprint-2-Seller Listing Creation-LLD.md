@@ -26,7 +26,7 @@
 graph LR
     US004[US-004 Create Listing<br/>with Photo Capture] --> US114[US-114 Listing Item<br/>Details Entry]
     US114 --> US005[US-005 AI-Assisted<br/>Listing Creation]
-    US004 --> US006[US-006 Multi-Category<br/>Tagging]
+    US004 --> US006[US-006 Category Taxonomy<br/>and Item Details]
     US005 --> US007[US-007 Restricted Items<br/>Prevention]
     US114 --> US007
     US004 --> US089[US-089 Lifecycle State<br/>Listing]
@@ -47,7 +47,7 @@ This document contains one self-contained LLD section per story, in dependency o
 
 - [Part A - US-004: Create Listing with Photo Capture](#part-a---us-004-create-listing-with-photo-capture)
 - [Part B - US-005: AI-Assisted Listing Creation](#1-story-overview)
-- [Part C - US-006: Multi-Category Tagging](#part-c---us-006-multi-category-tagging)
+- [Part C - US-006: Category Taxonomy and Category-driven Item Details](#part-c---us-006-category-taxonomy-and-category-driven-item-details)
 - [Part D - US-007: Restricted Items Prevention](#part-d---us-007-restricted-items-prevention)
 - [Part E - US-089: Lifecycle State - Listing](#part-e---us-089-lifecycle-state---listing)
 - [Part F - US-084: Pre-Publication Trust & Safety Review](#part-f---us-084-pre-publication-trust--safety-review)
@@ -320,6 +320,8 @@ sequenceDiagram
 ---
 
 # Part B - US-005: AI-Assisted Listing Creation
+
+> **Update (2026-10-25, category taxonomy):** `category_suggestions` now hold category codes from the taxonomy (`categoryCode` for an enabled L3, with its L1 and L2 derived) instead of category ids and free paths. The classifier selects from the L1/L2/L3 taxonomy in one stage and the service prefills only attributes whose `ai_extractable` flag is YES (LIMITED only with a "please verify" flag; never non-visible or legal facts); returned keys are validated against the category's listing schema (Part C). An Admin switch (US-121) turns AI on or off and sets confidence thresholds; when AI is off, unavailable or low-confidence the seller enters everything, including the category. Price comparables join on `listings.category_id` and the profile's attributes. Retention and limits for photos sent to the Vision service are defined here. The text below that mentions `categoryId`, `categoryPath` and `listing_categories` is to be read with these changes until Part B is revised in full when US-005 is planned for build.
 
 **Story Points:** 8 | **Repos:** valuex-backend, valuex-ai
 **Dependency:** US-004 (Create Listing with Photo Capture) - must be complete; listing must exist in `DRAFT` state with at least 1 uploaded image before this flow runs
@@ -1541,94 +1543,198 @@ Per [CODING_STANDARDS.md §2.11](../CODING_STANDARDS.md) / §5 (Python).
 
 ---
 
-# Part C - US-006: Multi-Category Tagging
+# Part C - US-006: Category Taxonomy and Category-driven Item Details
 
-**Story Points:** 3 | **Repos:** valuex-backend, valuex-mobile
-**Dependency:** US-004 (listing must exist, at least `DRAFT`)
+**Story Points:** 13 | **Repos:** valuex-backend, valuex-mobile
+**Dependency:** US-004, US-114, US-089 (built before US-005 and US-007)
+**Sources:** `Documents/Category_Taxonomy_CSVs/*`; decisions D1 to D33 in `Documents/Category_Taxonomy_Review_Drafts.md`; plan `Documents/US-Implementation-Plans/US-006-Implementation-Plan.md`. The outside design document `ValueX_Category_Taxonomy_MVP_Design.md` supplied ideas for tables and endpoints only; where it conflicts with this design, this design wins.
 
 ## C.1 Story Overview
 
-**As a** seller **I want to** tag my item with multiple categories **so that** it appears in relevant search results. A listing has exactly one primary category (mandatory) and up to 3 additional categories; a search hit on *any* assigned category surfaces the listing (Sprint 3 concern for the search index itself — this story only owns correct persistence and validation of the tag set).
+**As a** seller **I want to** choose my item's category from the marketplace taxonomy and fill in the details that category needs **so that** buyers can find my item and see accurate information. A listing has exactly one L3 category (L1 and L2 are derived). Multi-category tagging was dropped. The Item Details page (US-114) becomes a form driven by the category's schema: common fields, required fields and optional fields under "More details".
 
 ## C.2 Scope
 
-**In scope:** `PUT /api/v1/listings/{id}/categories` (replace full category set), `GET /api/v1/categories/tree` (taxonomy for the picker), suspicious-combination flagging.
-**Out of scope:** Search indexing/relevance (Sprint 3, US-011), taxonomy authoring/admin CRUD (assumed seeded data).
+**In scope:** the taxonomy and metadata tables; an idempotent all-or-nothing importer for the CSVs; category children (popular and others), category search and the listing schema APIs; `PUT` the category of a listing and the extended details `PATCH`; server-side validation against the schema; Real Estate transaction intent and `listing_price_inr` derivation; the 3-level mobile picker and dynamic form.
+**Out of scope:** delivery fields and eligibility (US-122); the Conditional compliance popup (US-007); buyer-side property flow (US-118); Admin screens (US-121); OpenSearch (US-120); AI prefill (US-005); item location (US-108).
 
 ## C.3 Data Model
 
-Extends [HLD §4.3 Listing Domain](../HLD/03-Data-Architecture.md#43-listing-domain) `categories` / `listing_categories`:
+Migration `V16__taxonomy_and_listing_attributes.sql` (recheck the next free version at implementation time). Tables are plural, as elsewhere, and use `uuid_generate_v4()`.
 
 ```sql
--- V{N}__add_listing_categories.sql
 CREATE TABLE categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     parent_id UUID REFERENCES categories(id),
-    name VARCHAR(255) NOT NULL,
-    depth INTEGER NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE
+    code VARCHAR(120) NOT NULL UNIQUE,            -- CAT-0001 for L3; L1-MOBILES_TABLETS, L2-... generated
+    name VARCHAR(180) NOT NULL,
+    slug VARCHAR(180) NOT NULL,
+    level SMALLINT NOT NULL CHECK (level BETWEEN 1 AND 3),
+    marketplace_status VARCHAR(20) NOT NULL DEFAULT 'ALLOWED',   -- ALLOWED | CONDITIONAL
+    admin_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    ui_popular BOOLEAN NOT NULL DEFAULT FALSE,
+    ui_rank INTEGER,
+    display_order INTEGER,
+    policy_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (parent_id, slug)
 );
-CREATE INDEX idx_categories_parent ON categories(parent_id);
 
-CREATE TABLE listing_categories (
-    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
-    category_id UUID NOT NULL REFERENCES categories(id),
-    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(listing_id, category_id)
+CREATE TABLE attribute_definitions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    attribute_key VARCHAR(120) NOT NULL UNIQUE,   -- stable identifier (Metadata Dictionary)
+    display_name VARCHAR(180) NOT NULL,           -- UI label (Metadata Dictionary)
+    data_type VARCHAR(30) NOT NULL,
+    unit VARCHAR(40),
+    ui_control VARCHAR(60),
+    searchable BOOLEAN NOT NULL DEFAULT FALSE,
+    filterable BOOLEAN NOT NULL DEFAULT FALSE,
+    ai_extractable VARCHAR(10) NOT NULL DEFAULT 'NO',            -- YES | LIMITED | NO
+    validation_json JSONB,
+    help_text TEXT,
+    admin_enabled BOOLEAN NOT NULL DEFAULT TRUE
 );
--- exactly one is_primary=TRUE row per listing_id, enforced at application layer
--- (partial unique index below is a defense-in-depth backstop)
-CREATE UNIQUE INDEX uq_listing_categories_primary
-    ON listing_categories(listing_id) WHERE is_primary;
+
+CREATE TABLE attribute_options (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
+    code VARCHAR(120) NOT NULL,
+    display_value VARCHAR(180) NOT NULL,
+    display_order INTEGER,
+    admin_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (attribute_id, code)
+);
+
+CREATE TABLE metadata_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(100) NOT NULL UNIQUE,            -- PHONE, CAR, PROP_HOME ...
+    name VARCHAR(180) NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    admin_enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE metadata_profile_attributes (
+    profile_id UUID NOT NULL REFERENCES metadata_profiles(id),
+    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
+    required BOOLEAN NOT NULL DEFAULT FALSE,
+    display_order INTEGER NOT NULL,
+    ai_prefill_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    seller_editable BOOLEAN NOT NULL DEFAULT TRUE,
+    searchable BOOLEAN NOT NULL DEFAULT FALSE,
+    filterable BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (profile_id, attribute_id)
+);
+
+CREATE TABLE profile_attribute_options (       -- per-profile option subsets (for example transaction_intent)
+    profile_id UUID NOT NULL REFERENCES metadata_profiles(id),
+    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
+    option_id UUID NOT NULL REFERENCES attribute_options(id),
+    PRIMARY KEY (profile_id, attribute_id, option_id)
+);
+
+CREATE TABLE category_metadata_profiles (
+    category_id UUID PRIMARY KEY REFERENCES categories(id),
+    profile_id UUID NOT NULL REFERENCES metadata_profiles(id)
+);
+
+CREATE TABLE category_attribute_overrides (
+    category_id UUID NOT NULL REFERENCES categories(id),
+    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
+    required BOOLEAN,
+    display_order INTEGER,
+    validation_json JSONB,
+    PRIMARY KEY (category_id, attribute_id)
+);
+
+CREATE TABLE listing_attribute_values (
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
+    value_text TEXT, value_integer BIGINT, value_decimal NUMERIC(18,4),
+    value_boolean BOOLEAN, value_date DATE,
+    value_option_id UUID REFERENCES attribute_options(id),
+    value_json JSONB,
+    value_source VARCHAR(20) NOT NULL DEFAULT 'SELLER',          -- SELLER | AI | ADMIN | IMPORT
+    ai_confidence NUMERIC(5,4),
+    seller_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (listing_id, attribute_id)
+);
+
+CREATE TABLE listing_attribute_option_values (  -- multi-select, one row per option, never comma-separated text
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
+    option_id UUID NOT NULL REFERENCES attribute_options(id),
+    value_source VARCHAR(20) NOT NULL DEFAULT 'SELLER',
+    ai_confidence NUMERIC(5,4),
+    PRIMARY KEY (listing_id, attribute_id, option_id)
+);
+
+CREATE TABLE taxonomy_import_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    version VARCHAR(40) NOT NULL, checksum VARCHAR(128) NOT NULL,
+    counts_json JSONB, status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE listings
+    ADD COLUMN category_id UUID REFERENCES categories(id),   -- an enabled L3
+    ADD COLUMN condition_notes TEXT,
+    ADD COLUMN negotiable BOOLEAN,
+    ADD COLUMN quantity INTEGER,
+    DROP COLUMN category_slug;                                -- dev data is discarded
+-- listings.price (NUMERIC(12,2)) keeps its name and holds the normalized listing price
 ```
+
+Common fields stay as `listings` columns (`title`, `description`, `condition`, `price`, `condition_notes`, `negotiable`, `quantity`); everything else is a typed attribute value.
 
 ## C.4 API Contract
 
+All endpoints need authentication and use the standard envelope.
+
 ```http
-PUT /api/v1/listings/{listingId}/categories
+GET /api/v1/categories/children?parentCode=&scope=POPULAR|OTHERS|ALL
+GET /api/v1/categories/search?q=
+GET /api/v1/categories/{code}/listing-schema
+PUT /api/v1/listings/{listingId}/category
+PATCH /api/v1/listings/{listingId}
 ```
 
-```json
-{
-  "primaryCategoryId": "uuid-electronics-mobiles",
-  "additionalCategoryIds": ["uuid-accessories", "uuid-refurbished"]
-}
-```
-
-Response: `200 { "success": true, "data": { "categories": [ {"categoryId","categoryPath","isPrimary"} ] } }`.
+- `children`: enabled children of a node (top level without `parentCode`); `POPULAR` returns up to 15 L1 or 10 L2 by `ui_rank`, `OTHERS` the remaining enabled ones. Each item: `code`, `name`, `level`, `hasChildren`.
+- `search`: up to 20 enabled L3 categories whose name matches (case-insensitive, at least 2 characters), with the full path.
+- `listing-schema`: the form definition for an L3: `key`, `label` (dictionary display name), `type`, `unit`, `uiControl`, `required`, `options`, `validation`, `aiPrefillEnabled`, `order`, `group`.
+- `PUT category` body: `{ "categoryCode": "CAT-0001" }`; the seller comes from the security context only. Attributes outside the new schema are deleted in the same transaction.
+- `PATCH` (extends US-114): `conditionNotes`, `negotiable`, `quantity`, `attributes` (`[{ "key": "brand", "value": "Apple" }]`) and the existing fields; `categorySlug` is removed. `ListingDraftResponse` carries `category` (code, name, path), the stored `attributes` and the new common fields.
 
 ## C.5 Service Logic
 
 ```java
 @Transactional
-public void setCategories(UUID listingId, UUID sellerId, SetCategoriesRequest req) {
-    var listing = requireOwnedListing(listingId, sellerId);
+public void setCategory(UUID listingId, UUID sellerId, String categoryCode) {
+    var listing = requireOwnedDraft(listingId, sellerId);        // owner + DRAFT/REVISION_REQUIRED
+    var category = categoryService.requireEffectivelyEnabled(categoryCode); // CATEGORY_NOT_FOUND, ERROR_CATEGORY_DISABLED
+    if (category.getLevel() != 3)
+        throw new BusinessException("ERROR_CATEGORY_NOT_LEAF", "Choose a more specific category");
+    listing.setCategory(category);
+    attributeValueRepository.deleteNotIn(listingId, listingSchemaService.keysFor(category));
+}
 
-    var allIds = Stream.concat(Stream.of(req.primaryCategoryId()), req.additionalCategoryIds().stream()).toList();
-    if (allIds.size() != new HashSet<>(allIds).size())
-        throw new BusinessException("ERROR_DUPLICATE_CATEGORY", "Category already selected");
-    if (req.additionalCategoryIds().size() > 3)
-        throw new BusinessException("ERROR_MAX_CATEGORIES", "Maximum 4 categories allowed");
-
-    var categories = categoryRepository.findAllById(allIds);
-    if (categories.size() != allIds.size())
-        throw new NotFoundException("CATEGORY_NOT_FOUND", "One or more categories do not exist");
-
-    List<String> warnings = new ArrayList<>();
-    if (!relatednessChecker.areRelated(categories))
-        warnings.add("WARNING_UNRELATED_CATEGORIES");
-
-    listingCategoryRepository.deleteByListingId(listingId); // replace-all semantics
-    listingCategoryRepository.save(new ListingCategory(listingId, req.primaryCategoryId(), true));
-    req.additionalCategoryIds().forEach(id ->
-            listingCategoryRepository.save(new ListingCategory(listingId, id, false)));
-
-    listingCategoryRepository.flush(); // surface uq_listing_categories_primary violation immediately if any
+@Transactional
+public void saveDetails(UUID listingId, UUID sellerId, UpdateListingDetailsRequest req) {
+    var listing = requireOwnedDraft(listingId, sellerId);
+    var schema = listingSchemaService.schemaFor(listing.getCategory());   // ERROR_CATEGORY_REQUIRED if none
+    attributeValidator.validate(schema, req);          // type, unit, range, options, cross-field; ERROR_ATTRIBUTE_*
+    listing.setPrice(priceResolver.resolve(schema, req)); // goods: asking price; Real Estate: by intent
+    attributeValueService.replace(listingId, schema, req.attributes());
 }
 ```
 
-`relatednessChecker` is a simple rule: additional categories must share a common ancestor with the primary category within 2 levels, or belong to an explicit allow-listed cross-sell pair table (e.g. "Mobile Phones" + "Mobile Accessories"). This is intentionally simple for Sprint 2 — no ML classifier — matching the story's low complexity (3 SP).
+- **Effective enabled:** an L3 is selectable when its L1, L2 and L3 are `admin_enabled` (a disabled parent hides the branch without rewriting child flags). Real Estate and Conditional categories are enabled from day one.
+- **Schema:** built from the profile, overrides and the Common-field applicability rules (Real Estate: no condition, quantity or delivery fields; whole vehicles: no quantity; delivery fields are added by US-122). Cached by `(categoryCode, profileVersion)` and evicted on import.
+- **Price (`ListingPriceResolver`):** goods and vehicles use `asking_price_inr`; Real Estate Sale gives `sale_price` (`price_min` for New Developments), Rent and Lease give `monthly_rent`. The schema offers only the intents allowed for the profile and requires the matching price. The maximum price is ₹10,00,00,000 (`valuex.listing.max-price`).
+- **"Others":** the OTHER profile has only common fields plus `item_type_free_text`; non-common entries are stored in one JSON attribute (`special_attributes_json`).
+- **Importer:** CSVs and an overrides file under `src/main/resources/taxonomy/`; idempotent, all-or-nothing, upsert by code, with the validations in the plan (hierarchy, profile and key checks, popular limits 15 L1 and 10 L2 per L1, duplicate ranks, duplicate display names inside a profile); runs on deploy (`valuex.taxonomy.import-on-startup`) and logs to `taxonomy_import_log`.
 
 ## C.6 Sequence Diagram
 
@@ -1639,33 +1745,44 @@ sequenceDiagram
     participant Backend as Listing Module
     participant DB as PostgreSQL
 
-    Seller->>Mobile: Select primary category + up to 3 additional
-    Mobile->>Backend: PUT /listings/{id}/categories
-    Backend->>Backend: validate ownership, dedupe, max-4, taxonomy existence
-    Backend->>Backend: relatednessChecker.areRelated()
-    Backend->>DB: DELETE + INSERT listing_categories (transactional replace)
-    Backend-->>Mobile: 200 { categories, warnings }
+    Seller->>Mobile: Open category picker (popular L1, then L2, then L3)
+    Mobile->>Backend: GET /categories/children
+    Seller->>Mobile: Choose an L3
+    Mobile->>Backend: PUT /listings/{id}/category
+    Backend->>DB: set category_id, delete attributes outside the new schema
+    Mobile->>Backend: GET /categories/{code}/listing-schema
+    Seller->>Mobile: Fill required fields and optional "More details"
+    Mobile->>Backend: PATCH /listings/{id} (common fields + attributes)
+    Backend->>Backend: validate against schema, resolve price
+    Backend->>DB: save listing and attribute values
+    Backend-->>Mobile: 200 ListingDraftResponse
 ```
 
 ## C.7 Validation Rules & Error Codes
 
 | Rule | Error Code | Message |
 |---|---|---|
-| Primary category mandatory | `ERROR_PRIMARY_CATEGORY_REQUIRED` | "Select a primary category" |
-| Max 3 additional (4 total) | `ERROR_MAX_CATEGORIES` | "Maximum 4 categories allowed" |
-| No duplicates | `ERROR_DUPLICATE_CATEGORY` | "Category already selected" |
-| Categories from taxonomy only | `CATEGORY_NOT_FOUND` (404) | n/a (client picker only ever offers valid taxonomy nodes) |
-| Suspicious/unrelated combination | `WARNING_UNRELATED_CATEGORIES` (advisory, not blocking) | "Selected categories seem unrelated. This may affect visibility" |
+| Category required | `ERROR_CATEGORY_REQUIRED` | "Choose a category" |
+| Category exists | `CATEGORY_NOT_FOUND` (404) | "This category is not available" |
+| Category enabled (effective) | `ERROR_CATEGORY_DISABLED` | "This category is not available" |
+| Category is an L3 | `ERROR_CATEGORY_NOT_LEAF` | "Choose a more specific category" |
+| Attribute belongs to the schema | `ERROR_ATTRIBUTE_NOT_ALLOWED` | "This detail does not apply to the chosen category" |
+| Required attributes present | `ERROR_ATTRIBUTE_REQUIRED` | "Please fill in the required details" |
+| Type, unit, range, option, cross-field | `ERROR_ATTRIBUTE_INVALID` | "Please check this detail" |
+| Price above 0, at most 2 decimals, at most ₹10,00,00,000 | existing price error | existing message |
 
 ## C.8 NFR & Notes
 
-- `PUT` (full replace) rather than `POST`/`PATCH` per category keeps the endpoint idempotent and avoids partial-update ordering bugs with the primary-category uniqueness constraint.
-- Category tree depth up to 6+ levels (edge case from user-stories.md) is handled by the mobile picker via lazy-loaded child fetches (`GET /api/v1/categories/tree?parentId=`), not a single flat payload.
-- No AI involvement in this story — `WARNING_UNRELATED_CATEGORIES` is a deterministic rule check, not a model call.
+- `PUT` of the category is idempotent. Responses for children, search and schema are cached in Redis and evicted after an import.
+- The category tree is at most 3 levels; the picker loads one level at a time.
+- AI is not involved in this story. The schema carries `aiPrefillEnabled` so US-005 can prefill later; whenever AI is off, unavailable or low-confidence the seller types everything (Admin switch in US-121).
+- Seller pincode and the serial number value are never exposed; `video_available` stays hidden until video upload exists.
 
 ---
 
 # Part D - US-007: Restricted Items Prevention
+
+> **Update (2026-10-25, category taxonomy):** Detection uses AI and keywords. Prohibited items are blocked with the Restrictions-sheet message; Conditional categories (and Conditional items detected in a listing) show a compliance popup with the sheet text and continue only on "Agree & Continue". The acceptance is stored with listing, category, policy version and time. The popup applies to all Real Estate categories; Solar Panels (CAT-0204) and Forklifts (CAT-0742) have none. The mapping of Conditional categories to Restrictions rows is in `Documents/Category_Taxonomy_Review_Drafts.md` (section 7). The `ListingCategoryProvider` port returns the listing's single L3 category code (and its L1 and L2 codes) from `listings.category_id`.
 
 **Story Points:** 5 | **Repos:** valuex-backend, valuex-ai
 **Dependency:** US-005 (AI-Assisted Listing Creation) — reuses the AI Gateway integration pattern and runs against the same uploaded images/text
@@ -2561,6 +2678,8 @@ sequenceDiagram
 ---
 
 # Part J - US-010: Edit/Delete Listing
+
+> **Update (2026-10-25, category taxonomy):** A change of the L3 category is a major edit (re-moderation) and deletes attribute values that are not in the new category's schema (Part C); metadata edits follow the category schema; the price maximum is ₹10,00,00,000.
 
 **Story Points:** 5 | **Repos:** valuex-backend, valuex-mobile
 **Dependency:** US-009 (only published listings are meaningfully editable/deletable in the ways this story's acceptance criteria describe, though the same endpoints also serve editing a `DRAFT`/`REVISION_REQUIRED` listing per Part A/F)

@@ -1,0 +1,41 @@
+Field,Data Type,Requirement,Search Usage,Description
+listing_id,UUID,System,Exact,Unique listing identifier
+title,Text,Required,Full-text,Seller/AI generated listing title
+description,Long text,Required,Full-text,Detailed item description
+category_l1,Enum,Required,Facet,Primary category
+category_l2,Enum,Required,Facet,Second-level category
+category_l3,Enum,Required,Facet,Third-level category
+brand,Text/Enum,Conditional,Facet + Full-text,Brand/manufacturer where applicable
+model,Text,Conditional,Facet + Full-text,Model/product family where applicable
+variant,Text,Optional,Facet + Full-text,Variant/trim/style/capacity
+condition_grade,Enum,Required,Facet,Likely New / Excellent / Good / Fair / Needs Repair
+condition_notes,Long text,Required,Full-text,"Visible wear, defects and seller-declared issues"
+working_status,Enum,Conditional,Facet,Fully working / Partially working / Not working / Not applicable
+age_months,Integer,Optional,Range,Approximate age of item
+purchase_year,Integer,Optional,Range,Year purchased/manufactured when known
+original_price_inr,Decimal,Optional,Range,Original purchase/MRP if known
+asking_price_inr,Decimal,Required,Range,Seller asking price
+negotiable,Boolean,Required,Facet,Whether seller accepts offers
+color,Enum/Text,Optional,Facet,Primary color
+material,Enum/Text,Optional,Facet,Primary material
+quantity,Integer,Required,Range,Quantity included in listing
+dimensions_cm,Object,Optional,Range,Length x width x height
+weight_kg,Decimal,Optional,Range,Approximate packaged/item weight
+serial_number_present,Boolean,Optional,Facet,Whether item carries a serial/identifier; value should be protected
+invoice_available,Boolean,Optional,Facet,Purchase invoice/proof available
+warranty_status,Enum,Optional,Facet,In warranty / Out of warranty / No warranty / Unknown
+warranty_end_date,Date,Optional,Range,Warranty expiry when applicable
+repair_history,Long text,Optional,Full-text,Known repairs/replacements
+accessories_included,Multi-select,Optional,Facet + Full-text,"Box, charger, manuals, remote, cables, etc."
+missing_parts,Multi-select,Optional,Facet + Full-text,Known missing parts/accessories
+ownership_count,Integer,Optional,Range,Number of owners when relevant
+authenticity_proof,Enum,Optional,Facet,Invoice/certificate/serial/none
+seller_location_city,Text,Required,Geo facet,City
+seller_location_pincode,Text,Required,Geo facet,Pincode; not public by default
+delivery_modes,Multi-select,Required,Facet,Home delivery / Self pickup
+photo_count,Integer,Required,Range,2-8 item photos
+video_available,Boolean,Optional,Facet,Whether seller added a video
+ai_category_confidence,Decimal,System,Range,AI category confidence
+ai_condition_confidence,Decimal,System,Range,AI condition confidence
+search_keywords,Multi-value text,System,Full-text,AI + seller keywords/synonyms
+created_at,DateTime,System,Sort,Listing creation time

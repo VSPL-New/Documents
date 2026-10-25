@@ -1,5 +1,7 @@
 # US-007: Restricted Items Prevention — Implementation Plan
 
+> **Update (2026-10-25, category taxonomy):** US-006 is built first, so this plan must be revised before it is built: `ListingCategoryProvider` returns the listing's single L3 code (and its L1 and L2 codes) from `listings.category_id`; detection uses AI and keywords; Prohibited items are blocked; Conditional categories (and Conditional items detected in a listing) show a compliance popup with the Restrictions-sheet text and the seller continues only on "Agree & Continue", with the acceptance stored (listing, category, policy version, time); the mapping of Conditional categories to Restrictions rows is in `Documents/Category_Taxonomy_Review_Drafts.md` section 7; the popup applies to all Real Estate categories; Solar Panels and Forklifts have none; the Restrictions sheet replaces the restricted list used here; restricted-term `category_slug` values become taxonomy category codes. Migration numbers shift.
+
 ## 1. Header
 
 | Field | Value |

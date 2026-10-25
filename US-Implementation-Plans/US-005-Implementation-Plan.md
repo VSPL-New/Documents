@@ -1,5 +1,7 @@
 # US-005: AI-Assisted Listing Creation — Implementation Plan
 
+> **Update (2026-10-25, category taxonomy):** US-006 is built first, so this plan must be revised before it is built: classify to an L1/L2/L3 category code from the taxonomy in one stage and store suggestions with category codes; prefill only attributes the Metadata Dictionary marks AI-extractable, validated against the category's listing schema; the AI on/off switch and thresholds come from US-121 (until then `valuex.ai.enabled`); define retention and limits for seller photos sent to the Vision service; price comparables join on `listings.category_id`. The open gap about validating categories against the taxonomy is closed by US-006. Migration numbers shift (US-006 takes `V16`).
+
 ## 1. Header
 
 | Field | Value |

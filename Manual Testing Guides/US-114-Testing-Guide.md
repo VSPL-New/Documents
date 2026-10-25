@@ -1,5 +1,7 @@
 # US-114: Listing Item Details Entry: Manual Testing Guide
 
+> **Update (2026-10-25, category taxonomy):** the category and price-maximum steps in this guide change when US-006 is built (an L3 category from the picker, category-driven fields, maximum price ₹10,00,00,000). This guide is revised then.
+
 **Scope:** the Item Details page (Sell step 2) and `PATCH /api/v1/listings/{listingId}`. AI is off by default, so the page opens empty. The restricted item check (US-007) and plan selection (US-008) are not built yet.
 
 ## Setup
