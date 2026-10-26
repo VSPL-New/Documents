@@ -161,4 +161,19 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 ---
 
-**Status:** Approved (2026-10-25; the user reviewed the option-list batch 2 and approved this plan)
+## 8. Implementation notes (deviations from the plan, recorded 2026-10-26)
+
+- **No `category_attribute_overrides` table.** Nothing used it. The differences it was meant to hold (required fields, type corrections, option lists, profile additions) are in the importer's override files under `taxonomy/overrides/` and are applied to the profile when it is loaded. The LLD and HLD table lists were updated.
+- **No schema cache.** The listing schema is built on each request from indexed tables; the Redis cache with eviction on import is deferred until it is needed.
+- **"More details" fields follow D31**, not item 4 of section 7 (written before D31): all optional Common fields for goods and whole vehicles (`age_months`, `purchase_year`, `original_price_inr`, `invoice_available`, `warranty_status`, `warranty_end_date`, `repair_history`, `ownership_count`, `serial_number_present`, `authenticity_proof`). `video_available` stays hidden. `ownership_count` is not offered for whole vehicles because their profiles already have `owner_count`. Fields already in the profile (for example `warranty_status`) appear once, in the profile.
+- **Hidden from the form:** latitude and longitude (no way to capture them yet), and the other system or common-column keys listed in `AttributeRules.EXCLUDED_KEYS`.
+- **Attribute payload** is an object by key (`{ "brand": "Apple" }`), not a list of key/value pairs; field-level errors carry `error.details.field` (a small extension of `BusinessException` and the exception handler).
+- **Condition notes** are required wherever condition is shown (new error `ERROR_CONDITION_NOTES_REQUIRED`); new errors `ERROR_NEGOTIABLE_REQUIRED` and `ERROR_QUANTITY_INVALID`.
+- **Option codes** are the upper-case display value with `+` written as `PLUS` (so `HDR10` and `HDR10+` differ). The importer skips an import when the files' checksum equals the last successful one, and `valuex.taxonomy.import-dry-run` runs the whole import and rolls it back.
+- **`PlainText`** moved from the listing module to `com.valuex.common.util` because the taxonomy validator also uses it.
+- **Mobile:** the category picker is a full-screen route opened with the navigator (not a new go_router route) and returns the chosen leaf code; "More details" is a small collapsible section (an expansion tile did not work inside the card background); Continue stays off while a category's form is loading; the old chip widget and its tests were removed.
+- **Checks run:** backend `mvn verify` (817 tests, checkstyle clean, coverage checks met, new-code coverage 92.7%), SonarQube (no open issue left in files changed by this story; the quality gate still reports 5 pre-existing test-code smells in `OtpVerifierTest` and `TaxSettingsTest` and 1 in `JwtTokenProvider`, files this story does not touch), `flutter analyze` clean, all 115 listing tests pass. 18 accessibility and contrast tests on unrelated screens (sign-in, sign-up, Aadhaar, OTP, terms, splash, profile, account security) fail in the full mobile run; see the final report.
+
+---
+
+**Status:** Approved (2026-10-25; the user reviewed the option-list batch 2 and approved this plan). Implemented 2026-10-26; see section 8.
