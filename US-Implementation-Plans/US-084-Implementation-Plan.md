@@ -1,5 +1,7 @@
 # US-084: Pre-Publication Trust & Safety Review — Implementation Plan
 
+> **Update (2026-10-25, category taxonomy):** the review also covers Conditional-category and Real Estate listings, including the seller's compliance acceptance (US-007). The `categories_unrelated` signal no longer exists because multi-category tagging was dropped.
+
 ## 1. Header
 
 | Field | Value |

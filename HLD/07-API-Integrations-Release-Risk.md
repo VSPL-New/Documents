@@ -2,6 +2,8 @@
 
 # Part 7 – API Catalog, External Integrations, Release Architecture, Rollout Strategy & Risk Analysis
 
+> **Update (2026-10-25, category taxonomy):** The catalog gains the category APIs (`/categories/children`, `/categories/search`, `/categories/{code}/listing-schema`, `PUT /listings/{id}/category`) and, with US-122, delivery options and Shiprocket webhooks. Shiprocket is a new external integration (serviceability, shipment creation, pickup, tracking) behind a partner-neutral interface. New risks: taxonomy maintenance (Admin and import), Shiprocket account limits and eligibility rules, and OpenSearch operations. pgvector photo search is deferred.
+
 **Document Version:** 1.0
 **Product:** ValueX
 **API Style:** REST + WebSocket
@@ -287,7 +289,9 @@ Parameters:
 
 ```text
 query
-category
+category (L1, L2 or L3 code)
+transactionIntent (required for Real Estate)
+attribute facets (from the category's profile)
 priceMin
 priceMax
 location
@@ -299,7 +303,9 @@ condition
 ## Categories
 
 ```http
-GET /api/v1/search/categories
+GET /api/v1/categories/children?parentCode=&scope=POPULAR|OTHERS|ALL
+GET /api/v1/categories/search?q=
+GET /api/v1/categories/{code}/listing-schema
 ```
 
 ---
@@ -319,7 +325,7 @@ GET  /api/v1/search/saved
 POST /api/v1/search/photo
 ```
 
-Premium feature. Request is orchestrated by Spring Boot: account-state check, server-side entitlement/quota/rate limit, temporary private R2 query media, Python visual-search call, authoritative listing eligibility filtering, OpenSearch filters/facets, and ranked response assembly.
+Premium feature. Request is orchestrated by Spring Boot: account-state check, server-side entitlement/quota/rate limit, temporary private query media, Vision AI call (valuex-ai) returning category candidates and attributes, a query builder, authoritative listing eligibility filtering, and OpenSearch filters/facets with ranked response assembly. No embeddings or pgvector in MVP.
 
 ```http
 GET /api/v1/search/photo/{searchId}

@@ -1,0 +1,14 @@
+Modern Real Estate Navigation Model,,,,
+Layer,Seller experience,Buyer experience,System field,Example values
+1. Intent,What do you want to do? ? Sell / Rent Out,What are you looking for? ? Buy / Rent,transaction_intent,SALE / RENT / LEASE
+2. Property family,Choose the type of property,Choose the property family,category_l2,Homes & Residences; New Developments; Land & Plots; Commercial & Workspaces; Shared & Managed Living
+3. Property type,Choose the closest property type,Filter/browse by property type,category_l3,Apartment; Villa; Office; Plot; PG; Co-Living; etc.
+4. Structured details,Enter/confirm property facts,Use facets to narrow results,metadata profile,"BHK, area, furnishing, availability, price/rent, deposit, amenities, floor, ownership, RERA, etc."
+5. AI assistance,AI suggests visible attributes from photos; seller confirms,AI-enriched search and ranking,AI extraction fields,"Property type, furnishing, visible condition, room/layout cues, amenities; never infer legal/ownership facts"
+,,,,
+Recommended L2,What it covers,Typical intents,,
+Homes & Residences,Completed residential homes and residences,Buy / Sell / Rent / Rent Out,,
+New Developments,Builder/developer projects and under-construction inventory,Buy / Sell,,
+Land & Plots,"Residential, commercial, agricultural and industrial land",Buy / Sell / Lease,,
+Commercial & Workspaces,"Offices, retail, flex space, warehouses and industrial units",Buy / Sell / Rent / Lease,,
+Shared & Managed Living,"PG, co-living, hostel, guest house and flatmate inventory",Rent / Rent Out,,

@@ -1,4 +1,6 @@
-# US-114: Listing Item Details Entry — Implementation Plan
+# US-114: Listing Item Details Entry — Implementation Plan (category part superseded by US-006)
+
+> **Update (2026-10-25, category taxonomy):** this plan was implemented as written. The category part is superseded by US-006 (`Documents/US-Implementation-Plans/US-006-Implementation-Plan.md`): `listings.category_slug` is replaced by an L3 `category_id`, the single-select chips are replaced by the category picker, and the page is driven by the category's listing schema (new common fields condition notes, negotiable and quantity; optional fields under "More details"). The maximum price is now ₹10,00,00,000 (`valuex.listing.max-price`); the figures below record the original ₹1,00,00,000.
 
 ## 1. Header
 

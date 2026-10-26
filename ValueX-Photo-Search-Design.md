@@ -15,6 +15,8 @@
 **Cache:** Redis\
 **Date:** 2026-09-01
 
+> **Update (2026-10-25, category taxonomy):** For MVP, photo search does **not** use image embeddings or pgvector. The buyer's photo goes to the Vision AI service (valuex-ai), which returns category candidates and attributes from the taxonomy; a query builder turns them into OpenSearch filters and boosts with relaxation when results are few (L3 plus attributes, then fewer attributes, then L2, then text), and the buyer can edit the extracted chips without another Vision call. Photo search stays premium-gated. Retention and limits for buyer photos are defined in US-039. The pgvector design below is deferred to a later phase for categories where metadata-only search proves insufficient. See `ValueX_Category_Taxonomy_MVP_Design.md` (parts E and F) and US-039 to US-041.
+
 ------------------------------------------------------------------------
 
 ## 1. Purpose
