@@ -323,7 +323,7 @@ CREATE TABLE categories (
     ui_rank INTEGER
 );
 -- attribute_definitions, attribute_options, metadata_profiles, metadata_profile_attributes,
--- profile_attribute_options, category_metadata_profiles, category_attribute_overrides,
+-- profile_attribute_options, category_metadata_profiles,
 -- listing_attribute_values, listing_attribute_option_values, taxonomy_import_log:
 -- full DDL in the Sprint 2 LLD, Part C.3
 ```

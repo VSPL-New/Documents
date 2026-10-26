@@ -1637,15 +1637,8 @@ CREATE TABLE category_metadata_profiles (
     category_id UUID PRIMARY KEY REFERENCES categories(id),
     profile_id UUID NOT NULL REFERENCES metadata_profiles(id)
 );
-
-CREATE TABLE category_attribute_overrides (
-    category_id UUID NOT NULL REFERENCES categories(id),
-    attribute_id UUID NOT NULL REFERENCES attribute_definitions(id),
-    required BOOLEAN,
-    display_order INTEGER,
-    validation_json JSONB,
-    PRIMARY KEY (category_id, attribute_id)
-);
+-- No per-category override table in this release: the importer's override files (required fields,
+-- type corrections, option lists, profile additions) are applied to the profile when it is loaded.
 
 CREATE TABLE listing_attribute_values (
     listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
@@ -1701,11 +1694,12 @@ PUT /api/v1/listings/{listingId}/category
 PATCH /api/v1/listings/{listingId}
 ```
 
-- `children`: enabled children of a node (top level without `parentCode`); `POPULAR` returns up to 15 L1 or 10 L2 by `ui_rank`, `OTHERS` the remaining enabled ones. Each item: `code`, `name`, `level`, `hasChildren`.
-- `search`: up to 20 enabled L3 categories whose name matches (case-insensitive, at least 2 characters), with the full path.
-- `listing-schema`: the form definition for an L3: `key`, `label` (dictionary display name), `type`, `unit`, `uiControl`, `required`, `options`, `validation`, `aiPrefillEnabled`, `order`, `group`.
+- `children`: enabled children of a node (top level without `parentCode`); `POPULAR` returns up to 15 L1 or 10 L2 by `ui_rank`, `OTHERS` the remaining enabled ones, `ALL` every enabled child in display order. Each item: `code`, `name`, `level`, `hasChildren`, `popular`, `marketplaceStatus`. A leaf as parent gives `ERROR_CATEGORY_LEAF`; an unknown or disabled parent gives `CATEGORY_NOT_FOUND`.
+- `search`: up to 20 enabled L3 categories whose name, or whose parent's name, matches (case-insensitive, at least 2 characters; shorter text gives an empty list), with the full path.
+- `listing-schema`: the form definition for an L3: `category` (with path), `profileCode`, `group` (`GOODS`, `WHOLE_VEHICLE`, `REAL_ESTATE`), `common` (`conditionVisible`, `quantityVisible`, `negotiableVisible`, `priceDerived`), `transactionIntents` and `fields`. Each field: `key`, `label` (dictionary display name), `type` (option types without options arrive as `TEXT` or `TEXT_LIST`), `unit`, `uiControl`, `required`, `requiredWhen` (`{ key, values }`, used for the price by transaction intent), `section` (`CATEGORY` or `MORE`), `options`, `validation` (`min`, `max`, `maxLength`, `maxItems`, `maxDecimals`, `pattern`), `aiPrefill`, `order` and `prefillOption` (the option that repeats the category name, or the only option). Required fields come first, then the other category fields, then `MORE`.
 - `PUT category` body: `{ "categoryCode": "CAT-0001" }`; the seller comes from the security context only. Attributes outside the new schema are deleted in the same transaction.
-- `PATCH` (extends US-114): `conditionNotes`, `negotiable`, `quantity`, `attributes` (`[{ "key": "brand", "value": "Apple" }]`) and the existing fields; `categorySlug` is removed. `ListingDraftResponse` carries `category` (code, name, path), the stored `attributes` and the new common fields.
+- `PATCH` (extends US-114): `conditionNotes`, `negotiable`, `quantity`, `attributes` (an object by attribute key, for example `{ "brand": "Apple" }`) and the existing fields; `categorySlug` is removed. `price` is the asking price and is ignored for Real Estate. `ListingDraftResponse` carries `category` (code, name, status, path), the stored `attributes` (option codes, text, numbers, booleans, ISO dates, lists, objects) and the new common fields.
+- **Errors:** `ERROR_CATEGORY_REQUIRED`, `CATEGORY_NOT_FOUND` (404), `ERROR_CATEGORY_DISABLED`, `ERROR_CATEGORY_NOT_LEAF`, `ERROR_ATTRIBUTE_NOT_ALLOWED`, `ERROR_ATTRIBUTE_REQUIRED`, `ERROR_ATTRIBUTE_INVALID` (these three carry `error.details.field` with the attribute key), `ERROR_CONDITION_NOTES_REQUIRED`, `ERROR_NEGOTIABLE_REQUIRED`, `ERROR_QUANTITY_INVALID` and the existing price and condition errors.
 
 ## C.5 Service Logic
 
@@ -1713,11 +1707,9 @@ PATCH /api/v1/listings/{listingId}
 @Transactional
 public void setCategory(UUID listingId, UUID sellerId, String categoryCode) {
     var listing = requireOwnedDraft(listingId, sellerId);        // owner + DRAFT/REVISION_REQUIRED
-    var category = categoryService.requireEffectivelyEnabled(categoryCode); // CATEGORY_NOT_FOUND, ERROR_CATEGORY_DISABLED
-    if (category.getLevel() != 3)
-        throw new BusinessException("ERROR_CATEGORY_NOT_LEAF", "Choose a more specific category");
-    listing.setCategory(category);
-    attributeValueRepository.deleteNotIn(listingId, listingSchemaService.keysFor(category));
+    var category = categoryService.requireSelectableLeaf(categoryCode); // CATEGORY_NOT_FOUND, ERROR_CATEGORY_NOT_LEAF, ERROR_CATEGORY_DISABLED
+    listing.setCategoryId(category.id());
+    attributeService.deleteOutside(listingId, listingSchemaService.schemaFor(category).keys());
 }
 
 @Transactional
@@ -1731,10 +1723,12 @@ public void saveDetails(UUID listingId, UUID sellerId, UpdateListingDetailsReque
 ```
 
 - **Effective enabled:** an L3 is selectable when its L1, L2 and L3 are `admin_enabled` (a disabled parent hides the branch without rewriting child flags). Real Estate and Conditional categories are enabled from day one.
-- **Schema:** built from the profile, overrides and the Common-field applicability rules (Real Estate: no condition, quantity or delivery fields; whole vehicles: no quantity; delivery fields are added by US-122). Cached by `(categoryCode, profileVersion)` and evicted on import.
+- **Schema:** built from the profile and the Common-field applicability rules (Real Estate: no condition, quantity or More details; whole vehicles: no quantity and no `ownership_count`, since the profile has `owner_count`; delivery fields are added by US-122). It is built on each request from indexed tables; no cache is used in this release. Latitude, longitude and the other system or common-column keys (`AttributeRules.EXCLUDED_KEYS`) are never offered as fields.
+- **Validation:** the schema sends the limits (`validation`) and the server enforces the same ones in `AttributeValidator`: unknown keys, required and conditionally required fields, types, ranges, decimals, patterns, options (by code or label), list and object sizes, dates (`expiry_date` and `available_from` not in the past) and related fields (`price_min` ≤ `price_max`, `carpet_area_min_sqft` ≤ `carpet_area_max_sqft`, `floor_number` ≤ `total_floors`, `players_min` ≤ `players_max`, `pieces_missing` ≤ `pieces_total`, `carpet_area_sqft` ≤ `builtup_area_sqft`). Fields that repeat the category name (`property_type`, `apparel_type` and the other "type" attributes) and an intent with a single option are filled in when the seller sends nothing.
+- **Storage:** `ListingAttributeService` writes each value to the column of its type (`value_text`, `value_integer`, `value_decimal`, `value_boolean`, `value_date`, `value_option_id`, `value_json`), multi-select options one row each in `listing_attribute_option_values`; every save replaces the listing's earlier values.
 - **Price (`ListingPriceResolver`):** goods and vehicles use `asking_price_inr`; Real Estate Sale gives `sale_price` (`price_min` for New Developments), Rent and Lease give `monthly_rent`. The schema offers only the intents allowed for the profile and requires the matching price. The maximum price is ₹10,00,00,000 (`valuex.listing.max-price`).
 - **"Others":** the OTHER profile has only common fields plus `item_type_free_text`; non-common entries are stored in one JSON attribute (`special_attributes_json`).
-- **Importer:** CSVs and an overrides file under `src/main/resources/taxonomy/`; idempotent, all-or-nothing, upsert by code, with the validations in the plan (hierarchy, profile and key checks, popular limits 15 L1 and 10 L2 per L1, duplicate ranks, duplicate display names inside a profile); runs on deploy (`valuex.taxonomy.import-on-startup`) and logs to `taxonomy_import_log`.
+- **Importer:** CSVs and override files (`required-fields.csv`, `type-overrides.csv`, `options.csv`, `profile-additions.csv`) under `src/main/resources/taxonomy/`; idempotent, all-or-nothing, upsert by code, skipped when the files' checksum matches the last successful import, with the validations in the plan (hierarchy, profile and key checks, popular limits 15 L1 and 10 L2 per L1, duplicate ranks, duplicate display names inside a profile, option code collisions); runs on deploy (`valuex.taxonomy.import-on-startup`, optional `valuex.taxonomy.import-dry-run`) and logs to `taxonomy_import_log`. Option codes are the upper-case display value with `+` written as `PLUS`; the options of "type" attributes are generated from the L3 names of the profile (L2 names for `instrument_family`).
 
 ## C.6 Sequence Diagram
 

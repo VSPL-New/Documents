@@ -262,7 +262,7 @@ Sign Up (`POST /api/v1/auth/register/complete`) no longer collects state, city, 
 
 * listings
 * listing_images
-* categories, attribute_definitions, attribute_options, metadata_profiles, metadata_profile_attributes, profile_attribute_options, category_metadata_profiles, category_attribute_overrides
+* categories, attribute_definitions, attribute_options, metadata_profiles, metadata_profile_attributes, profile_attribute_options, category_metadata_profiles
 * listing_attribute_values, listing_attribute_option_values
 * taxonomy_import_log
 * listing_plans
