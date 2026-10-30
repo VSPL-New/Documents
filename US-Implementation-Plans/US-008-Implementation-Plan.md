@@ -11,12 +11,12 @@
 | Sprint | Sprint 2 — Seller Listing Creation |
 | Story Points | 5 |
 | Repos | valuex-backend, valuex-mobile |
-| Dependency | US-078 (plan catalog, tax settings and the plan page); **US-117 (payment port, sandbox adapter, `payments` tables, checkout wrapper)**; US-089 (`ListingLifecycleService`, states); US-007 (`RestrictedItemGate`); US-114 (complete item details); US-004 (Aadhaar check before plan selection). Must be built **before** US-009 and US-084, which are delivered together after it |
+| Dependency | US-078 (plan catalog, tax settings and the plan page); **US-117 (payment port, dummy gateway, `payments` tables, checkout wrapper)**; US-089 (`ListingLifecycleService`, states); US-007 (`RestrictedItemGate`); US-114 (complete item details); US-004 (Aadhaar check before plan selection). Must be built **before** US-009 and US-084, which are delivered together after it |
 
 **Scope decisions (2026-10-16):**
 1. Seller flow: Item Details (US-114) → restricted item check (US-007) → Aadhaar check if needed (US-004) → **plan selection and review page (this story)** → payment → webhook (US-009) → Trust & Safety review (US-084) → publication on approval.
 2. This story owns plan selection, the plan price snapshot on the listing, the request for a payment and the Review page. It does **not** confirm a payment: only the signed gateway callback does that (US-117, then US-009 for the listing). The app shows "payment received" only after the server says so.
-3. The payment itself is **US-117** (gateway-neutral): a payment port with a sandbox adapter, `payments` and `payment_attempts` tables, the callback endpoint and the app checkout wrapper. The gateway is not decided; this story never names one. `valuex.payment.provider` is owned by US-117.
+3. The payment itself is **US-117** (gateway-neutral): a payment port, a **dummy gateway** (its `mock` provider), `payments` and `payment_attempts` tables, the callback endpoint and the app checkout wrapper. The gateway is not decided and talks with a provider are in progress, so this story is built and tested only against the dummy gateway; it never names a real gateway. `valuex.payment.provider` is owned by US-117.
 4. Upgrading a live listing is out of scope (US-064).
 5. Plans are dynamic and managed by the admin console (US-116): this story never refers to a plan by name in logic. The plan is chosen by code from the catalog, the price and validity are copied onto the listing when the plan is selected, and a price of zero means no payment. Prices include GST for now (US-078 tax settings).
 
@@ -56,7 +56,7 @@
 ## 4. Implementation Steps
 
 ### Database Migration — `valuex-backend`
-- [ ] `V19__listing_plan_snapshot.sql` (after US-117's `V18`, which holds the `payments` and `payment_attempts` tables; renumber at implementation time): add nullable `plan_price NUMERIC(10,2)`, `plan_validity_days INT` and `plan_price_includes_gst BOOLEAN` to `listings`. The `payments` tables are not created here.
+- [ ] `V20__listing_plan_snapshot.sql` (US-007 took `V18` and US-117 is planned as `V19`, which holds the `payments` and `payment_attempts` tables; renumber at implementation time if the order changes): add nullable `plan_price NUMERIC(10,2)`, `plan_validity_days INT` and `plan_price_includes_gst BOOLEAN` to `listings`. The `payments` tables are not created here.
 
 ### Backend — Payments (from US-117)
 - [ ] Use US-117's payment service to create a payment for the listing (reference type `LISTING_PLAN`, reference ID the listing ID, amount from the plan snapshot); it returns what the app checkout needs. This story adds no gateway adapter, no tables and no callback handling.
@@ -83,7 +83,7 @@ Follow `nova-figma-to-code` for the Review & Publish step (call the Figma MCP fo
 - [ ] After checkout returns, poll the listing status (with a limit) until it shows payment received (`PLAN_PAYMENT_SUCCESS` or later), then show "Payment received, your listing is under review" and go to My Listings; if it does not confirm in time, show a message that the payment is being confirmed and keep checking on resume.
 - [ ] Handle: checkout cancelled (stay on the Review page, order kept, can retry or change plan), payment failed (message `ERROR_PAYMENT_FAILED`, retry or another plan), app killed mid-payment (on reopen, the draft shows its plan state and offers to continue or change plan).
 - [ ] Errors mapped in `listing_error_messages.dart`; strings in English and Hindi; tokens only; 48 dp tap targets; accessibility guideline tests.
-- [ ] With the sandbox payment provider (US-117) the app can complete a payment in development.
+- [ ] With the dummy gateway (US-117) the whole flow works in development and testing: **Pay ₹{amount} & Publish** opens the test checkout (Pay, Fail, Cancel); Pay settles through the same signed callback a real gateway will use, then the listing moves on; Fail shows `ERROR_PAYMENT_FAILED` with retry or change plan; Cancel stays on the Review page. No money moves.
 
 ### Documentation/Quality
 - [ ] OpenAPI example for `plan-selection`; update LLD Part H where the implementation differs.
@@ -103,7 +103,7 @@ Target >90% coverage for new code (`CLAUDE.md`).
 - [ ] Payment service error (gateway unavailable): listing returns to plan selection, no stray payment row left pending, `ERROR_GATEWAY_UNAVAILABLE`.
 
 ### Backend Integration Tests (Testcontainers PostgreSQL)
-- [ ] `V19` applies; `POST /plan-selection` end to end with the sandbox provider; IDOR (another seller gets not found).
+- [ ] `V20` applies; `POST /plan-selection` end to end with the dummy gateway; IDOR (another seller gets not found).
 - [ ] Re-selecting a plan from `PLAN_PAYMENT_PENDING` works through `RESELECT_PLAN`.
 
 ### Mobile Tests (Flutter)
@@ -128,12 +128,15 @@ Target >90% coverage for new code (`CLAUDE.md`).
 1. **Basic price (decided 2026-10-16).** Basic is ₹49 and there is no free plan; a plan set to zero by management is free and uses the zero-price path. The story text of US-008 is updated.
 2. **Payment gateway (decided 2026-10-16: not chosen yet).** Gateway choice, account, keys and the app SDK are US-117's open items; this story is independent of them.
 3. **Taxes (decided 2026-10-16).** Prices include GST and the tax mode and rate are configurable (US-078, US-116). The GST amount shown on the Review page is informational; invoice generation is not in this story and needs a finance decision.
-4. **Order of work.** US-117 must be built before this story. If it is not ready, only the port interface and the sandbox adapter of US-117 are needed here.
+4. **Order of work.** US-117 must be built before this story. If it is not ready, only the port interface and the dummy gateway of US-117 are needed here.
 5. **Changing plan after payment** is out of scope (US-064).
 6. **Cancelled orders at the gateway (decided in US-117).** An unpaid order is not cancelled at the gateway when the seller picks another plan: the old payment is failed locally (`supersedeOpenPayment`, reason `SUPERSEDED`) and the gateway order expires. If it is paid anyway, US-117 reports a late success and US-009 flags it for refund review.
 7. **Dependency order.** US-008 comes before the US-009 + US-084 pair; it calls `ListingPaymentCompletedHandler`, which that pair provides, so for development the handler is introduced as an interface with a no-op default that the pair replaces.
 8. **Readiness check (2026-10-29).** Built: US-078 (`PlanCatalogService`, plan page), US-089 (`ListingLifecycleService`), US-114, US-006 and US-005. Not built: **US-007** (`RestrictedItemGate`) and **US-117** (payment port, `payments` tables). The latest migration is `V17` (US-005). Build order chosen on 2026-10-29: US-007 first (`V18`), then US-117 (`V19`), then this story (`V20`); the `V18`/`V19` numbers above shift accordingly. This story cannot be implemented end to end until US-117 (at least its port and sandbox adapter) and US-007 exist.
+9. **Readiness check (2026-10-30).** US-007 is now built: `RestrictedItemGate.requireCleared(listingId)` exists on the `feature/US-007-restricted-items-prevention` branches (pull requests: backend #42, valuex-ai #3, valuex-mobile #46, open, not yet merged); the latest migration is `V18`. **US-117 is still not built**, so this story is blocked until at least its payment port, dummy gateway and `payments` tables are on `main`. Order: US-117 first (`V19`), then this story (`V20`).
+10. **Dummy gateway (decided 2026-10-30).** Because talks with a payment gateway provider are still in progress, US-117 delivers a dummy gateway first and this story builds on it. Nothing in this story changes when a real gateway replaces it. Where the dummy checkout may run is decided in US-117 Open Gap 9: `dev` only, never prod.
+11. **Zero-price path and the dummy gateway.** The zero-price path never reaches the gateway, so it behaves the same with the dummy or a real gateway.
 
 ---
 
-**Status:** Draft
+**Status:** Approved (2026-10-30; the user approved the plan, built on the dummy gateway of US-117; migration `V20`; implement after US-117).
