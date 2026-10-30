@@ -93,7 +93,7 @@ Allow sellers to create and publish listings.
 | ------ | ------------------------------------- | --------------- | -- | ---------- |
 | US-004 | Create Listing with Photo Capture     | mobile, backend | 8  | US-001     |
 | US-114 | Listing Item Details Entry            | backend, mobile | 5  | US-004     |
-| US-005 | AI-Assisted Listing Creation          | backend, AI     | 8  | US-004     |
+| US-005 | AI-Assisted Listing Creation          | backend, mobile, AI | 13 | US-004     |
 | US-006 | Category Taxonomy and Category-driven Item Details | backend, mobile | 13 | US-004, US-114, US-089 (built before US-005 and US-007) |
 | US-007 | Restricted Items Prevention           | backend, AI     | 5  | US-005, US-114 |
 | US-089 | Lifecycle State - Listing             | backend         | 5  | US-004     |
