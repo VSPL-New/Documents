@@ -132,6 +132,7 @@ Target >90% coverage for new code (`CLAUDE.md`).
 5. **Changing plan after payment** is out of scope (US-064).
 6. **Cancelled orders at the gateway (decided in US-117).** An unpaid order is not cancelled at the gateway when the seller picks another plan: the old payment is failed locally (`supersedeOpenPayment`, reason `SUPERSEDED`) and the gateway order expires. If it is paid anyway, US-117 reports a late success and US-009 flags it for refund review.
 7. **Dependency order.** US-008 comes before the US-009 + US-084 pair; it calls `ListingPaymentCompletedHandler`, which that pair provides, so for development the handler is introduced as an interface with a no-op default that the pair replaces.
+8. **Readiness check (2026-10-29).** Built: US-078 (`PlanCatalogService`, plan page), US-089 (`ListingLifecycleService`), US-114, US-006 and US-005. Not built: **US-007** (`RestrictedItemGate`) and **US-117** (payment port, `payments` tables). The latest migration is `V17` (US-005). Build order chosen on 2026-10-29: US-007 first (`V18`), then US-117 (`V19`), then this story (`V20`); the `V18`/`V19` numbers above shift accordingly. This story cannot be implemented end to end until US-117 (at least its port and sandbox adapter) and US-007 exist.
 
 ---
 

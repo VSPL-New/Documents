@@ -783,7 +783,7 @@ MLflow Model Registry
 
 | Metric | Target |
 |---|---|
-| Listing AI latency | < 5 seconds |
+| Listing AI latency | < 5 seconds when the cheapest model is accepted; hard limit 20 seconds (model cascade with retries, see Sprint 2 LLD Part B §6.5) |
 | Photo search latency | < 2 seconds p95 |
 | Fraud score latency | < 500ms p95 |
 | Moderation latency | < 3 seconds |

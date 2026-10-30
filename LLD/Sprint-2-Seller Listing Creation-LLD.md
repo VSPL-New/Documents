@@ -323,8 +323,10 @@ sequenceDiagram
 
 > **Update (2026-10-25, category taxonomy):** `category_suggestions` now hold category codes from the taxonomy (`categoryCode` for an enabled L3, with its L1 and L2 derived) instead of category ids and free paths. The classifier selects from the L1/L2/L3 taxonomy in one stage and the service prefills only attributes whose `ai_extractable` flag is YES (LIMITED only with a "please verify" flag; never non-visible or legal facts); returned keys are validated against the category's listing schema (Part C). An Admin switch (US-121) turns AI on or off and sets confidence thresholds; when AI is off, unavailable or low-confidence the seller enters everything, including the category. Price comparables join on `listings.category_id` and the profile's attributes. Retention and limits for photos sent to the Vision service are defined here. The text below that mentions `categoryId`, `categoryPath` and `listing_categories` is to be read with these changes until Part B is revised in full when US-005 is planned for build.
 
+> **Update (2026-10-28, AI cost optimization):** vision models identify the item from 2 to 10 seller photos (one object, different angles) and capture the metadata of its category. To keep the cost down the AI service runs a cascade of 3 to 4 models, cheapest first, and moves to the next model only when the confidence is too low or a model keeps failing; every model call is retried a few times first. The AI also tries to fill every AI-extractable field of the detected L3 category (required and optional) and writes the title, description, condition and condition notes (§6.5.4). Only the best 3 to 5 resized views go to the models, and the originals stay untouched in R2 (§6.5.6). Providers, models, order, thresholds and retry settings are configuration only. See [§6.5](#65-model-cascade-cost-optimization). Where older text below says the minimum is 1 image (§5.2.1, §9), `LISTING_HAS_NO_IMAGES`, a 5-second timeout (§5.9, §10, §14), "no retry" (§10), or a single vision call (§6.3), read it with §6.5 and these changes.
+
 **Story Points:** 8 | **Repos:** valuex-backend, valuex-ai
-**Dependency:** US-004 (Create Listing with Photo Capture) - must be complete; listing must exist in `DRAFT` state with at least 1 uploaded image before this flow runs
+**Dependency:** US-004 (Create Listing with Photo Capture) - must be complete; listing must exist in `DRAFT` state with at least 2 uploaded images (the US-004 minimum) before this flow runs
 
 ## Table of Contents (Part B)
 
@@ -391,6 +393,7 @@ The system analyzes photos already uploaded for a draft listing (US-004) and ret
 - `POST /ai/v1/listings/suggest` internal AI endpoint (Listing Intelligence Service)
 - Persistence of suggestions and per-field feedback for the AI feedback loop ([HLD §18.2](../HLD/04-AI-Architecture.md#182-feedback-loops))
 - Fallback to manual entry on AI failure/timeout
+- Cost-aware model cascade, configurable providers and retry inside the AI service (§6.5)
 
 ## 2.2 Out of Scope
 
@@ -439,68 +442,54 @@ graph TB
 Extends the Listing Domain defined in [HLD §4.3](../HLD/03-Data-Architecture.md#43-listing-domain). Assumes `listings` and `listing_images` already exist from US-004. Migration file name/version must be set to the next available Flyway version at implementation time (shown here as `V{N}` placeholder per [CODING_STANDARDS.md §2.7](../CODING_STANDARDS.md)).
 
 ```sql
--- V{N}__add_listing_ai_suggestions.sql
-
-CREATE TYPE listing_ai_suggestion_status AS ENUM (
-    'PENDING',
-    'COMPLETED',
-    'FAILED',
-    'TIMEOUT'
-);
-
-CREATE TYPE listing_ai_feedback_field AS ENUM (
-    'CATEGORY',
-    'TITLE',
-    'CONDITION',
-    'DESCRIPTION',
-    'PRICE'
-);
-
-CREATE TYPE listing_ai_feedback_action AS ENUM (
-    'ACCEPTED',
-    'EDITED',
-    'REJECTED'
-);
+-- V17__listing_ai_suggestions.sql (as built: VARCHAR columns with CHECK constraints instead of enum types,
+-- and no price columns because price suggestion is on hold; ai_assisted already exists since V10)
 
 CREATE TABLE listing_ai_suggestions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    listing_id UUID NOT NULL REFERENCES listings(id),
-    status listing_ai_suggestion_status NOT NULL DEFAULT 'PENDING',
-    category_suggestions JSONB,          -- [{categoryId, categoryPath, confidence}]
+    listing_id UUID NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL,         -- PENDING, COMPLETED, FAILED, TIMEOUT (CHECK)
+    category_suggestions JSONB,          -- [{categoryCode, categoryPath, confidence}]
+    attribute_suggestions JSONB,         -- [{key, value, confidence, verify}] for the category's AI-extractable fields
     title_suggestion VARCHAR(100),
     condition_suggestion VARCHAR(50),
+    condition_notes_suggestion TEXT,
     description_suggestion TEXT,
-    price_min NUMERIC(12,2),
-    price_max NUMERIC(12,2),
-    price_currency VARCHAR(3) DEFAULT 'INR',
-    warnings JSONB,                      -- ["WARNING_PRICE_OUT_OF_RANGE", ...]
+    warnings JSONB,                      -- ["MULTIPLE_ITEMS_DETECTED", ...]
     overall_confidence NUMERIC(5,4),
     model_name VARCHAR(100),
     model_version VARCHAR(50),
     inference_id UUID,
+    tier_attempts JSONB,                 -- [{tier, model, outcome, confidence, attempts, latencyMs, imagesSent, inputTokens, outputTokens}]
     latency_ms INTEGER,
     fallback_used BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_listing_ai_suggestion_status
+        CHECK (status IN ('PENDING', 'COMPLETED', 'FAILED', 'TIMEOUT'))
 );
 
-CREATE INDEX idx_listing_ai_suggestions_listing ON listing_ai_suggestions(listing_id);
+CREATE INDEX idx_listing_ai_suggestions_listing ON listing_ai_suggestions(listing_id, created_at DESC);
 CREATE INDEX idx_listing_ai_suggestions_status ON listing_ai_suggestions(status);
 
 -- One row per field the seller acted on; feeds the AI feedback loop (HLD 18.2)
 CREATE TABLE listing_ai_suggestion_feedback (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    suggestion_id UUID NOT NULL REFERENCES listing_ai_suggestions(id),
-    field listing_ai_feedback_field NOT NULL,
-    action listing_ai_feedback_action NOT NULL,
+    suggestion_id UUID NOT NULL REFERENCES listing_ai_suggestions(id) ON DELETE CASCADE,
+    field VARCHAR(30) NOT NULL,          -- CATEGORY, TITLE, CONDITION, CONDITION_NOTES, DESCRIPTION, ATTRIBUTE (CHECK)
+    attribute_key VARCHAR(100),          -- required when field = 'ATTRIBUTE' (CHECK)
+    action VARCHAR(20) NOT NULL,         -- ACCEPTED, EDITED, REJECTED (CHECK)
     original_value TEXT,
     final_value TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_listing_ai_feedback_field
+        CHECK (field IN ('CATEGORY', 'TITLE', 'CONDITION', 'CONDITION_NOTES', 'DESCRIPTION', 'ATTRIBUTE')),
+    CONSTRAINT chk_listing_ai_feedback_action
+        CHECK (action IN ('ACCEPTED', 'EDITED', 'REJECTED')),
+    CONSTRAINT chk_listing_ai_feedback_attribute_key
+        CHECK (field <> 'ATTRIBUTE' OR attribute_key IS NOT NULL)
 );
 
 CREATE INDEX idx_listing_ai_feedback_suggestion ON listing_ai_suggestion_feedback(suggestion_id);
-
--- Nullable, backward-compatible addition per CODING_STANDARDS 2.7
-ALTER TABLE listings ADD COLUMN ai_assisted BOOLEAN NOT NULL DEFAULT FALSE;
 ```
 
 ### 4.1 Notes
@@ -609,11 +598,16 @@ Success response (`AI` returned suggestions):
     "suggestionId": "8f2a...uuid",
     "status": "COMPLETED",
     "categorySuggestions": [
-      { "categoryId": "uuid", "categoryPath": "Electronics > Mobile Phones", "confidence": 0.91 }
+      { "categoryCode": "CAT-0001", "categoryPath": "Electronics > Mobile Phones", "confidence": 0.91 }
     ],
     "titleSuggestion": "Apple iPhone 13 128GB - Good Condition",
     "conditionSuggestion": "GOOD",
     "descriptionSuggestion": "Used Apple iPhone 13 with visible minor wear...",
+    "conditionNotesSuggestion": "Minor scratches on the frame; no cracks on the screen.",
+    "attributeSuggestions": [
+      { "key": "brand", "value": "APPLE", "confidence": 0.97, "verify": false },
+      { "key": "storage_gb", "value": 128, "confidence": 0.71, "verify": true }
+    ],
     "priceRange": { "min": 32000, "max": 38000, "currency": "INR" },
     "warnings": ["WARNING_PRICE_OUT_OF_RANGE"],
     "confidence": 0.89,
@@ -645,7 +639,7 @@ Error responses (true client/business errors, standard error envelope, `success:
 | HTTP | Code | Condition |
 |---|---|---|
 | 404 | `LISTING_NOT_FOUND` | listingId doesn't exist or doesn't belong to caller |
-| 400 | `LISTING_HAS_NO_IMAGES` | listing has zero uploaded images |
+| 400 | `ERROR_MIN_PHOTOS_REQUIRED` | fewer than 2 READY photos (replaces `LISTING_HAS_NO_IMAGES`) |
 | 400 | `LISTING_NOT_IN_DRAFT` | listing is not in `DRAFT` status |
 | 429 | `AI_SUGGESTION_RATE_LIMITED` | seller retriggers too frequently (see §8) |
 
@@ -693,6 +687,8 @@ public record ListingAiSuggestionResponse(
         String titleSuggestion,
         String conditionSuggestion,
         String descriptionSuggestion,
+        String conditionNotesSuggestion,
+        List<AttributeSuggestionDto> attributeSuggestions,
         PriceRangeDto priceRange,
         List<String> warnings,
         Double confidence,
@@ -708,7 +704,13 @@ package com.valuex.listing.dto;
 
 import java.util.UUID;
 
-public record CategorySuggestionDto(UUID categoryId, String categoryPath, Double confidence) {}
+public record CategorySuggestionDto(String categoryCode, String categoryPath, Double confidence) {}
+```
+
+```java
+package com.valuex.listing.dto;
+
+public record AttributeSuggestionDto(String key, Object value, Double confidence, boolean verify) {}
 ```
 
 ```java
@@ -729,7 +731,8 @@ import java.util.List;
 public record SuggestionFeedbackRequest(@NotEmpty @Valid List<FeedbackItem> feedback) {
 
     public record FeedbackItem(
-            String field,        // CATEGORY | TITLE | CONDITION | DESCRIPTION | PRICE
+            String field,        // CATEGORY | TITLE | CONDITION | CONDITION_NOTES | DESCRIPTION | ATTRIBUTE | PRICE
+            String attributeKey, // required when field = ATTRIBUTE
             String action,       // ACCEPTED | EDITED | REJECTED
             String originalValue,
             String finalValue
@@ -1114,6 +1117,7 @@ valuex:
     gateway:
       base-url: ${AI_GATEWAY_BASE_URL:http://valuex-ai-service:8000}
       api-key: ${AI_GATEWAY_API_KEY:changeme}
+      timeout-seconds: 20 # hard limit; the cascade may call several models (§6.5) and the AI service deadline is 17s
 
 resilience4j:
   circuitbreaker:
@@ -1126,10 +1130,27 @@ resilience4j:
   timelimiter:
     instances:
       aiGateway:
-        timeout-duration: 5s
+        timeout-duration: 20s
+  retry:
+    instances:
+      aiGateway:
+        max-attempts: 2 # one retry, only for connection failures and HTTP 502/503; never after a read timeout (§10)
+        wait-duration: 500ms
 ```
 
 New Maven dependency: `io.github.resilience4j:resilience4j-spring-boot3`, `org.springframework:spring-webflux` (for the reactive `WebClient`, used here only as an HTTP client, not for reactive controllers), and an S3-compatible object-storage client dependency used only inside provider adapters. The active adapter is selected from `valuex.media.storage.provider`; business services depend only on `ObjectStoragePort`.
+
+## 5.10 Internal Endpoints for the AI Service (decided 2026-10-28)
+
+The AI service does not read backend tables or call the public API. It uses internal endpoints that are not reachable from the public internet and are protected by `X-Internal-Api-Key` (a separate `SecurityFilterChain` for `/internal/v1/**`, no JWT, constant-time key comparison, key from `VALUEX_INTERNAL_API_KEY`; a missing or wrong key gives 401).
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /internal/v1/taxonomy/snapshot` | Enabled L3 categories (code, name, L1/L2 path, marketplace status) and `version` (checksum of the last successful `taxonomy_import_log` row); `ETag` / `If-None-Match` returns 304 |
+| `GET /internal/v1/taxonomy/categories/{code}/ai-fields` | The category's AI-prefill fields: key, label, type, unit, option codes, validation and `aiExtractable` (`YES` or `LIMITED`, read from `attribute_definitions.ai_extractable`) |
+| `POST /internal/v1/media/read-access` | Body `listingId`, `mediaIds`. Checks each is a READY photo attached to that listing and returns short-lived download URLs from `ObjectStoragePort.createDownloadAuthorization`; nothing is stored |
+
+The AI service caches the snapshot and `ai-fields` by version. The backend still validates every returned category and attribute against the schema (it never trusts the AI service), and marks `LIMITED` attributes `verify=true`.
 
 ---
 
@@ -1168,7 +1189,7 @@ class ListingSuggestRequest(BaseModel):
 
     listing_id: UUID = Field(alias="listingId")
     seller_id: UUID = Field(alias="sellerId")
-    media_ids: list[UUID] = Field(alias="mediaIds", min_length=1, max_length=10)
+    media_ids: list[UUID] = Field(alias="mediaIds", min_length=2, max_length=10)
     seller_location: str | None = Field(default=None, alias="sellerLocation")
     text_hint: str | None = Field(default=None, alias="textHint", max_length=500)
 ```
@@ -1180,7 +1201,7 @@ from uuid import UUID
 
 
 class CategorySuggestion(BaseModel):
-    category_id: UUID
+    category_code: str      # an enabled L3 code from the taxonomy snapshot
     category_path: str
     confidence: float
 
@@ -1191,17 +1212,31 @@ class PriceRange(BaseModel):
     currency: str = "INR"
 
 
-class ListingSuggestResponse(BaseModel):
-    inference_id: UUID
-    model_name: str
-    model_version: str
+class AttributeSuggestion(BaseModel):
+    key: str
+    value: str | int | float | bool | list[str] | dict | None
+    confidence: float
+    verify: bool            # true when the dictionary marks the field ai_extractable = LIMITED
+
+
+class ListingSuggestResult(BaseModel):
     category_suggestions: list[CategorySuggestion]
     title_suggestion: str | None
     condition_suggestion: str | None
+    condition_notes_suggestion: str | None
     description_suggestion: str | None
-    price_range: PriceRange | None
-    warnings: list[str]
+    attribute_suggestions: list[AttributeSuggestion]
+    price_range: PriceRange | None = None   # price suggestion is on hold
+
+
+class ListingSuggestResponse(BaseModel):    # standard AI envelope, CODING_STANDARDS 5.4 (camelCase aliases on the wire)
+    inference_id: UUID
+    model_name: str
+    model_version: str
+    result: ListingSuggestResult
     confidence_score: float
+    warnings: list[str]
+    tier_attempts: list[TierAttempt]  # extra top-level field, see §6.5.7
 ```
 
 ## 6.3 Service Logic
@@ -1278,15 +1313,22 @@ async def generate_listing_suggestions(request: ListingSuggestRequest) -> Listin
         inference_id=inference_id,
         model_name=MODEL_NAME,
         model_version=MODEL_VERSION,
-        category_suggestions=categories,
-        title_suggestion=title,
-        condition_suggestion=analysis.condition,
-        description_suggestion=description,
-        price_range=price_range,
+        result=ListingSuggestResult(
+            category_suggestions=categories,
+            title_suggestion=title,
+            condition_suggestion=analysis.condition,
+            condition_notes_suggestion=condition_notes,
+            description_suggestion=description,
+            attribute_suggestions=attributes,
+            price_range=price_range,
+        ),
         warnings=warnings,
         confidence_score=analysis.confidence,
+        tier_attempts=attempts,
     )
 ```
+
+`image_analysis.analyze` above is the cascade of [§6.5](#65-model-cascade-cost-optimization): it picks the cheapest model whose answer is confident enough, so `MODEL_NAME` and `MODEL_VERSION` are those of the accepting tier, not constants. In the same way `text_generator` and the attribute filling are replaced by the attribute and text call of §6.5.4, which produces `title`, `description`, `condition_notes` and `attributes`; `price_estimator` is not built while price suggestion is on hold.
 
 ### 6.3.1 Price Estimator (Comparable-Listings Query)
 
@@ -1335,6 +1377,223 @@ class Settings(BaseSettings):
     media_api_base_url: str
     media_api_key: str
 ```
+
+The vision settings (`vision_timeout_seconds` and the single confidence threshold) are replaced by the provider and tier configuration in §6.5.2.
+
+## 6.5 Model Cascade (Cost Optimization)
+
+### 6.5.1 Overview
+
+Vision models are the main AI cost. The Listing Intelligence Service therefore does not call one model; it calls up to 4 configured models in order from cheapest to most expensive, and stops at the first answer that is confident enough.
+
+```mermaid
+flowchart TD
+    A[2 to 10 photos] --> P[Prepare once: quality check, drop near-duplicates, resize, rank best 3 to 5 views]
+    P --> T1[Tier 1: cheapest model, retries]
+    T1 -->|valid, enabled L3, confidence >= tier threshold| OK[Accept]
+    T1 -->|low confidence, invalid, or retries exhausted| T2[Tier 2]
+    T2 -->|accepted| OK
+    T2 -->|not accepted| T3[Tier 3]
+    T3 -->|accepted| OK
+    T3 -->|not accepted| T4[Tier 4: most capable model]
+    T4 --> LAST[Return its answer; WARNING_UNABLE_TO_IDENTIFY if below the minimum]
+    OK --> ATTR[Second call by the accepting model: fill every AI-extractable field of the category, write title, description and condition notes]
+    LAST --> ATTR
+```
+
+### 6.5.2 Configuration (no code change to swap models or providers)
+
+```yaml
+# valuex-ai configuration (values are placeholders; secrets come from environment variables)
+ai:
+  listing:
+    deadline_seconds: 17            # whole request incl. attributes; no new attempt or tier starts past this (backend hard limit is 20s)
+    attribute_timeout_seconds: 6    # reserved: a tier starts only if the time left is at least its timeout plus this; the attribute call is skipped if less remains
+    attribute_max_output_tokens: 2500
+    min_identification_confidence: 0.55
+    field_min_confidence: 0.60      # attribute values below this are dropped
+    image:                          # see §6.5.6; starting values, tune on the labelled photo set
+      fetch_timeout_seconds: 3      # per image, fetched in parallel
+      prepare_timeout_seconds: 4    # whole preparation step, counted in deadline_seconds
+      max_side_px: 1024             # long side after resize; never enlarged
+      format: jpeg
+      jpeg_quality: 80
+      quality:
+        min_sharpness: 100          # variance of the Laplacian on a 512 px copy
+        min_brightness: 35          # mean luma, 0 to 255
+        max_brightness: 225
+      duplicate:
+        max_hamming_distance: 6     # 64-bit difference hash
+      selection:
+        min_views: 3
+        max_views: 5
+    retry:
+      max_attempts: 3               # per model call
+      initial_backoff_ms: 300
+      multiplier: 2.0
+      max_backoff_ms: 2000
+      jitter: true
+      max_retry_after_seconds: 5    # cap on a provider's Retry-After
+    shadow:                         # optional comparison against the strongest tier, off by default (§6.5.8)
+      enabled: false
+      sample_rate: 0.05             # share of eligible requests
+      reference_tier: tier4
+      max_per_hour: 200             # hard cap on extra calls
+      timeout_seconds: 20           # own limit, outside the seller's deadline
+    providers:                      # reusable connections
+      openai: { type: openai_compatible, base_url: ${OPENAI_BASE_URL}, api_key_env: OPENAI_API_KEY }
+      google: { type: openai_compatible, base_url: ${GOOGLE_BASE_URL}, api_key_env: GOOGLE_API_KEY }  # use type google_genai instead if the compatible endpoint is not enough (Open Gap 22)
+    tiers:                          # cheapest first; 1 to 4 entries, 3 to 4 in production
+      - { name: tier1, provider: openai, model: "GPT-6 Luna",  accept_confidence: 0.85, max_images: 3,  timeout_seconds: 5,  max_output_tokens: 800,  price_per_1m_input: 0.0, price_per_1m_output: 0.0 }
+      - { name: tier2, provider: google, model: "Gemini 3.1 Flash-Lite",  accept_confidence: 0.80, max_images: 4,  timeout_seconds: 6, max_output_tokens: 1000 }
+      - { name: tier3, provider: openai, model: "GPT-6.1 Sol",  accept_confidence: 0.75, max_images: 5, timeout_seconds: 7, max_output_tokens: 1200 }
+      - { name: tier4, provider: google, model: "Gemini 3.1 Pro",  accept_confidence: 0.0,  max_images: 5, timeout_seconds: 9, max_output_tokens: 1200 }
+```
+
+The providers and models are the ones chosen on 2026-10-28 (the model names are used as given and must be set to the exact API model ids; tier 4 is Google (confirmed 2026-10-28)). The accept thresholds start strict (0.85 / 0.80 / 0.75) and are loosened from real data (§11.1); image caps, timeouts and unit prices are starting values. A tier starts only if the time left covers its timeout plus `attribute_timeout_seconds`, so within the 17s deadline a request normally reaches tier 2, and tiers 3 and 4 only when earlier tiers fail fast or answer quickly.
+
+Startup validation (the service refuses to start otherwise): at least 1 and at most 4 tiers, every tier references a defined provider, every `api_key_env` is set, thresholds between 0 and 1, `max_images` between 1 and `image.selection.max_views` (which is at most 10), and `shadow.reference_tier`, when shadow is enabled, names a configured tier. The last tier's `accept_confidence` is not used because its answer is returned whatever its confidence. Changing a model, a provider, the order or a threshold needs a configuration change and a restart only; US-121 may later move the thresholds to Admin settings.
+
+### 6.5.3 Provider abstraction
+
+```python
+class VisionModelProvider(Protocol):
+    async def analyze(self, request: VisionRequest) -> VisionResult: ...
+
+PROVIDER_TYPES: dict[str, type[VisionModelProvider]] = {"openai_compatible": OpenAiCompatibleProvider}
+```
+
+`VisionRequest` holds the model id, prepared images, the prompt, the JSON schema of the expected answer, the output limit and the timeout. `VisionResult` holds the parsed answer (`category_code`, `category_confidence`, `title`, `condition`, `description`, `item_count`, `is_unclear`) and token usage. Adapters raise `TransientProviderError` (timeout, connection, 429, 5xx, unparseable answer) or `PermanentProviderError` (400, 401, 403, content-policy refusal). The `openai_compatible` adapter covers any provider with that protocol by configuration alone. A provider with a different protocol needs one new adapter registered in `PROVIDER_TYPES`; after that it is configuration only.
+
+### 6.5.4 Cascade algorithm
+
+```python
+async def run_cascade(media_refs, request, deadline) -> CascadeOutcome:
+    attempts: list[TierAttempt] = []
+    last = None
+    prepared = await prepare_views(media_refs, deadline)   # once per request, §6.5.6; raises when no image is usable
+    for tier in settings.ai.listing.tiers:
+        if deadline.remaining() < tier.timeout_seconds + settings.ai.listing.attribute_timeout_seconds:
+            break                                   # keep time for the attribute call
+        images = prepared.top(tier.max_images)      # already resized; the tier takes the top N of the ranking
+        result, record = await call_with_retry(tier, images, request, deadline)
+        attempts.append(record)
+        if result is None:
+            continue                                # retries exhausted -> next tier
+        last = (tier, result)
+        if accepts(tier, result):
+            return CascadeOutcome(tier, result, attempts)
+    return CascadeOutcome(*last, attempts) if last else CascadeOutcome.unavailable(attempts)
+
+def accepts(tier, result) -> bool:
+    return result.is_valid and taxonomy.is_enabled_l3(result.category_code) \
+        and result.category_confidence >= tier.accept_confidence
+```
+
+- One pass per tier; a tier is never called twice for the same request.
+- Self-reported confidence alone is not trusted: the answer must also be valid structured output with an enabled L3 code.
+- If the last tier answered but below `min_identification_confidence`, the response carries `WARNING_UNABLE_TO_IDENTIFY` and no category (existing §7.3 behaviour).
+- If no tier answered, the service returns an unavailable result and the backend sends the degraded response (§7.2).
+- **Attributes and subjective fields (second call).** After a category is accepted, one more call by the accepting tier's provider and model sends the photos and the category's field list from the internal `ai-fields` endpoint: every field the Metadata Dictionary marks AI-extractable (`YES` or `LIMITED`), required and optional, including "More details" fields and, for "Other ..." categories, `item_type_free_text`. The prompt asks for a value and a confidence per field the model can determine and nothing for a field it cannot see (no guessing); option fields return option codes. The same call writes the final `title` (built from key attributes such as brand and model where known, at most 100 characters), `description` (at most 2000), `condition` and `condition_notes` (at most 1000). Values below `field_min_confidence` are dropped, `LIMITED` values are returned with `verify=true`, and fields marked `NO` (facts only the seller knows, such as purchase date) and non-visible or legal facts are never requested. A `NO` flag that is wrong for a field visible in the photos is corrected in the dictionary by a reviewed override (`taxonomy/overrides/ai-extractable-overrides.csv`, set to `LIMITED`), after which the field is requested like any other. The call has the same retry rules and no escalation. If less than `attribute_timeout_seconds` remains it is skipped and the draft title and description from the first call are returned without attributes.
+
+### 6.5.5 Retry policy
+
+| Situation | Behaviour |
+|---|---|
+| Timeout, connection error, HTTP 429 (uses `Retry-After` up to `max_retry_after_seconds`), HTTP 5xx | Retry with exponential backoff and jitter, up to `max_attempts` per tier |
+| Unparseable or schema-invalid answer | Retry once |
+| HTTP 400, 401, 403, content-policy refusal | No retry; counts as a failed attempt and the cascade moves to the next tier |
+| Attempts exhausted | Escalate to the next tier |
+| Overall deadline reached | No new attempt or tier starts; return the best answer so far, or unavailable |
+
+Backend side: `AiGatewayClient` retries once, only on a connection failure or HTTP 502/503 returned before the gateway did any work, and never after a read timeout, so a single seller action cannot pay for two cascades (§10).
+
+### 6.5.6 Photos and image preparation
+
+- The seller uploads 2 to 10 photos of one object from different angles (US-004 rules; the app guides this). The backend rejects fewer than 2 READY photos with `ERROR_MIN_PHOTOS_REQUIRED` and sends all READY photo IDs in display order.
+- The models do not receive every photo at camera resolution. The service prepares the photos once per request and sends only the best 3 to 5 resized views, all in one multimodal call per attempt (never one call per photo):
+
+```text
+original 2 to 10 photos (R2, untouched)
+  -> fetch through short-lived links (parallel)
+  -> decode (JPEG, PNG, HEIC), apply orientation, drop metadata
+  -> quality check
+  -> near-duplicate removal
+  -> resize
+  -> rank and select the best 3 to 5 views
+  -> each tier takes the top max_images of that ranking
+```
+
+| Step | Rule |
+|---|---|
+| Quality check | Scored on a 512 px copy: sharpness (variance of the Laplacian) at least `min_sharpness`, mean brightness between `min_brightness` and `max_brightness`. Images below are set aside, not deleted. |
+| Near-duplicates | 64-bit difference hash; images within `max_hamming_distance` form a group and the sharpest of each group stays (the cover photo wins a tie). |
+| Resize | Long side down to `max_side_px` (never enlarged), JPEG at `jpeg_quality`, EXIF and GPS dropped. |
+| Selection and ranking | The cover photo (display order 0) comes first when it passed the quality check. Then, one at a time, the image most different from those already chosen (largest minimum hash distance, ties by sharpness) up to `max_views`. If fewer than `min_views` remain and more photos were uploaded, the best of the set-aside ones are added back up to `min_views`. With 2 uploaded photos both are used. |
+| Per tier | Tier 1 takes the top 3, tier 2 the top 4, tiers 3 and 4 the top 5 (`max_images`). Escalation takes more views from the same ranking and never repeats the preparation. |
+
+- If every image fails the quality check the best two are still sent and the response carries `WARNING_IMAGE_UNCLEAR`. An image that cannot be fetched or decoded is skipped; if none is usable the service returns unavailable and the backend sends the degraded response (§7.2).
+- Fetching is parallel and the CPU work (decode, scoring, resize) runs in a thread pool (CODING_STANDARDS §5.7). The whole step is limited by `prepare_timeout_seconds` and counts against `deadline_seconds`.
+- The originals are never modified, copied or deleted. The resized copies exist only in memory for the request and are never written to disk or object storage. The service needs Pillow, NumPy and `pillow-heif` (HEIC is accepted by US-004).
+- Photos that show different objects raise `MULTIPLE_ITEMS_DETECTED`; the seller still gets a successful advisory response. Selection by difference can pick a view of the other object, which the model then flags.
+- The taxonomy list in the prompt is a stable prefix so providers that cache prompts can reuse it.
+- Today the service downloads the originals. Once the media module produces smaller derivatives (a documented follow-up of US-004) the service should fetch those instead.
+
+### 6.5.7 Contract addition
+
+```python
+class TierAttempt(BaseModel):
+    tier: str
+    model: str
+    outcome: Literal["ACCEPTED", "ESCALATED", "FAILED"]
+    confidence: float | None
+    attempts: int
+    latency_ms: int
+    input_tokens: int | None
+    output_tokens: int | None
+    images_sent: int
+```
+
+The backend stores `tier_attempts` on the suggestion row (§4) for cost and quality analysis and does not return provider or model names to the mobile app.
+
+## 6.5.8 Shadow Comparison (optional, off by default)
+
+Purpose: measure on real traffic how often a cheap tier agrees with the strongest tier, without relying on seller behaviour, so thresholds can be tuned (§11.1).
+
+- Only when `shadow.enabled` is true. For a request served by a tier below `shadow.reference_tier`, a random `sample_rate` share is eligible; no more than `max_per_hour` extra calls are made.
+- It runs as a background task after the response has been sent, on the same prepared views (the top `max_images` of the reference tier), with the normal retry rules and its own `shadow.timeout_seconds`. It is not part of the seller's deadline, and any failure only increments a metric.
+- It compares the category code and the values of attribute keys both answers returned, and records agreement counts only.
+- It is skipped when the served tier is the reference tier, when the cascade ended unavailable, or when the hourly cap is reached.
+- It stores nothing and never changes the seller's response; its tokens are counted in the cost metrics (§11). The reference provider receives the same views, so the same provider terms apply.
+
+## 6.6 valuex-ai Layout (this story)
+
+Only what the story needs, within the structure in CODING_STANDARDS §5.2:
+
+```text
+valuex-ai/
+├── app/
+│   ├── main.py
+│   ├── routers/listing.py              # POST /ai/v1/listings/suggest
+│   ├── services/
+│   │   ├── listing_service.py          # orchestration: images, cascade, attributes, warnings
+│   │   └── vision/
+│   │       ├── base.py                 # VisionModelProvider, VisionRequest/Result, error types
+│   │       ├── openai_compatible.py       # the one adapter
+│   │       ├── registry.py                # PROVIDER_TYPES, builds providers from config
+│   │       ├── retry.py                   # call_with_retry
+│   │       ├── images/                    # fetch, decode (incl. HEIC), quality, near-duplicates, resize, view selection (§6.5.6)
+│   │       ├── cascade.py                 # run_cascade, accepts
+│   │       └── prompts.py                 # system prompt, taxonomy prefix, JSON schema
+│   ├── clients/backend_client.py       # taxonomy snapshot, ai-fields, media read-access (§5.10)
+│   ├── models/{requests,responses}.py
+│   └── core/{config,security,logging,exceptions}.py
+├── config/ai.example.yaml
+├── tests/
+├── Dockerfile, requirements.txt, pyproject.toml
+```
+
+Price estimation (`price_estimator`) is not built while price suggestion is on hold; the price parts of §6.3 and §6.3.1 stay as reference only. The seller's `textHint` is passed to the model only as quoted, length-capped data, and the model's JSON answer is validated (category in the snapshot, title and description lengths, allowed condition values, attribute types) before it is returned.
 
 ---
 
@@ -1404,6 +1663,30 @@ sequenceDiagram
     Note over Backend: still status COMPLETED, not FAILED - AI responded successfully,\nit just couldn't identify the item. Mobile shows WARNING_UNABLE_TO_IDENTIFY\nand routes seller straight to manual category selection.
 ```
 
+## 7.4 Model Cascade with Retry and Escalation
+
+```mermaid
+sequenceDiagram
+    participant Backend as Listing Module
+    participant AI as Listing Intelligence Service
+    participant M1 as Tier 1 model (cheapest)
+    participant M2 as Tier 2 model
+
+    Backend->>AI: POST /ai/v1/listings/suggest (2 to 10 mediaIds)
+    AI->>AI: prepare views once (quality check, near-duplicates removed, resize, best 3 to 5)
+    AI->>M1: analyze (attempt 1, top 3 views)
+    M1--xAI: HTTP 503
+    AI->>AI: backoff 300 ms + jitter
+    AI->>M1: analyze (attempt 2)
+    M1-->>AI: category confidence 0.52 (< tier threshold 0.85)
+    AI->>AI: escalate
+    AI->>M2: analyze (attempt 1, top 4 views of the same ranking)
+    M2-->>AI: category confidence 0.88 (>= 0.80)
+    AI->>M2: extract AI-extractable attributes for the category
+    M2-->>AI: attributes with confidence
+    AI-->>Backend: suggestions + tierAttempts [tier1 ESCALATED, tier2 ACCEPTED]
+```
+
 ---
 
 # 8. Validation Rules Implementation
@@ -1430,7 +1713,7 @@ The user story doesn't specify a trigger frequency limit, but an unbounded retri
 |---|---|---|---|
 | `LISTING_NOT_FOUND` | 404 | listing doesn't exist / not owned by caller | - |
 | `LISTING_NOT_IN_DRAFT` | 400 | listing already published/deleted | - |
-| `LISTING_HAS_NO_IMAGES` | 400 | no photos uploaded yet | - |
+| `ERROR_MIN_PHOTOS_REQUIRED` | 400 | fewer than 2 READY photos (replaces `LISTING_HAS_NO_IMAGES`) | "At least 2 photos required" |
 | `AI_SUGGESTION_RATE_LIMITED` | 429 | >5 triggers/hour on one listing | - |
 | `AI_SUGGESTION_NOT_FOUND` | 404 | `GET`/feedback on listing with no suggestion history | - |
 | (degraded, not an error) | 200 | AI Gateway timeout/circuit open | `ERROR_AI_SERVICE_UNAVAILABLE`: "Auto-suggestions unavailable. Please enter details manually" |
@@ -1445,13 +1728,16 @@ Per [CODING_STANDARDS.md §2.10](../CODING_STANDARDS.md), all thrown exceptions 
 
 | Control | Value | Rationale |
 |---|---|---|
-| Per-call timeout | 5s | Matches [HLD §12.1](../HLD/04-AI-Architecture.md#121-metrics) target "Listing AI latency < 5 seconds" |
+| Per-call timeout | 20s hard limit (was 5s) | The cascade can call several models; the AI service stops starting new work at 17s and the app waits up to 25s (§6.5.2). Typical requests accepted by tier 1 stay near the earlier 5s target |
 | Circuit breaker sliding window | 20 calls | Standard Resilience4j default, small enough to react within a few minutes at expected Sprint-2 traffic |
 | Failure rate threshold | 50% | Opens circuit before a struggling AI service compounds into cascading timeouts across concurrent listing creations |
 | Wait duration in open state | 30s | Matches AI Gateway pod restart / autoscale reaction time |
-| Retry | None | Suggestion generation is not free (invokes vision + LLM calls); blind retries would double AI spend on a service already trending toward failure. Rely on circuit breaker + user-initiated retrigger (rate-limited, §8.4) instead |
+| Retry (backend to gateway) | 1 retry, 500ms | Only for a connection failure or HTTP 502/503 returned before the gateway did any work. Never after a read timeout or a 4xx, because the cascade may already be running and a second one would double the AI spend |
+| Retry (AI service to each model) | up to 3 attempts, backoff 300ms doubling to 2s with jitter | Transient errors only (§6.5.5); exhausted attempts escalate to the next tier instead of failing the request |
 
 Vision-model call inside the AI service (`image_analysis.analyze`, §6.3) has its own inner timeout (`vision_timeout_seconds`, default 3.0s) so a single slow image doesn't consume the full 5s backend budget before the AI service can even assemble a partial/degraded internal response.
+
+The per-tier timeouts and the 17s overall deadline in §6.5.2 replace this single inner vision timeout.
 
 ---
 
@@ -1463,11 +1749,65 @@ Per [HLD §12](../HLD/04-AI-Architecture.md#12-ai-observability):
 - `listing_ai_suggestion_requests_total{status}` (COMPLETED / FAILED / TIMEOUT)
 - `listing_ai_suggestion_latency_ms` (histogram)
 - `listing_ai_suggestion_fallback_total` (circuit breaker + timeout fallbacks)
+- `ai_listing_tier_requests_total{tier, outcome}` (ACCEPTED / ESCALATED / FAILED) and the share of requests accepted at each tier
+- `ai_listing_model_retries_total{tier, reason}`
+- `ai_listing_images_received`, `ai_listing_images_sent{tier}` and `ai_listing_images_dropped_total{reason}` (BLURRY, DARK, BRIGHT, DUPLICATE, UNREADABLE), plus the preparation time, to see how much the preparation saves
+- `ai_listing_shadow_requests_total{served_tier, reference_tier}`, `ai_listing_shadow_category_agreement_total{served_tier, agrees}`, `ai_listing_shadow_attribute_agreement` (histogram of the share of attributes with equal values) and the shadow tokens (only when shadow is on)
+- `ai_listing_tokens_total{tier, direction}` and `ai_listing_estimated_cost{tier}` (from the configured unit prices), to track cost per suggestion and the escalation rate
 - `listing_ai_suggestion_feedback_total{field, action}` — feeds the "seller acceptance rate" quality metric from [HLD §12.2](../HLD/04-AI-Architecture.md#122-quality-metrics)
 
 **Logs (AI service, structured JSON per `app/core/logging.py`):** `inference_id`, `listing_id`, `model_version`, `confidence`, `latency_ms`, `warnings`, per [HLD §12.3](../HLD/04-AI-Architecture.md#123-logs). Never logs raw image bytes, signed URLs, provider credentials, or seller PII — only media IDs and derived attributes.
 
 **Quality feedback loop:** `listing_ai_suggestion_feedback` rows are the raw input to the "seller edits to AI suggestions" feedback source listed in [HLD §18.2](../HLD/04-AI-Architecture.md#182-feedback-loops). No retraining pipeline is built in this story — this table is the durable capture point that a later AI Ops story consumes.
+
+## 11.1 Tuning from Real Data
+
+Thresholds, view counts and image limits start as guesses and are tuned after go-live from two sources. No new storage is needed.
+
+**Seller feedback joined with `tier_attempts`.** The tier whose answer was returned has `outcome = 'ACCEPTED'` in `tier_attempts` (the last tier's answer counts as returned even when its confidence is low). Seller feedback is a proxy for correctness: sellers may keep a wrong value or not bother to fix it, so read the numbers as a trend.
+
+```sql
+-- How often sellers keep the category, by returned tier and confidence band (0.05 wide)
+WITH returned AS (
+    SELECT s.id, e->>'tier' AS tier,
+           floor((e->>'confidence')::numeric * 20) / 20 AS band
+    FROM listing_ai_suggestions s,
+         jsonb_array_elements(s.tier_attempts) e
+    WHERE s.status = 'COMPLETED' AND e->>'outcome' = 'ACCEPTED'
+)
+SELECT r.tier, r.band, count(*) AS n,
+       avg((f.action = 'ACCEPTED')::int) AS category_kept_rate
+FROM returned r
+JOIN listing_ai_suggestion_feedback f ON f.suggestion_id = r.id AND f.field = 'CATEGORY'
+GROUP BY r.tier, r.band
+ORDER BY r.tier, r.band;
+
+-- Escalation, cost and latency by tier over the last 14 days
+SELECT e->>'tier' AS tier, e->>'outcome' AS outcome, count(*) AS n,
+       sum((e->>'inputTokens')::bigint)  AS input_tokens,
+       sum((e->>'outputTokens')::bigint) AS output_tokens,
+       avg((e->>'latencyMs')::int)       AS avg_latency_ms,
+       avg((e->>'imagesSent')::int)      AS avg_images_sent
+FROM listing_ai_suggestions s, jsonb_array_elements(s.tier_attempts) e
+WHERE s.created_at >= now() - interval '14 days'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+
+-- Which fields sellers keep, edit or reject
+SELECT f.field, f.attribute_key, count(*) AS n,
+       avg((f.action = 'ACCEPTED')::int) AS kept,
+       avg((f.action = 'EDITED')::int)   AS edited,
+       avg((f.action = 'REJECTED')::int) AS rejected
+FROM listing_ai_suggestion_feedback f
+GROUP BY f.field, f.attribute_key
+ORDER BY n DESC;
+```
+
+How to read them: if tier 1 answers in the 0.80 to 0.85 band and sellers keep the category about as often as in higher bands, lower that tier's threshold; if the keep rate drops, raise it. The cost query shows how many requests reach tiers 2 to 4. The key names inside `tier_attempts` (`tier`, `outcome`, `confidence`, `latencyMs`, `imagesSent`, `inputTokens`, `outputTokens`) must match what the backend stores; the queries are tested against the test database during implementation.
+
+**Shadow comparison (optional, §6.5.8)** removes the seller bias for escalation: it shows how often a cheap tier agrees with the strongest tier. Metrics only.
+
+**Changing a value** is a configuration change and a restart until US-121 adds Admin settings. Recommended go-live: AI off by default, enabled for internal users first, strict thresholds, review the numbers after a few weeks, then loosen one threshold at a time.
 
 ---
 
@@ -1477,6 +1817,9 @@ Per [HLD §12](../HLD/04-AI-Architecture.md#12-ai-observability):
 - Images are referenced by `mediaId` only — never re-uploaded to the AI service and never exposed as permanent provider URLs; `image_analysis.analyze` receives short-lived authorized media references generated per request, not stored signed URLs ([HLD §15.2](../HLD/04-AI-Architecture.md#152-data-privacy)).
 - `listing_ai_suggestions.description_suggestion` and `title_suggestion` are LLM output shown to the seller before it can reach any other user — validated for length only in this story; profanity/restricted-content filtering is owned by US-007's moderation pass, run separately before publish.
 - `sellerId` on the request path is always taken from `SecurityContext`, never trusted from the request body (§5.8).
+- Provider API keys are read from environment variables named in the configuration (`api_key_env`), never stored in configuration files or logs. Every provider and model receives seller photos, so each must be approved and must not retain or train on them (contract term); the list of enabled providers is reviewed before a new one is added.
+- Logs and `tier_attempts` hold tier names, model ids, confidences, counts and latencies only; no image bytes, signed URLs or prompts containing seller text.
+- Only resized copies without EXIF or GPS data are sent to a provider, and only the 3 to 5 selected views. The original photos are read through short-lived links and never changed, copied or deleted; the resized copies live in memory for the request only. The optional shadow comparison (§6.5.8) sends the same selected views to the reference provider, so it is covered by the same provider terms and is off by default.
 
 ---
 
@@ -1496,6 +1839,10 @@ Per [CODING_STANDARDS.md §2.11](../CODING_STANDARDS.md) / §5 (Python).
 - `shouldAppendPriceOutOfRangeWarningWhenAiPriceOutsideComparableBand()`
 - `shouldNotAppendPriceWarningWhenNoComparableListingsExist()`
 - `shouldPersistFeedbackRowsPerField()`
+- `shouldRetryGatewayOnceOnConnectionFailureOrServiceUnavailable()`
+- `shouldNotRetryGatewayAfterReadTimeoutOrClientError()`
+- `shouldPersistTierAttemptsFromResponse()`
+- `shouldSendAllReadyPhotosInDisplayOrder()` and `shouldRejectFewerThanTwoReadyPhotos()`
 
 ## 13.2 Backend Integration Tests (`@SpringBootTest`, TestContainers PostgreSQL)
 
@@ -1511,6 +1858,40 @@ Per [CODING_STANDARDS.md §2.11](../CODING_STANDARDS.md) / §5 (Python).
 - `test_returns_null_price_range_when_comparable_count_below_minimum`
 - `test_response_always_includes_model_name_and_version`
 - `test_internal_api_key_required` (401 without `X-Internal-Api-Key`)
+- `test_cascade_stops_at_first_tier_that_meets_its_threshold`
+- `test_cascade_escalates_on_low_confidence_and_on_invalid_category`
+- `test_cascade_returns_last_tier_answer_with_unable_to_identify_when_still_low`
+- `test_retry_on_timeout_429_5xx_and_unparseable_answer_with_backoff`
+- `test_no_retry_on_400_401_403_and_content_policy_refusal`
+- `test_exhausted_retries_escalate_to_next_tier`
+- `test_overall_deadline_stops_new_attempts_and_tiers`
+- `test_swapping_model_provider_order_or_threshold_by_configuration_only`
+- `test_invalid_tier_configuration_stops_startup`
+- `test_blurry_dark_and_bright_images_are_set_aside`
+- `test_near_duplicates_collapse_to_the_sharpest_image`
+- `test_cover_photo_ranked_first_when_it_passes_quality`
+- `test_selection_prefers_different_views_and_is_capped_at_five`
+- `test_views_topped_up_to_three_from_set_aside_images_and_two_uploads_send_two`
+- `test_each_tier_takes_its_top_n_views_of_one_ranking`
+- `test_resized_images_have_no_exif_or_gps_and_are_never_enlarged`
+- `test_heic_png_and_jpeg_decode_and_unreadable_images_are_skipped`
+- `test_all_images_failing_quality_sends_best_two_with_image_unclear_warning`
+- `test_originals_are_never_modified_or_written_anywhere`
+- `test_preparation_respects_its_timeout_and_counts_against_the_deadline`
+- `test_attribute_call_skipped_when_too_little_time_remains`
+- `test_tier_not_started_when_its_timeout_plus_attribute_call_do_not_fit`
+- `test_attribute_call_requests_all_ai_extractable_required_and_optional_fields_and_none_marked_no`
+- `test_fields_not_visible_are_returned_empty_not_guessed`
+- `test_limited_fields_are_flagged_verify`
+- `test_subjective_fields_within_limits_and_item_type_free_text_for_other_categories`
+- `test_response_uses_standard_envelope_with_tier_attempts`
+- `test_shadow_is_off_by_default_and_respects_sample_rate_and_hourly_cap`
+- `test_shadow_runs_after_the_response_and_its_failure_does_not_affect_it`
+- `test_shadow_skipped_when_served_tier_is_the_reference_tier`
+- `test_shadow_agreement_metrics_for_matching_and_differing_category_and_attributes`
+- `test_shadow_stores_nothing`
+- `test_photo_count_between_two_and_ten_enforced`
+- `test_tier_attempts_and_cost_metrics_emitted`
 
 ## 13.4 Edge Case Coverage Matrix
 
@@ -1528,7 +1909,8 @@ Per [CODING_STANDARDS.md §2.11](../CODING_STANDARDS.md) / §5 (Python).
 
 | Requirement | Target | Source |
 |---|---|---|
-| Listing AI latency | < 5s | [HLD §12.1](../HLD/04-AI-Architecture.md#121-metrics) |
+| Listing AI latency | Under 5s when tier 1 accepts; hard limit 20s (cascade with retries) | Updated 2026-10-28 from the HLD §12.1 target of 5s; HLD §12.1 aligned |
+| AI cost | Cheapest accepted tier per request; escalation rate and cost per suggestion tracked | §6.5, §11 |
 | Availability degradation | Never blocks listing creation | [HLD §3.1](../HLD/04-AI-Architecture.md#31-ai-must-be-advisory-unless-business-rule-requires-blocking) |
 | Concurrent suggestion requests | Bounded by circuit breaker sliding window (20) + per-listing rate limit (5/hr) | §8.4, §10 |
 | Data retention | `listing_ai_suggestions`/`_feedback` retained indefinitely (small volume, feeds retraining); no PII stored beyond `sellerId`/`listingId` foreign keys | [HLD §11.1](../HLD/04-AI-Architecture.md#111-postgresql) |
@@ -1537,8 +1919,12 @@ Per [CODING_STANDARDS.md §2.11](../CODING_STANDARDS.md) / §5 (Python).
 
 # 15. Open Items / Follow-ups
 
-- **Model source for MVP** (external multimodal LLM/vision API vs. taxonomy rules) is left as an implementation choice in [HLD §4.2](../HLD/04-AI-Architecture.md#42-listing-intelligence-service) ("MVP may use... "). This LLD's `image_analysis` / `text_generator` modules are written against a provider-agnostic interface so the concrete vendor can be selected during implementation without changing the router/service contract.
+- **Model source for MVP (decided 2026-10-28: external vision models in a configurable cascade, §6.5)** was left as an implementation choice in [HLD §4.2](../HLD/04-AI-Architecture.md#42-listing-intelligence-service) ("MVP may use... "). This LLD's `image_analysis` / `text_generator` modules are written against a provider-agnostic interface so the concrete vendor can be selected during implementation without changing the router/service contract.
 - **Restricted item detection (US-007)** is a separate, blocking check layered on top of this advisory flow — not covered here. Confirm with the team whether US-007's moderation call happens synchronously within the same `POST /ai-suggestions` round trip or as an independent call triggered by image upload (US-004), since that affects whether `ListingAiService` needs to short-circuit on a moderation block.
+- **Cascade values to choose:** the actual providers and models (chosen, §6.5.2), and the thresholds, view counts, image preparation limits and deadline (starting values in §6.5.2). They need tuning on a labelled photo set, and self-reported confidence must be checked for calibration before go-live.
+- **Taxonomy and media access for the AI service:** decided 2026-10-28, internal endpoints in §5.10.
+- **Response shape:** §6.2 is flat while CODING_STANDARDS §5.4 defines an envelope; proposed to follow the envelope, to be confirmed.
+- **HLD §12.1** latency target was aligned with §14 on 2026-10-28. CODING_STANDARDS §5.7 still lists "Listing AI: < 5 seconds" and should be updated the same way.
 - **pgvector** is not required for this story (Listing Intelligence Service does not use embeddings/vector search). It remains a tracked prerequisite only for visual search work (US-039+) per the existing backlog note in `Sprint-plan.md`.
 
 ---
@@ -1946,6 +2332,39 @@ This is the key resilience difference from US-005: **AI unavailability must not 
 
 - `matched_keywords` are stored but redacted (`***`) in application logs to avoid leaking exact bypass phrases into log aggregators accessible to a wider engineering audience than the moderation team.
 - Account flagging (`flagAccountUnderReview`) writes to `listing_moderation_checks` and the `users` status column in the same transaction as the moderation check, ensuring an admin never sees a "severe violation" check without a corresponding account state change (audit consistency, feeds US-083 System Audit Trail in Sprint 10).
+
+## D.11 As Built (2026-10, supersedes D.3 to D.9 where they differ)
+
+**Approach.** The check is rule-based and database-driven, not a separate moderation AI call. The category (the seller's choice, else the AI vision classification of US-005) is mapped to a row of the JustQlic Restrictions sheet; whole words and phrases of the title and description are matched against a reviewed term list; and the US-005 classification call returns an optional `restrictionPolicyCode` for a Prohibited item visible in the photos. The strictest finding wins. There is no `POST /ai/v1/moderation/restricted-item-check` endpoint, no `moderationGateway` circuit breaker and no fail-closed 503: nothing external runs at check time. The only `valuex-ai` change is the extra field in the classification answer.
+
+**Tables (Flyway `V18`).**
+
+| Table | Purpose |
+|---|---|
+| `restriction_policies` | The 21 sheet rows: `code` (PK), `status` (`PROHIBITED`/`CONDITIONAL`), `default_severity`, English and Hindi title, message and CTA, `policy_version`, `active` |
+| `restriction_terms` | Reviewed keywords: `term` (normalised), `policy_code`, `severity` (`RESTRICTED`/`SEVERE_VIOLATION`), `active`; unique on the active term |
+| `category_restriction_policies` | L3 category code to Conditional policy code (all 37 Real Estate L3 plus 50 named categories; CAT-0204 and CAT-0742 have none) |
+| `listing_moderation_checks` | One row per check: `result` (VARCHAR with check constraint: `SAFE`, `COMPLIANCE_REQUIRED`, `UNCLEAR`, `RESTRICTED`, `SEVERE_VIOLATION`), `source` (`AI`, `RULES`), `matched_policy_codes`, `matched_keywords`, `category_code`, `content_hash`, `policy_version`, `model_version`, admin fields |
+| `listing_compliance_acceptances` | One row per policy the seller agreed to: listing, check, seller, category, `policy_code`, `policy_version`, `accepted_at` |
+| `listing_moderation_appeals` | As D.3, with `status` as VARCHAR (`PENDING`, `UPHELD`, `OVERTURNED`) |
+| `listing_ai_suggestions` (changed) | New `restriction_policy_code` and `media_hash` |
+
+The loader (`RestrictionPolicyLoader`) fills the first three from `src/main/resources/restrictions/` at start-up; the policy version is the SHA-256 of the source files.
+
+**Outcomes and API.** `POST /api/v1/listings/{listingId}/restricted-check` stores the check and answers `{checkId, result, policyVersion, policies[{code, status, title, titleHi, message, messageHi, ctaLabel, ctaLabelHi}], message}`:
+
+| Result | HTTP | Meaning |
+|---|---|---|
+| `SAFE` | 200 | Seller continues |
+| `COMPLIANCE_REQUIRED` | 200 | One popup with every row; `POST .../{checkId}/compliance-acceptance` with `{policyCodes}` records them |
+| `RESTRICTED` | 400 `ERROR_RESTRICTED_ITEM` | Blocked; `data` still carries the check and the matched rows |
+| `SEVERE_VIOLATION` | 403 `ERROR_ACCOUNT_SUSPENDED` | Blocked; the account moves to `UNDER_REVIEW` through `UserStateService.flagForReview(sellerId, null, reason)` |
+
+Three blocked checks in 30 days (`valuex.moderation.blocked-checks-threshold`, `blocked-checks-window-days`) also flag the account. Other errors: `LISTING_NOT_FOUND` (404, also for another seller's listing), `LISTING_NOT_IN_DRAFT`, `ERROR_MIN_PHOTOS_REQUIRED`, `ERROR_CATEGORY_REQUIRED`, `MODERATION_CHECK_NOT_FOUND`, `ERROR_COMPLIANCE_NOT_APPLICABLE` (not the latest check, wrong result or content changed), `ERROR_COMPLIANCE_POLICIES_MISMATCH`, `ERROR_COMPLIANCE_ALREADY_ACCEPTED`, `ERROR_APPEAL_NOT_ALLOWED`, `ERROR_APPEAL_ALREADY_SUBMITTED`.
+
+**Gate.** `RestrictedItemGate.requireCleared(listingId)` (for US-008 and US-009) passes only when the latest check was made on the listing's current content hash (title, description, category code, photos) and is `SAFE`, or `COMPLIANCE_REQUIRED` with every row accepted at the current policy version, or `UNCLEAR` approved by an admin, or blocked with an `OVERTURNED` appeal. Otherwise it throws `ERROR_RESTRICTED_CHECK_REQUIRED`, `ERROR_COMPLIANCE_ACCEPTANCE_REQUIRED`, `LISTING_UNDER_REVIEW`, `ERROR_RESTRICTED_ITEM` or `ERROR_ACCOUNT_SUSPENDED`.
+
+**Logging.** Matched terms are stored but never logged; the log lines carry listing id, check id, result and source only.
 
 ---
 
