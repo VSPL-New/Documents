@@ -2815,6 +2815,8 @@ CREATE TABLE payment_attempts (
 
 `payments.reference_type` is a discriminator reused by Sprint 5's `PAYMENT_ORDER` (US-021) and Sprint 12's `SUBSCRIPTION` (US-038) — this story only ever writes `LISTING_PLAN` rows, but the table is shaped so later sprints don't need a new payments table.
 
+> **As built by US-117 (migration `V19__payments.sql`, replaces the sketch above).** `payments`: `id`, `reference_type`, `reference_id`, `payer_user_id` (FK `users`), `amount NUMERIC(12,2) > 0`, `currency` (`INR`), `status` (the `PaymentState` names, CHECK-constrained), `gateway_provider`, `gateway_order_id` (unique), `gateway_payment_id` (unique), `failure_reason`, `expires_at`, `version` (optimistic lock), `created_at`, `updated_at`. A partial unique index `uq_payments_open_reference` on (`reference_type`, `reference_id`) where status is `PAYMENT_INITIATED` or `PAYMENT_PENDING` allows one open payment per reference. `payment_attempts` adds `kind` (`CREATE_ORDER`, `CHECKOUT_RESULT`, `CALLBACK`, `STATUS_FETCH`). New tables: `payment_gateway_events` (unique `gateway_event_id`, `outcome`; no raw bodies) and `payment_refunds`. This story calls `PaymentService.createOrReuse(CreatePaymentCommand)` and gets a `PaymentCheckoutDetails` (`paymentId`, `orderId`, `amount` in rupees, `currency`, `publicKey`, `expiresAt`); read the plan-selection response's `razorpayOrderId` and `amount` (paise) as `orderId` and `amount` (rupees) from it. Callers react to `PaymentSucceededEvent` (with `late`) and `PaymentFailedEvent` (`reason` `FAILED`, `EXPIRED`, `SUPERSEDED`). A payment with no gateway configured answers `503 ERROR_GATEWAY_UNAVAILABLE`.
+
 ## H.4 API Contract
 
 ```http
