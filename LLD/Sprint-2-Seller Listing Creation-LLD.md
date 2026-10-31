@@ -2530,6 +2530,8 @@ sequenceDiagram
 
 ## F.1 Story Overview
 
+> **As built (2026-10-31, built together with US-009):** the review auto-approves while AI is off. With no fraud score a listing that reaches the review is approved at once and recorded as `AUTO_APPROVED_NO_AI`; with `valuex.moderation.manual-review-enabled=true` it waits in the queue instead. The trusted-seller bypass still applies (no seller is trusted until ratings and orders exist: `SellerReputationPort` answers "no data"). Admin approve and reject are services (`TrustSafetyReviewService.approve`, `reject`, `requestRevision`) with no endpoints until the admin console (Sprint 10); the seller endpoints are `POST /api/v1/listings/{id}/trust-safety-review` (start, resubmit or read the outcome) and `POST .../appeal`. Migration `V21`. The AI path calls `AiGatewayClient.computeFraudScore` (`/ai/v1/listings/fraud-score`, own circuit breaker); that endpoint is not built yet, and the price score is omitted until the price-suggestion design exists. `categories_unrelated` no longer exists, so it is not a signal. Seller notifications are not sent here: `ListingReviewDecidedEvent` and the status change event are published for US-115.
+
 **As a** platform **I want** all listings reviewed before publication **so that** prohibited items and fraud are prevented. The review runs **after the seller has paid for the listing plan and before the listing is published** (product owner decision, 2026-10-16). Where US-007 is a binary restricted-item gate, US-084 computes a holistic **fraud score** (image analysis, text analysis, price reasonableness, seller reputation) and routes based on a threshold: score < 70 auto-approves; score ≥ 70 queues for manual admin review within a 24-hour SLA. Trusted sellers (rating > 4.5, 50+ sales) bypass to auto-approval regardless of score.
 
 ## F.2 Scope
@@ -2545,18 +2547,21 @@ CREATE TABLE listing_trust_safety_reviews (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id UUID NOT NULL REFERENCES listings(id),
     attempt_number INTEGER NOT NULL DEFAULT 1, -- 1..3 per paid plan; a seller gets 3 review attempts
-    fraud_score NUMERIC(5,2) NOT NULL,       -- 0-100
-    auto_decision VARCHAR(20) NOT NULL,      -- AUTO_APPROVED | QUEUED_FOR_REVIEW | TRUSTED_SELLER_BYPASS
+    fraud_score NUMERIC(5,2),                -- 0-100; null without an AI score (AI off or down, trusted-seller bypass)
+    auto_decision VARCHAR(30) NOT NULL,      -- AUTO_APPROVED | AUTO_APPROVED_NO_AI | QUEUED_FOR_REVIEW | TRUSTED_SELLER_BYPASS
+    review_reason VARCHAR(10) NOT NULL DEFAULT 'INITIAL', -- INITIAL | EDIT (an edit review never counts as an attempt and never refunds)
+    sla_deadline TIMESTAMP,                  -- set when queued: created_at + valuex.moderation.review-sla-hours
     admin_id UUID,
-    admin_decision VARCHAR(20),              -- APPROVED | REJECTED
+    admin_decision VARCHAR(20),              -- APPROVED | REJECTED | REVISION_REQUESTED
     rejection_reason VARCHAR(500),
-    score_breakdown JSONB,                   -- {imageScore, textScore, priceScore, reputationScore}
+    score_breakdown JSONB,                   -- {imageScore, textScore, priceScore, reputationScore}; only the parts the AI gave
     reviewed_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX idx_trust_safety_review_listing ON listing_trust_safety_reviews(listing_id);
-CREATE INDEX idx_trust_safety_review_pending ON listing_trust_safety_reviews(auto_decision)
+CREATE INDEX idx_trust_safety_review_listing ON listing_trust_safety_reviews(listing_id, created_at DESC);
+CREATE INDEX idx_trust_safety_review_pending ON listing_trust_safety_reviews(sla_deadline)
     WHERE auto_decision = 'QUEUED_FOR_REVIEW' AND admin_decision IS NULL;
+-- listing_trust_safety_appeals(review_id UNIQUE, seller_id, appeal_reason, status PENDING|UPHELD|OVERTURNED, resolver, timestamps)
 ```
 
 ## F.4 API Contract
@@ -2649,7 +2654,7 @@ sequenceDiagram
 | Admin rejects (attempt 3) | `LISTING_REJECTED_FINAL` | 200 (seller notified; listing becomes `REJECTED`; payment becomes `REFUND_REVIEW`) |
 | Seller appeals rejection | `APPEAL_SUBMITTED` | 201 |
 | Review SLA breach (>24h unresolved) | internal alert only, not user-facing error | n/a |
-| AI fraud scoring unavailable | fail closed → queue for manual review (never auto-approve on failure) | 200, `auto_decision=QUEUED_FOR_REVIEW`, `score_breakdown=null` |
+| AI fraud scoring unavailable | never an error and never a rejection: with manual review off the listing is approved as `AUTO_APPROVED_NO_AI` (recorded so it can be re-reviewed); with manual review on it is queued (`QUEUED_FOR_REVIEW`, `fraud_score` null) | 200 |
 
 Appeals reuse the same `listing_moderation_appeals`-style pattern as Part D, but referencing `listing_trust_safety_reviews.id`; reviewed by a senior moderator per the acceptance criteria ("Appeals reviewed by senior moderator").
 
@@ -2940,6 +2945,8 @@ sequenceDiagram
 > **Update 2026-10-16 (gateway-neutral):** The webhook endpoint, signature check (`X-Razorpay-Signature` in this part is the gateway's signature header), amount check, idempotency and payment settling are now **US-117**, which publishes `PaymentSucceededEvent` and `PaymentFailedEvent`. This story listens for those events for reference type `LISTING_PLAN`, owns the hand-over to review, the publish step, the refund flag and the recovery jobs, and sets `expires_at` from `published_at` plus the validity days snapshotted on the listing (not the current catalog value). A plan priced at zero follows the same hand-over without a payment. Migration order: V15 plans and settings (US-078, as built; the stories after it take the next free version at implementation time: payments (US-117), listing plan snapshot (US-008), review (US-084), `published_at` (US-009)).
 
 ## I.1 Story Overview
+
+> **As built (2026-10-31, built together with US-084, after US-117 and US-008):** the code differs from the sketch in I.5. `ListingPaymentHandler` (implements US-008's `ListingPaymentCompletedHandler`) moves the listing to `PLAN_PAYMENT_SUCCESS` and runs `TrustSafetyReviewService.review`, each step in its own transaction (`RequiresNewTransaction`) and never throwing; US-008's zero-price call waits for its transaction to commit (it holds the listing row lock). `ListingPaymentResultListener` reacts to `PaymentSucceededEvent` and `PaymentFailedEvent` for `LISTING_PLAN` after commit: a late success continues the listing only when it still waits for payment and the amount equals the snapshot's expected amount (price, plus GST at the current rate when the snapshot excludes GST), otherwise `PaymentRefundService.requestRefund` flags it (`REFUND_REVIEW`, metric `payment.late.refund.review`). `ListingPublicationService` listens for the `APPROVED` status change, sets `published_at` and `expires_at` (once) and publishes. `ListingRefundDueListener` flags the plan fee through `requestRefund` (no gateway call). `ListingRecoveryJob` (every minute) retries stuck hand-overs, publications and reviews with no decision, and returns a listing waiting for a payment that is gone to plan selection after 30 minutes; the attempt count (5) is kept in memory, so a restart gives a stuck listing a fresh set, and exhaustion raises an alert (log `ALERT`, metric `listing.recovery.exhausted`) for finance. No notification is sent (US-115). Migration `V22` adds `published_at`. Mobile: the page `/sell/submitted` replaces the Home snackbar after a confirmed payment or a plan priced at zero.
 
 **As a** seller **I want** my listing to be published immediately after successful payment **so that** buyers can discover it right away. Updated 2026-10-16 (payment first, then review, then publish): this story owns the Razorpay webhook, the hand-over to the Trust & Safety review (Part F) when payment succeeds, and the transactional publish operation that runs as soon as the review approves the listing. It also owns the recovery path when something fails after payment succeeds — a scenario the acceptance criteria explicitly calls out ("Payment succeeds but listing publish fails").
 
