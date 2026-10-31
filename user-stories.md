@@ -474,6 +474,8 @@
 - Given I have selected a listing plan
 - When payment is successful (or my chosen plan is priced at zero)
 - Then my listing goes to the Trust & Safety review (US-084)
+- And I see a confirmation page in the app: my listing is under Trust & Safety compliance review, it may take a few minutes, I will be notified if any action is required, otherwise the listing goes live automatically when it is compliant
+- And the page has a "Preview your listing" button (US-123)
 - And I receive a notification that it is under review (usually within a few hours)
 - When the review approves my listing
 - Then listing is published instantly
@@ -5589,11 +5591,52 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-123: Preview Listing
+> **Placeholder (2026-10-31):** the story is written so the Preview your listing button on the US-009 page has a destination; points are not estimated and the details below are to be refined before it is planned.
+**As a** seller  
+**I want** to preview my listing the way buyers will see it  
+**So that** I can check it before and after it goes live
+
+**Acceptance Criteria:**
+- Given I own a listing in any of my states (details complete, under review, revision required, published)
+- When I tap "Preview your listing" (on the under-review page of US-009, and later on My Listings)
+- Then I see the listing page as buyers will see it: photos, title, price, category path, condition, description, category-specific details, location and, once published, the plan badge
+- And a status banner says where the listing is (under review, revision required with the reason, published, expired)
+- And buyer actions (chat, buy, save) are shown but not active
+- And no one but the owner can open the preview
+
+**Edge Cases:**
+- Listing still being reviewed or sent back for revision
+- A photo failed to load or was removed
+- Optional fields not filled in
+- Very long description or many category details
+- Listing removed by an admin or expired
+
+**Validation Rules:**
+- Read-only; it never changes the listing
+- Owner only (another user gets not found)
+- Photos come through short-lived read links, never public storage URLs
+- One reusable preview component, also used by the My Listing details page (US-010 or a later My Listings story) and, where the layout matches, the buyer page (US-012)
+
+**Error Scenarios:**
+- `LISTING_NOT_FOUND`: "Listing not found"
+
+**Flutter Implementation Notes:**
+- Reusable `ListingPreview` widget in the listing feature, driven by the listing draft response plus the status
+- Brand design tokens only; English and Hindi strings
+
+**Open items (to be decided when planned):**
+1. Whether the page reuses the US-012 buyer layout or has its own
+2. Which endpoint supplies photo read links and the status (the draft response has neither the links nor the review reason)
+3. Story points and sprint (proposed: Sprint 2, after US-009)
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 122  
+**Total User Stories:** 123  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)

@@ -120,6 +120,7 @@ Mobile tests
 9. **Push** is not built; medium-priority messages are in-app only until push exists (US-077).
 10. **Hindi wording** needs a native-speaker review before release.
 11. **"Refund issued"** is added when the refund step is built (story); not in this story.
+12. **Follow-ups from US-009 (2026-10-31).** (a) US-009's "listing under review" page deliberately promises no notification; when this story sends the notifications, change its text to "We will notify you if any action is required" (English and Hindi). (b) The migration numbers moved: US-008 took `V20`, US-084 plans `V21` and US-009 `V22`, so this story takes `V23` if built last. (c) A late payment flagged for refund review by US-009 and the refund-due event both produce events this story can notify on.
 
 ---
 
