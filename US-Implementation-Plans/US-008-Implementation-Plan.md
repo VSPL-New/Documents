@@ -140,3 +140,18 @@ Target >90% coverage for new code (`CLAUDE.md`).
 ---
 
 **Status:** Approved (2026-10-30; the user approved the plan, built on the dummy gateway of US-117; migration `V20`; implement after US-117).
+
+## 8. Implementation Notes (deviations from the plan as built, 2026-10-31)
+
+1. **Readiness.** US-007 (#42, #46) and US-117 (#43, #48) were merged to `main` first; this story is built on them, migration `V20`.
+2. **State machine.** `PLAN_PAYMENT_PENDING → PLAN_SELECTION_PENDING` (`RESELECT_PLAN`) and `PLAN_PAYMENT_FAILED → PLAN_PAYMENT_PENDING` (`RETRY_PAYMENT`) already existed from US-089, so no state machine change was needed.
+3. **Aadhaar check.** Done by the existing `@RequiresIdentityVerification` interceptor, so the error code is `AADHAAR_VERIFICATION_REQUIRED` (which the app already maps), not `ERROR_AADHAAR_VERIFICATION_REQUIRED`.
+4. **Gateway failure.** `ERROR_GATEWAY_UNAVAILABLE` rolls back the whole selection, so the listing stays where it was (for example `DRAFT`), rather than moving to plan selection. Nothing is left pending.
+5. **Charged amount.** The amount is `TaxSettings.totalAmount(plan price)`: the plan price in inclusive mode, price plus GST in exclusive mode. The snapshot stores the plan's listed price and the GST mode.
+6. **Same plan again.** In `PLAN_PAYMENT_PENDING` with the same plan the listing is not moved; the snapshot is refreshed and `PaymentService.createOrReuse` returns the same order when the amount is unchanged, or replaces it when the catalog price changed. After a failed payment the same plan uses `RETRY_PAYMENT`; another plan uses `RESELECT_PLAN` then `SELECT_PLAN`.
+7. **Handler.** `ListingPaymentCompletedHandler` (interface) has a logging default from `ListingPaymentHandlerConfig`; US-009 replaces it. Until US-009 listens to `PaymentSucceededEvent` and `PaymentFailedEvent`, a paid listing stays in `PLAN_PAYMENT_PENDING` after the gateway confirms the payment.
+8. **Completeness check.** "Complete" means title, description, category and price are set (the details save already validates the rest per category) and at least 2 photos.
+9. **Review page, mobile.** The summary shows title, category path, price and description; the photo strip, condition and location are not shown because the draft carries no photo read URLs and the plan page is only given the fields above. The Figma Make file was not re-read (no Figma tool was available); the page reuses existing components and tokens, so a design pass is still open.
+10. **After payment.** The app returns to Home with a message ("Payment received, your listing is under review" or "We're confirming your payment"); My Listings does not exist yet. It does not poll the listing status: it uses the payment status of US-117's `PaymentFlow`, which only trusts the server.
+11. **Resume and Aadhaar.** There is no draft-resume entry point in the app yet, so "reopen and continue" is not built (the draft response now carries `planCode` for it). After an Aadhaar-required answer the app opens the Aadhaar page; where it returns afterwards is the existing Aadhaar flow's behaviour.
+12. **Active cap.** `valuex.listing.max-active-listings` (default 50).
