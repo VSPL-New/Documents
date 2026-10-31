@@ -1,5 +1,7 @@
 # US-084: Pre-Publication Trust & Safety Review — Implementation Plan
 
+> **Update (2026-10-31):** built together with US-009, stacked on the US-008 branches. Latest migration is `V20` (US-008), so the reviews and appeals tables are `V21` and US-009's `published_at` is `V22`. US-008's `ListingPaymentCompletedHandler` is the hand-over point (Open Gap 2a is resolved): US-009 implements it and calls `TrustSafetyReviewService.review` in a separate transaction. The third failed attempt's refund flag is `PaymentRefundService.requestRefund` (US-009). Seller notifications stay with US-115 (events only). The mobile review-status display is deferred to the My Listings and preview work (US-123): the only mobile change in this delivery is US-009's "listing under review" page.
+
 > **Update (2026-10-25, category taxonomy):** the review also covers Conditional-category and Real Estate listings, including the seller's compliance acceptance (US-007). The `categories_unrelated` signal no longer exists because multi-category tagging was dropped.
 
 ## 1. Header
@@ -10,7 +12,7 @@
 | Title | Pre-Publication Trust & Safety Review |
 | Sprint | Sprint 2 — Seller Listing Creation |
 | Story Points | 5 |
-| Repos | valuex-backend, valuex-mobile (status display only). `valuex-ai` is out of scope (separate team, integrated later) |
+| Repos | valuex-backend (the mobile review-status display is deferred, see the update note). `valuex-ai` is out of scope (separate team, integrated later) |
 | Dependency | US-007 (restricted-item gate); **US-009, developed and delivered together with this story** ([plan](US-009-Implementation-Plan.md): one branch, one pull request); US-089 ([plan](US-089-Implementation-Plan.md), built first: `ListingLifecycleService`, reconciled listing states, key-state notifications); US-005 (shared `valuex.ai.enabled` switch, `AiGatewayClient`, Resilience4j) |
 
 **Combined delivery (2026-10-16):** US-009 and US-084 are built together because payment success hands the listing to this review and approval triggers publication. See "Combined delivery" in the US-009 plan for the build order and the shared end-to-end tests. Review attempts are 3 in total per paid plan (the first review is attempt 1).
@@ -62,7 +64,7 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part F](../LLD/Spri
 ## 4. Implementation Steps
 
 ### Database Migration — `valuex-backend`
-- [ ] `listing_trust_safety_reviews` per LLD §F.3 with these changes: `fraud_score` nullable (no score without AI), and `auto_decision` allows `AUTO_APPROVED_NO_AI` in addition to `AUTO_APPROVED`, `QUEUED_FOR_REVIEW`, `TRUSTED_SELLER_BYPASS`. Add `attempt_number`, `sla_deadline`, `rejection_reason`, `admin_id`, `admin_decision`, `reviewed_at`, `score_breakdown` (JSONB, nullable). Use the next free Flyway version after US-007's.
+- [ ] `listing_trust_safety_reviews` per LLD §F.3 with these changes: `fraud_score` nullable (no score without AI), and `auto_decision` allows `AUTO_APPROVED_NO_AI` in addition to `AUTO_APPROVED`, `QUEUED_FOR_REVIEW`, `TRUSTED_SELLER_BYPASS`. Add `attempt_number`, `sla_deadline`, `rejection_reason`, `admin_id`, `admin_decision`, `reviewed_at`, `score_breakdown` (JSONB, nullable). Use the next free Flyway version after US-008's `V20` (`V21`).
 - [ ] Indexes on `listing_id` and a partial index for pending queue rows (`QUEUED_FOR_REVIEW` with no `admin_decision`).
 - [ ] `listing_trust_safety_appeals` (review ID, seller ID, reason, status `PENDING`/`UPHELD`/`OVERTURNED`, resolver, timestamps), following the US-007 appeal table.
 
@@ -91,7 +93,7 @@ Primary source: [Sprint-2-Seller Listing Creation-LLD.md — Part F](../LLD/Spri
 - [ ] No `/api/v1/admin/...` endpoints in this story (see Scope decision 5).
 
 ### Mobile (Flutter)
-- [ ] Show the review result: approved (continue), `LISTING_UNDER_REVIEW` message when queued, `LISTING_REJECTED` with the specific reason, a revise/resubmit action and the attempts used (for example "attempt 1 of 3"), `LISTING_REJECTED_FINAL` after the third failure (listing closed, refund coming), and appeal. Messages via l10n (English and Hindi) and `listing_error_messages.dart`.
+- [ ] **Deferred (decided 2026-10-31)** to the My Listings and preview work (US-123, US-010): the app has no listing status screen yet. Kept here for the later story: show the review result: approved (continue), `LISTING_UNDER_REVIEW` message when queued, `LISTING_REJECTED` with the specific reason, a revise/resubmit action and the attempts used (for example "attempt 1 of 3"), `LISTING_REJECTED_FINAL` after the third failure (listing closed, refund coming), and appeal. Messages via l10n (English and Hindi) and `listing_error_messages.dart`.
 
 ### Documentation/Quality
 - [ ] OpenAPI examples; update LLD Part F for `AUTO_APPROVED_NO_AI`, the config switch and the deferred admin endpoints.
@@ -138,7 +140,7 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 1. **`ListingLifecycleService` (resolved).** Planned in [US-089](US-089-Implementation-Plan.md) and built first.
 2. **Transition path to review (decided 2026-10-16).** The review runs **after payment**: `PLAN_PAYMENT_SUCCESS → TRUST_SAFETY_REVIEW` (`SUBMIT_FOR_REVIEW`), triggered when the plan payment succeeds, and before publication (`APPROVED → PUBLISHED`). The `PRICE_PENDING` and AI-detail states are not on the path. LLD §F.5/F.6 (review from `DRAFT`) is updated accordingly.
-2a. **Payment trigger.** Sprint 2 payment for listing plans comes from US-008, so the review starts from its `PLAN_PAYMENT_SUCCESS` event or call; confirm how US-008 will hand over (the plan assumes a call to `TrustSafetyReviewService.review` from the payment-success handler).
+2a. **Payment trigger (resolved 2026-10-31).** US-008 is built: it exposes the `ListingPaymentCompletedHandler` interface (priced plans call it through US-009's payment listener, a plan priced at zero calls it directly). US-009's implementation calls `TrustSafetyReviewService.review` in a separate transaction so a failed review never rolls back the selection or the payment.
 2b. **Rejected after payment (decided 2026-10-16).** The seller is notified, edits the listing and resubmits it for review without paying again, up to 3 review attempts in total. After the third failed attempt the plan fee is refunded; the payment moves to `REFUND_REVIEW`. Whether the refund is automatic or manual is decided later.
 2c. **Meaning of "3 attempts" (decided).** 3 reviews in total: the first review is attempt 1, so a seller sees at most 3 rejection notifications and 2 resubmissions. The limit stays configurable (`valuex.moderation.max-review-attempts`, default 3).
 3. **Reputation data.** Seller rating and completed-sales counts will not exist until Sprint 8 and the order sprints, so the trusted-seller bypass has no effect for now. Accepted?
@@ -149,4 +151,15 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 ---
 
-**Status:** Draft
+## 8. Implementation Notes (2026-10-31)
+
+Built together with US-009 (see its section 8 for the shared deviations and [US-009-Testing-Guide.md](../Manual%20Testing%20Guides/US-009-Testing-Guide.md), which covers both stories). Deviations from this plan:
+
+1. **`review_reason`** is `NOT NULL DEFAULT 'INITIAL'` (not nullable). The kind is `EDIT` when the listing already has `published_at`; US-010 does not exist yet, so only the logic and its unit tests are built.
+2. **Not built:** the `categories_unrelated` signal (the column no longer exists since multi-category tagging was dropped); the price score in the AI request (price-suggestion design on hold). The AI request path `/ai/v1/listings/fraud-score` is an assumed contract: `valuex-ai` is out of scope and does not serve it yet. AI is off by default.
+3. **API:** `POST /trust-safety-review` starts the review of a paid listing, resubmits a `REVISION_REQUIRED` listing (after US-007 is cleared again) or reports the outcome; the response has `listingStatus`, `decision`, `attemptNumber`, `maxAttempts`, `reason` and the advisory `code` (`LISTING_UNDER_REVIEW`, `LISTING_REJECTED`, `LISTING_REJECTED_FINAL`).
+4. **Failed-attempt count** is the number of `INITIAL` reviews since the latest `PLAN_PAYMENT_SUCCESS` history row, so a renewal starts a fresh count.
+5. **AI call inside the review transaction:** with AI on, the score call (up to the gateway timeout) runs while the listing row is locked. Accepted because AI is off for now; move the call before the transaction when AI is switched on.
+6. `listing_trust_safety_appeals` references `review_id` with a unique constraint (one appeal per review).
+
+**Status:** Implemented

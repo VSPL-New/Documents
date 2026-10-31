@@ -101,9 +101,10 @@ Allow sellers to create and publish listings.
 | US-078 | Listing Plan Features and Pricing     | backend, mobile | 3  | US-004     |
 | US-117 | Payment Gateway Integration           | backend, mobile | 5  | S0-001     |
 | US-008 | Seller Chooses Listing Plan           | backend, mobile | 5  | US-078, US-007, US-117 |
-| US-009 | Listing Publication After Payment     | backend         | 5  | US-008, US-084 (built together) |
+| US-009 | Listing Publication After Payment     | backend, mobile | 5  | US-008, US-084 (built together) |
 | US-010 | Edit/Delete Listing                   | backend, mobile | 5  | US-009     |
 | US-115 | Listing Lifecycle Notifications       | backend, mobile | 3  | US-077, US-089 |
+| US-123 | Preview Listing (placeholder, to be detailed; points not estimated yet) | mobile, backend | TBD | US-004, US-006, US-089; opened from the US-009 under-review page |
 
 ## Exit Criteria
 
@@ -497,7 +498,7 @@ Add advanced features and optimize platform.
 | ------ | ----------------------------------- | ------- | --- | -------- |
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
 | S1     | Identity & User Management          | 13      | 59  | 2 weeks  |
-| S2     | Seller Listing Creation             | 13      | 75* | 2 weeks  |
+| S2     | Seller Listing Creation             | 14      | 75* | 2 weeks  |
 | S3     | Discovery & Search                  | 7       | 42  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
 | S5     | Cart, Checkout & Payments           | 13      | 62* | 2 weeks  |
@@ -511,15 +512,15 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **125** | **693*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **126** | **693*** | **32 weeks** |
 
 \* Category taxonomy (2026-10-25): US-006 is rewritten and raised from 3 to 13 SP (Sprint 2 and total points +10). Added US-118 (5) and US-120 (8) in Sprint 3, US-122 (13) in Sprint 6, and US-119 (5) and US-121 (8) in Sprint 10. Story points for these are proposals.
 
-\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total).
+\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total). Sprint 2 adds US-123 (Preview Listing, a placeholder story with no estimate yet, so its points are not included in the 75 or the total).
 
 ## Coverage
 
-### Stories Planned: 125 / 122 total user stories
+### Stories Planned: 126 / 123 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -539,6 +540,7 @@ Add advanced features and optimize platform.
 - Listing Notifications (US-115): ✅ 1 story (Sprint 2)
 - Plan Administration (US-116): ✅ 1 story (Sprint 10)
 - Payment Gateway (US-117): ✅ 1 story (Sprint 2)
+- Listing Preview (US-123): ✅ 1 story (Sprint 2, placeholder)
 - Category Taxonomy (US-118 to US-122): ✅ 5 stories (US-118 and US-120 in Sprint 3, US-122 in Sprint 6, US-119 and US-121 in Sprint 10)
 
 **Not Yet Planned (Future Backlog):**
