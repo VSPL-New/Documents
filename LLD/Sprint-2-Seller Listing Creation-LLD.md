@@ -2845,6 +2845,8 @@ Paid plan response — redirect to gateway:
 }
 ```
 
+> **As built by US-008 (migration `V20__listing_plan_snapshot.sql`).** `POST /api/v1/listings/{listingId}/plan-selection` takes `{ "planCode": "BOOSTED" }` and needs Aadhaar verification (`@RequiresIdentityVerification`, so an unverified seller gets `403 AADHAAR_VERIFICATION_REQUIRED`). The response is `{ planCode, paymentRequired, listingStatus, amount, payment }`: `amount` is in rupees and is the catalog price with GST added only in exclusive mode; `payment` is the US-117 `PaymentCheckoutDetails` (`paymentId`, `orderId`, `amount`, `currency`, `publicKey`, `expiresAt`) and is null for a plan priced at zero (then `listingStatus` is `PLAN_PAYMENT_SUCCESS` and `ListingPaymentCompletedHandler.onPaymentSuccess` is called). The price, validity and GST mode are copied to `listings.plan_price`, `plan_validity_days`, `plan_price_includes_gst` when the plan is chosen. Errors: `ERROR_INCOMPLETE_LISTING`, `ERROR_MIN_PHOTOS_REQUIRED`, `ERROR_MAX_LISTINGS_REACHED` (`valuex.listing.max-active-listings`, default 50, counting every status except `SOLD`, `EXPIRED`, `DEACTIVATED_BY_SELLER`, `REMOVED_BY_ADMIN`, `REJECTED`), `ERROR_PLAN_SELECTION_NOT_ALLOWED` (listing is past plan selection), `PLAN_NOT_FOUND` (404), the US-007 gate errors, and `ERROR_GATEWAY_UNAVAILABLE` (503, the whole selection is rolled back). The draft response now also carries `planCode`.
+
 ## H.5 Service Logic
 
 ```java
