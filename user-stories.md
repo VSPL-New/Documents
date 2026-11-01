@@ -4259,7 +4259,7 @@
 - Then I am redirected to Google OAuth consent screen
 - When I grant consent and Google returns an ID token
 - Then the backend validates the Google ID token with Google's public keys
-- If my Google email is already linked to a ValueX account:
+- If my Google email is already linked to a JustQlic account:
   - Then I am logged in and issued a new JWT
 - If this is a new Google account (first social login):
   - Then I am prompted to enter and verify my mobile number via OTP
@@ -4270,14 +4270,14 @@
 
 **Edge Cases:**
 - Google token expired or invalid
-- Google email already linked to another ValueX account (via different Google account)
+- Google email already linked to another JustQlic account (via different Google account)
 - User revokes Google access from Google account settings
 - Google OAuth service temporarily unavailable
 - User's mobile number (entered after social login) already registered under a different account
 
 **Validation Rules:**
 - Google ID token must be validated server-side using Google's token verification endpoint
-- Token audience must match ValueX's Google Client ID
+- Token audience must match JustQlic's Google Client ID
 - Email from Google token must be stored (not used as account key — mobile is the account key)
 - Social login only permitted after account has a verified mobile number
 
@@ -4285,7 +4285,7 @@
 - `ERROR_INVALID_GOOGLE_TOKEN`: "Google sign-in failed. Please try again"
 - `ERROR_GOOGLE_SERVICE_UNAVAILABLE`: "Google Sign-In is temporarily unavailable"
 - `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered with another account"
-- `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Google account is already linked to another ValueX account"
+- `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Google account is already linked to another JustQlic account"
 
 **Flutter Implementation Notes:**
 - Use `google_sign_in` Flutter package (v7). The app sends only the `idToken`; the backend validates it and the app never trusts client-side verification. The app signs the Google account out locally right after reading the token
@@ -4310,7 +4310,7 @@
 - When I authenticate (Face ID / Touch ID / password)
 - Then Apple returns an identity token and optionally an email
 - Then the backend validates the Apple identity token using Apple's public keys
-- If my Apple account is already linked to a ValueX account:
+- If my Apple account is already linked to a JustQlic account:
   - Then I am logged in and issued a new JWT
 - If this is a new Apple account (first Apple login):
   - Then I am prompted to enter and verify my mobile number via OTP
@@ -4329,7 +4329,7 @@
 **Validation Rules:**
 - Apple identity token must be validated server-side using Apple's public keys (JWK endpoint)
 - Token `iss` must be `https://appleid.apple.com`
-- Token `aud` must match ValueX's Apple Service ID
+- Token `aud` must match JustQlic's Apple Service ID
 - Apple `sub` (stable user identifier) stored as the social account key — NOT email
 - Apple Sign-In is mandatory on iOS if any other third-party login is offered (App Store guideline 4.8)
 - Social login only permitted after account has a verified mobile number
@@ -4338,7 +4338,7 @@
 - `ERROR_INVALID_APPLE_TOKEN`: "Apple Sign-In failed. Please try again"
 - `ERROR_APPLE_SERVICE_UNAVAILABLE`: "Apple Sign-In is temporarily unavailable"
 - `ERROR_MOBILE_ALREADY_REGISTERED`: "This mobile number is already registered with another account"
-- `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Apple ID is already linked to another ValueX account"
+- `ERROR_SOCIAL_ACCOUNT_ALREADY_LINKED`: "This Apple ID is already linked to another JustQlic account"
 
 **Flutter Implementation Notes:**
 - Use `sign_in_with_apple` Flutter package
@@ -4708,7 +4708,7 @@
 ## Mobile App Security
 
 ### US-109: Mobile App Security Hardening
-**As a** user of the ValueX mobile app  
+**As a** user of the JustQlic mobile app  
 **I want** the app to protect my session, my traffic and my sensitive screens  
 **So that** my account and personal data are safe even on a compromised network or device
 
@@ -4721,7 +4721,7 @@
 
 **Acceptance Criteria:**
 - Given a production build
-- When the app connects to the ValueX API
+- When the app connects to the JustQlic API
 - Then the connection is accepted only if the server certificate matches the pinned certificates or public keys
 - And a mismatch fails the request with a "Connection not secure" message and no data is sent
 - Given a production build runs on a rooted or jailbroken device
@@ -4763,7 +4763,7 @@
 ## UI Quality
 
 ### US-110: Registration UI Accessibility and Readability Review
-**As a** user of the ValueX mobile app, including users with low vision, motor difficulty or a screen reader, or who read in bright light or at a large text size  
+**As a** user of the JustQlic mobile app, including users with low vision, motor difficulty or a screen reader, or who read in bright light or at a large text size  
 **I want** every registration screen to be easy to see, read, understand and tap  
 **So that** I can create my account without help
 
@@ -5246,7 +5246,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 | `LISTING_REFUND_DUE` | in-app, email | "Your refund of ₹{amount} for the listing plan is being processed." | "लिस्टिंग प्लान के ₹{amount} की वापसी प्रक्रिया में है।" |
 | `LISTING_PAYMENT_FAILED` | in-app | "Your payment was unsuccessful. Please try again or choose another plan." | "आपका भुगतान सफल नहीं हुआ। कृपया दोबारा कोशिश करें या दूसरा प्लान चुनें।" |
 | `LISTING_EXPIRED` | in-app | "Your listing \"{title}\" has expired. Renew it to make it visible again." | "आपकी लिस्टिंग \"{title}\" की अवधि समाप्त हो गई है। फिर से दिखाने के लिए इसे रिन्यू करें।" |
-| `LISTING_REMOVED_BY_ADMIN` | in-app, email | "Your listing \"{title}\" was removed by ValueX. Contact support for details." | "आपकी लिस्टिंग \"{title}\" को ValueX ने हटा दिया है। विवरण के लिए सहायता से संपर्क करें।" |
+| `LISTING_REMOVED_BY_ADMIN` | in-app, email | "Your listing \"{title}\" was removed by JustQlic. Contact support for details." | "आपकी लिस्टिंग \"{title}\" को JustQlic ने हटा दिया है। विवरण के लिए सहायता से संपर्क करें।" |
 
 **Edge Cases:**
 - The same event is delivered twice (retry, webhook repeat, job re-run): only one notification
@@ -5277,7 +5277,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 **Backend Notes:**
 - A listener in the notification module (same pattern as `AccountEventNotificationListener`) subscribes to the listing status change event (US-089), the payment events (US-009) and the refund-due event (US-084), and dispatches through `NotificationDispatcher`
 - The notification record gets an optional `params` value (title, reason, attempt, amount) so the app can localize; this needs a small migration
-- The existing account notification copy still says "JustQlic"; it is changed to "ValueX" when this listener is added, as the product name is ValueX
+- The existing account notification copy already says "JustQlic", which is the app and business name of the ValueX project; it stays as it is, and the new listing messages use the same name
 - Duplicate protection: a unique key of listing, event type and attempt
 
 **Decisions (product owner, 2026-10-16):**
@@ -5423,7 +5423,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 **Validation Rules:**
 - All amounts are decided by the server, in rupees with 2 decimals, and sent to the gateway in the smallest currency unit; the app can never set an amount
 - Callbacks are trusted only after their signature check passes, using a constant-time comparison
-- Card, UPI and bank details never reach ValueX servers or logs
+- Card, UPI and bank details never reach JustQlic servers or logs
 - Secrets (keys, webhook secret) are read from the environment or secret store
 - Payment records and attempts are never deleted and are kept for 7 years (US-071)
 - Payment and refund states follow US-091
