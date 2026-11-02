@@ -79,7 +79,7 @@ SELECT attempt_number, review_reason, auto_decision, admin_decision, sla_deadlin
 | TC-026 | Retries are limited | Keep TC-025 broken | After 5 attempts the log shows `ALERT listing stuck in APPROVED` once and metric `listing.recovery.exhausted` rises; finance refunds by hand |
 | TC-027 | Unpaid listing timeout | Choose a plan, delete the open payment's chance (mark it failed), wait 30 minutes | Listing returns to `PLAN_SELECTION_PENDING` (`PAYMENT_TIMEOUT`); with a successful payment present the job continues the listing instead |
 | TC-028 | Plan changes do not move the expiry | Change the plan's validity in the catalog after payment, before publication | `expires_at` uses the days taken when the plan was chosen |
-| TC-029 | No notification yet | Pay and publish | The seller receives no notification (US-115); the domain events `ListingReviewDecidedEvent` and the status change event are published |
+| TC-029 | Notifications | Pay and publish | Since US-115 the seller receives "under review" and then "your listing is live" (see `US-115-Testing-Guide.md`); the domain events `ListingReviewDecidedEvent` and the status change event are still published |
 
 ---
 
@@ -87,7 +87,7 @@ SELECT attempt_number, review_reason, auto_decision, admin_decision, sla_deadlin
 
 | ID | Steps | Expected |
 |---|---|---|
-| TC-A01 | Pay a plan in the test sheet (**Pay**) | The sheet closes and the page "Your listing is submitted" opens; no snackbar; it never says the listing is live or promises a notification |
+| TC-A01 | Pay a plan in the test sheet (**Pay**) | The sheet closes and the page "Your listing is submitted" opens; no snackbar; it never says the listing is live; it says "We will notify you if any action is required" (US-115) |
 | TC-A02 | Read the page | Title, the message about the Trust & Safety compliance review, the buttons **Preview your listing** and **Back to Home** |
 | TC-A03 | Tap **Preview your listing** | "Preview is coming soon"; stay on the page |
 | TC-A04 | Tap **Back to Home**; or press the system back button | Home opens; the app does not close and the review page is not shown again |

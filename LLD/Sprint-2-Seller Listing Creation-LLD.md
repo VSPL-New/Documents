@@ -3,7 +3,7 @@
 **Document Version:** 2.0
 **Product:** ValueX
 **Sprint:** Sprint 2 - Seller Listing Creation
-**Stories Covered:** US-004, US-114, US-005, US-006, US-007, US-089, US-078, US-008, US-009, US-084, US-010
+**Stories Covered:** US-004, US-114, US-005, US-006, US-007, US-089, US-078, US-008, US-009, US-084, US-010, US-115
 **Repos:** valuex-backend, valuex-mobile, valuex-ai
 **Sprint Goal:** Allow sellers to create and publish listings, with AI-assisted metadata, moderation, and paid plan monetization.
 
@@ -55,6 +55,7 @@ This document contains one self-contained LLD section per story, in dependency o
 - [Part H - US-008: Seller Chooses Listing Plan](#part-h---us-008-seller-chooses-listing-plan)
 - [Part I - US-009: Listing Publication After Payment](#part-i---us-009-listing-publication-after-payment)
 - [Part J - US-010: Edit/Delete Listing](#part-j---us-010-editdelete-listing)
+- [Part K - US-115: Listing Lifecycle Notifications](#part-k---us-115-listing-lifecycle-notifications)
 
 ---
 
@@ -2946,7 +2947,7 @@ sequenceDiagram
 
 ## I.1 Story Overview
 
-> **As built (2026-10-31, built together with US-084, after US-117 and US-008):** the code differs from the sketch in I.5. `ListingPaymentHandler` (implements US-008's `ListingPaymentCompletedHandler`) moves the listing to `PLAN_PAYMENT_SUCCESS` and runs `TrustSafetyReviewService.review`, each step in its own transaction (`RequiresNewTransaction`) and never throwing; US-008's zero-price call waits for its transaction to commit (it holds the listing row lock). `ListingPaymentResultListener` reacts to `PaymentSucceededEvent` and `PaymentFailedEvent` for `LISTING_PLAN` after commit: a late success continues the listing only when it still waits for payment and the amount equals the snapshot's expected amount (price, plus GST at the current rate when the snapshot excludes GST), otherwise `PaymentRefundService.requestRefund` flags it (`REFUND_REVIEW`, metric `payment.late.refund.review`). `ListingPublicationService` listens for the `APPROVED` status change, sets `published_at` and `expires_at` (once) and publishes. `ListingRefundDueListener` flags the plan fee through `requestRefund` (no gateway call). `ListingRecoveryJob` (every minute) retries stuck hand-overs, publications and reviews with no decision, and returns a listing waiting for a payment that is gone to plan selection after 30 minutes; the attempt count (5) is kept in memory, so a restart gives a stuck listing a fresh set, and exhaustion raises an alert (log `ALERT`, metric `listing.recovery.exhausted`) for finance. No notification is sent (US-115). Migration `V22` adds `published_at`. Mobile: the page `/sell/submitted` replaces the Home snackbar after a confirmed payment or a plan priced at zero.
+> **As built (2026-10-31, built together with US-084, after US-117 and US-008):** the code differs from the sketch in I.5. `ListingPaymentHandler` (implements US-008's `ListingPaymentCompletedHandler`) moves the listing to `PLAN_PAYMENT_SUCCESS` and runs `TrustSafetyReviewService.review`, each step in its own transaction (`RequiresNewTransaction`) and never throwing; US-008's zero-price call waits for its transaction to commit (it holds the listing row lock). `ListingPaymentResultListener` reacts to `PaymentSucceededEvent` and `PaymentFailedEvent` for `LISTING_PLAN` after commit: a late success continues the listing only when it still waits for payment and the amount equals the snapshot's expected amount (price, plus GST at the current rate when the snapshot excludes GST), otherwise `PaymentRefundService.requestRefund` flags it (`REFUND_REVIEW`, metric `payment.late.refund.review`). `ListingPublicationService` listens for the `APPROVED` status change, sets `published_at` and `expires_at` (once) and publishes. `ListingRefundDueListener` flags the plan fee through `requestRefund` (no gateway call). `ListingRecoveryJob` (every minute) retries stuck hand-overs, publications and reviews with no decision, and returns a listing waiting for a payment that is gone to plan selection after 30 minutes; the attempt count (5) is kept in memory, so a restart gives a stuck listing a fresh set, and exhaustion raises an alert (log `ALERT`, metric `listing.recovery.exhausted`) for finance. No notification is sent here; US-115 turns the events into notifications (Part K). Migration `V22` adds `published_at`. Mobile: the page `/sell/submitted` replaces the Home snackbar after a confirmed payment or a plan priced at zero.
 
 **As a** seller **I want** my listing to be published immediately after successful payment **so that** buyers can discover it right away. Updated 2026-10-16 (payment first, then review, then publish): this story owns the Razorpay webhook, the hand-over to the Trust & Safety review (Part F) when payment succeeds, and the transactional publish operation that runs as soon as the review approves the listing. It also owns the recovery path when something fails after payment succeeds — a scenario the acceptance criteria explicitly calls out ("Payment succeeds but listing publish fails").
 
@@ -3249,5 +3250,67 @@ sequenceDiagram
 - `requireOwnedListing` (shared helper, first defined in Part A §A.5) is reused here — no new ownership-check code path, reducing IDOR risk surface.
 - `listing_edit_history.changed_fields` stores only field-level diffs (not full before/after snapshots) to keep the audit table lightweight while still satisfying "edit history maintained for audit."
 - Soft-delete (`deleted_at`) rather than hard `DELETE` ensures `listing_status_history` and `listing_edit_history` foreign keys remain valid and the 90-day retention requirement is trivially satisfiable by a scheduled purge job outside this story's scope.
+
+---
+
+# Part K - US-115: Listing Lifecycle Notifications
+
+> **As built (2026-11-01).** Dependencies: US-077 (notification module), US-089 (status change event), US-117/US-008/US-009 (payment events), US-084 (review decisions). Product name in all user-facing text is **JustQlic** (the app and business name of the ValueX project).
+
+## K.1 Story Overview
+
+The seller is told what happens to a listing after the plan is chosen: under review, live, needs changes (review n of 3), not approved after 3 reviews (with the plan fee refund when paid), refund being processed, payment unsuccessful, expired, removed. English text is stored on the server (used by email, SMS and old app versions); the app shows English or Hindi from `eventType` and `params`.
+
+## K.2 Data Model
+
+Migration `V23__notification_params_dedupe.sql`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `notifications.params` | `JSONB NULL` | Values behind the message: `listingId`, `title`, `reason`, `attempt`, `amount` (only those that apply). Returned by `GET /api/v1/notifications` as `params`. |
+| `notifications.dedupe_key` | `VARCHAR(160) NULL` | Unique index `uq_notifications_dedupe_key` where not null. |
+
+## K.3 Event to Message
+
+`ListingEventNotificationListener` (notification module, `@TransactionalEventListener(AFTER_COMMIT)`) turns three events into notifications through `NotificationDispatcher`; it never calls listing services.
+
+| `eventType` | Trigger | Channels | Priority | Deep link | Dedupe key (`listingId:eventType:` + suffix) |
+|---|---|---|---|---|---|
+| `LISTING_UNDER_REVIEW` | `ListingStatusChangedEvent` `PLAN_PAYMENT_SUCCESS` → `TRUST_SAFETY_REVIEW` (paid and free plan; resubmit and edit reviews give nothing) | in-app | MEDIUM | none | `eventId` |
+| `LISTING_PUBLISHED` | status change to `PUBLISHED` | in-app | MEDIUM | `/listing/{id}` | `eventId` |
+| `LISTING_PAYMENT_FAILED` | status change to `PLAN_PAYMENT_FAILED`, or action `PAYMENT_TIMEOUT` (not `RESELECT_PLAN`, not a superseded payment) | in-app | MEDIUM | `/sell/plan?listingId={id}` | `eventId` |
+| `LISTING_EXPIRED` | status change to `EXPIRED` | in-app | MEDIUM | `/sell/plan?listingId={id}` | `eventId` |
+| `LISTING_REMOVED_BY_ADMIN` | status change to `REMOVED_BY_ADMIN` | in-app, email | HIGH | `/support` | `eventId` |
+| `LISTING_REVISION_REQUIRED` | `ListingReviewDecidedEvent` decision `REVISION_REQUIRED`; `attempt` param only for `reviewKind INITIAL` | in-app, email | HIGH | `/sell/details?listingId={id}` | `reviewKind:attemptNumber` |
+| `LISTING_REJECTED_FINAL` | decision `REJECTED`; refund sentence and `amount` only when a plan payment exists | in-app, email, SMS (config switch) | HIGH | none | `reviewKind:attemptNumber` |
+| `LISTING_REFUND_DUE` | `ListingRefundDueEvent`; nothing when the plan was free | in-app, email | HIGH | none | `refund` (a rejected listing is final, so one refund per listing) |
+
+`ListingReviewDecidedEvent` now carries `reviewKind`. The amount is the plan payment amount, GST included.
+
+## K.4 Service Logic
+
+- `NotificationDispatcher.dispatch`: when `dedupeKey` is set and a row with it exists, it returns that row and sends no SMS or email; the unique index is the guard for concurrent duplicates (the second commit fails with `DataIntegrityViolationException`, which the listener ignores).
+- The listener saves each message with `RequiresNewTransaction`: the publishing transaction has already committed when an AFTER_COMMIT listener runs, so a plain `@Transactional` method would join it and never commit.
+- `ListingNotificationCopy` holds the text, channels, priority and link per type. Title and reason are plain text (markup and control characters removed, spaces collapsed); title shortened to 60 characters, reason to 500. A missing title reads "your listing".
+- `NotificationPreferences.shouldSend(userId, eventType, channel)` always returns true until US-087; the in-app row is never filtered.
+- Final-rejection SMS: `valuex.notification.final-rejection-sms-enabled` (`NOTIFICATION_FINAL_REJECTION_SMS`, default true). Keep it false in production until the SMS template is approved by the SMS provider.
+- Cross-module reads: `ListingOwnerLookupService` (listing module, seller and title) and `ListingPlanFeeLookupService` (payment module, `PaidPlanFee(paymentId, amount)` from `LISTING_PLAN` payments in `PAYMENT_SUCCESS`, `REFUND_REVIEW`, `REFUND_APPROVED`, `REFUND_PROCESSED`). A listing or seller that is gone is skipped and logged; a failure is logged as `ERROR_NOTIFICATION_FAILED` and never blocks the listing flow.
+
+## K.5 Mobile
+
+- `AppNotification.params`; `notification_text.dart` maps the eight event types to English and Hindi title and body from the ARB files (fallback: the server text, also for rows without values). The three action-needed types (`LISTING_REVISION_REQUIRED`, `LISTING_REJECTED_FINAL`, `LISTING_REMOVED_BY_ADMIN`) use the alert colour; every type has an icon.
+- Deep links `/sell/details?listingId=` and `/sell/plan?listingId=` need the listing's data, so tapping loads it first (`ListingRepository.getListing`, `GET /api/v1/listings/{id}`) and opens: Item Details with `ItemDetailsArgs(existing: ...)` when the status is `REVISION_REQUIRED`; plan selection with `PlanArgs` when it is `PLAN_SELECTION_PENDING` or `PLAN_PAYMENT_FAILED`. Any other status shows "This listing can no longer be changed here"; a 404 shows "This listing is no longer available". `/listing/{id}` and `/support` stay "coming soon" (US-012, support).
+- Item Details of an existing listing starts from the stored values and loads the form of its category without filing the category again; numbers come back as typed text. For a listing in `REVISION_REQUIRED` the button reads "Resubmit for review" and, after save and the restricted item check, calls `POST /api/v1/listings/{id}/trust-safety-review` (no payment) and opens the "listing submitted" page.
+- The "listing submitted" page says "We will notify you if any action is required".
+
+## K.6 Deviations from the Story Text and Notes
+
+- Product name: messages say JustQlic (including "removed by JustQlic"); the story was corrected.
+- The final-rejection message does not repeat the review reason (the story table has none); the reason is in the "needs changes" messages.
+- Reopening an existing listing in the app (load, prefill, resubmit) was not in the approved plan; it was added to this story on the product owner's decision (2026-11-01). Photos are not reloaded into Item Details (they are already on the server), and the plan page shows no thumbnail for a reopened listing.
+- `LISTING_EXPIRED` and `LISTING_REMOVED_BY_ADMIN` have no producer yet (no expiry job, no admin console); they work when the status event is published. The "renew" link opens plan selection only for listings in `PLAN_SELECTION_PENDING` or `PLAN_PAYMENT_FAILED`; an `EXPIRED` listing shows "can no longer be changed here" until the renewal story exists.
+- Push is not built: medium-priority messages are in-app only. Email and SMS are English only. Hindi text is a draft for native-speaker review.
+- A late payment sent to refund review (`LATE_PAYMENT_NOT_APPLICABLE`) gets no message; "refund issued" is added with the refund step.
+- `AccountEventNotificationListener` saves through the plain `@Transactional` dispatcher in an AFTER_COMMIT callback (same pattern risk as above); not changed by this story.
 
 
