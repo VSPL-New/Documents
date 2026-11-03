@@ -256,4 +256,33 @@ Target >90% coverage for new code (`CLAUDE.md`).
 
 ---
 
-**Status:** Approved (by the product owner, 2026-11-02)
+## 8. As Built (2026-11-03): Deviations From This Plan
+
+Implemented in `valuex-backend` and `valuex-mobile` on `feature/US-010-view-edit-delete-my-listings`. LLD Part J (and the story) were updated to match. Everything not listed here was built as planned.
+
+| # | Plan said | As built | Why |
+|---|---|---|---|
+| 1 | Migration `V23` | `V24__listing_edit_and_delete.sql`; it also sets `approved_price = price` for listings that are already live | `V23` was already taken; a live listing needs a baseline for the 20% rule |
+| 2 | Photos of a live listing change through `POST` and `DELETE` on the image endpoints | Through the single `PATCH` with `addMediaIds` and `removeImageIds`. The draft image endpoints stay `DRAFT`-only. Photo fields on a draft or a listing that never went live give `ERROR_PHOTOS_NOT_EDITABLE`. Media of a removed photo is deleted only after the major or confirm decision | One confirmation, one review and one history row for a whole edit; a 409 must never follow a mutation |
+| 3 | A new photo is a major edit only when the restricted check finds it unclear | An added photo is always a major edit (`PHOTOS_ADDED`) | The rule-based check reads text only and a live listing makes no vision call, so a photo cannot be judged |
+| 4 | New text is major when the check is `UNCLEAR` | Also when it newly matches a Conditional policy the seller has not already agreed to on this listing (`CONTENT_NEEDS_REVIEW`). Earlier agreements are carried over to the new check row; a newly matched policy is never agreed to on the seller's behalf | Without the comparison every edit of a listing with a Conditional policy would be major; with automatic agreement the compliance dialog would be bypassed |
+| 5 | The check record is stored even when the edit is refused, "in a separate transaction" | The refusal (`EditRefusedException`) is in `noRollbackFor`, so the stored check row commits with the edit transaction. The refusal is HTTP 400 for both `ERROR_RESTRICTED_ITEM` and `ERROR_ACCOUNT_SUSPENDED` (the draft check endpoint answers 403 for the second) | A separate transaction deadlocks against the held listing row lock |
+| 6 | 409 `details.reasons` is a list | A comma separated string; reasons are `PRICE_CHANGE_TOO_HIGH`, `CONTENT_NEEDS_REVIEW`, `PHOTOS_ADDED` (a category change is no longer a reason) | Error `details` is a string map |
+| 7 | `PATCH` returns `majorEdit` and `warnings` | It returns the usual listing response; a `status` of `TRUST_SAFETY_REVIEW` tells the app the edit was major | The existing response type is reused by every earlier story |
+| 8 | `approved_price` written by a listener on `ListingStatusChangedEvent` | Written in `ListingLifecycleService.transition` when the target is `APPROVED` | Same transaction as the status change; nothing to miss |
+| 9 | `GET /mine` pages with the shared `ApiPage` | `page`, `size`, `totalItems`, `hasNext` fields next to `summary` and `items`; the list is not run in one transaction | There is no shared page envelope; a thumbnail link that fails must not mark the whole list rollback-only |
+| 10 | Restricted check runs on drafts | `POST /restricted-check` and `.../compliance-acceptance` also accept `REVISION_REQUIRED` | The documented resubmission ("after the restricted-item check is cleared again") could not be completed because the check refused every listing that was not a draft. Affects the US-007 plan |
+| 11 | Extend the recovery job to restart stuck edit reviews | No code change: `ListingRecoveryJob.retryStuckReviews` already does it; a test was added | |
+| 12 | `listing_edit_history` keeps before and after values | Attribute changes are stored per changed key as before and after text; photo changes as `{added, removed}` counts | Keeps the JSON portable |
+| 13 | A card tap on a non-editable unsold listing opens the read-only details with a status banner | A bottom sheet with the status and what it means; the read-only page comes with US-123. A draft or a revision-required listing opens Item Details with its stored values (not the photo step). A listing waiting for a plan or whose payment failed opens plan selection | US-123 does not exist yet |
+| 14 | `DELETE` returns 204 | Unchanged, and the app's API client now accepts a response without a body | The client treated every 204 as an error |
+| 15 | Undo for 5 seconds | The undo snackbar must be created with `persist: false`: a snackbar with an action otherwise never closes, so the delete would never be sent | Found by the widget tests |
+| 16 | Photo grid as in the Sell flow (four columns) | Three columns on the edit page | A failed photo holds a retry and a remove target of 48 dp each |
+
+**Added error codes:** `ERROR_PHOTOS_NOT_EDITABLE`, `ERROR_INVALID_LISTING_FILTER`. Block reasons on a card: `SOLD`, `EXPIRED`, `UNDER_REVIEW`, `PLAN_STEP`, `CLOSED`, `HAS_ACTIVITY`.
+
+**Still to do outside this story:** update the plans of US-089 (the two transition rows), US-007 (deviation 10 and the check of edited content), US-004 and US-006 (photos and category of live listings), US-115 (the two messages) as listed in section 4; wire the Profile badge count for "My Listings" if the backend supplies one. SonarQube analysis of the backend was not completed (see the pull request).
+
+---
+
+**Status:** Approved (by the product owner, 2026-11-02); implemented 2026-11-03

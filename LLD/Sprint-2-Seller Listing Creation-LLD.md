@@ -3112,6 +3112,8 @@ sequenceDiagram
 > **Update (2026-11-02, My Listings):** The story is now View/Edit/Delete My Listings (8 SP). It adds the list endpoint and screen, photo changes on live listings, the category lock, and a restricted-item check on edited text and new photos. Decided: 5-second undo, no refund on delete, sold listings read-only and never deleted by the seller, a major edit hides the listing while the plan validity keeps running. Implementation plan: [US-010-Implementation-Plan.md](../US-Implementation-Plans/US-010-Implementation-Plan.md).
 
 **Story Points:** 8 (was 5) | **Repos:** valuex-backend, valuex-mobile
+
+> **As built (2026-11-03):** the implementation differs from the first design in these places, and the rest of Part J has been changed to match: (1) photos of a live listing change through the single `PATCH` (`addMediaIds`, `removeImageIds`), not through the image endpoints, so one confirmation, one review and one history row cover a whole edit; (2) an added photo is always a major edit (`PHOTOS_ADDED`), because the restricted-item rules read text only and a live listing makes no vision call; (3) the restricted-item check of edited text compares with the policies the seller already agreed to on this listing, and only a newly matched policy is a major edit (`CONTENT_NEEDS_REVIEW`); (4) `approved_price` is written in `ListingLifecycleService` when a listing reaches `APPROVED`, not by a listener; (5) the migration is `V24`; (6) the restricted-check endpoints accept a listing in `REVISION_REQUIRED` as well as a `DRAFT`, so the resubmission after a review that asked for changes can be completed.
 **Dependency:** US-009 (only published listings are meaningfully editable/deletable in the ways this story's acceptance criteria describe, though the same endpoints also serve editing a `DRAFT`/`REVISION_REQUIRED` listing per Part A/F); US-123 (read-only item details). US-126 (sold listing details) is a later story.
 
 ## J.1 Story Overview
@@ -3120,18 +3122,18 @@ sequenceDiagram
 
 - **View:** `GET /api/v1/listings/mine` returns the seller's non-deleted listings with summary counts. A card tap opens the item details: editable when the status allows, read-only otherwise, and for a sold listing the sale details of US-126.
 - **Edit** a `PUBLISHED` listing: title, description, condition, price, location city and the category-specific details. An edit is **minor** (applied at once) or **major** (a price change of more than 20% against the last approved price, or new text or photos the restricted-item check finds unclear). A major edit needs the seller's confirmation, hides the listing and sends it back through Part F's Trust & Safety review; the plan validity keeps running meanwhile.
-- **Category and photos of a live listing:** the L3 category cannot be changed once a listing has gone live (`published_at` is set). Photos can be added up to 10 in total and deleted except the main one (the first), never below 2. No AI photo suggestion is used for live listings.
+- **Category and photos of a live listing:** the L3 category cannot be changed once a listing has gone live (`published_at` is set). Photos can be added up to 10 in total and removed except the main one (the first), never below 2; both go through the same `PATCH` as the text (`addMediaIds`, `removeImageIds`), and an added photo is a major edit. No AI photo suggestion is used for live listings.
 - **Delete** is a soft delete, refused while a payment is in progress or the listing is in review, and (in later sprints) when it has active orders, pending payments or open disputes. Sold listings are never deleted by the seller.
 
 ## J.2 Scope
 
-**In scope:** `GET /api/v1/listings/mine`, `PATCH /api/v1/listings/{id}` (edit, reused by every earlier story's "final values" step), the image endpoints for `PUBLISHED` listings, `DELETE /api/v1/listings/{id}` (soft delete), edit-history logging, `ListingEditedEvent` and `ListingDeletedEvent` (for the later viewer and negotiation notifications), and extending the US-009 recovery job to restart stuck reviews.
+**In scope:** `GET /api/v1/listings/mine`, `PATCH /api/v1/listings/{id}` (edit, reused by every earlier story's "final values" step, and the only way to change the photos of a live listing), `DELETE /api/v1/listings/{id}` (soft delete), edit-history logging, `ListingEditedEvent` and `ListingDeletedEvent` (for the later viewer and negotiation notifications), and the existing US-009 recovery job, which already restarts stuck reviews.
 **Out of scope:** order and dispute logic (Sprints 5/7/8: later sprints add `ListingDeletionBlocker` beans); sold listing details (US-126); Pause and Resume (US-124); Relist (US-125); archival and purge (US-127); Boost (US-064); view and chat counts and analytics (US-067: the counts read 0); notifying active viewers and negotiations (Sprints 3 and 4 subscribe to the events).
 
 ## J.3 Data Model
 
 ```sql
--- V{N}__listing_edit_and_delete.sql
+-- V24__listing_edit_and_delete.sql
 CREATE TABLE listing_edit_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     listing_id UUID NOT NULL REFERENCES listings(id),
@@ -3148,6 +3150,7 @@ CREATE INDEX idx_listings_seller_not_deleted ON listings(seller_id) WHERE delete
 
 -- The price a reviewer last approved: the baseline of the 20% rule (written when a listing reaches APPROVED).
 ALTER TABLE listings ADD COLUMN approved_price NUMERIC(12,2);
+UPDATE listings SET approved_price = price WHERE published_at IS NOT NULL AND approved_price IS NULL;  -- listings already live
 -- Soft delete: row retained 90 days (acceptance criteria); the purge is the archival story (US-127).
 ```
 
@@ -3156,12 +3159,10 @@ ALTER TABLE listings ADD COLUMN approved_price NUMERIC(12,2);
 ```http
 GET    /api/v1/listings/mine?page=&size=&status=ACTIVE|SOLD
 PATCH  /api/v1/listings/{listingId}?confirmRemoderation=true
-POST   /api/v1/listings/{listingId}/images?confirmRemoderation=true
-DELETE /api/v1/listings/{listingId}/images/{imageId}
 DELETE /api/v1/listings/{listingId}
 ```
 
-`GET /mine` is paged (default 20, maximum 50), newest update first, and excludes deleted listings. `status` takes `ACTIVE` (`PUBLISHED`) or `SOLD`; without it every non-deleted listing is returned, with its own status. `summary` is counted over all of the seller's non-deleted listings whatever the page or filter. `viewCount`, `chatCount` and `totalViews` are 0 until US-067 and the chat stories supply data.
+`GET /mine` is paged (default 20, maximum 50), newest update first, and excludes deleted listings. `status` takes `ACTIVE` (`PUBLISHED`) or `SOLD`; without it every non-deleted listing is returned, with its own status (any other value is `ERROR_INVALID_LISTING_FILTER`). `summary` is counted over all of the seller's non-deleted listings whatever the page or filter. `viewCount`, `chatCount` and `totalViews` are 0 until US-067 and the chat stories supply data (one `ListingEngagement` bean is the single place that changes). The paging fields are `page`, `size`, `totalItems` and `hasNext`.
 
 ```json
 { "summary": { "total": 4, "active": 3, "sold": 1, "totalViews": 0 },
@@ -3171,23 +3172,24 @@ DELETE /api/v1/listings/{listingId}
     "canEdit": true, "canDelete": true, "editBlockedReason": null, "deleteBlockedReason": null } ] }
 ```
 
-`thumbnailUrl` is a short-lived read link for the first photo (never a public storage URL), built with `MediaAssetService.createAccess`. A `SOLD` listing has `canEdit` and `canDelete` false and the app hides both actions.
+`thumbnailUrl` is a short-lived read link for the first photo (never a public storage URL), built with `MediaAssetService.createAccess`; it is null when there is no photo or the link cannot be made. The blocked reasons are `SOLD`, `EXPIRED`, `UNDER_REVIEW`, `PLAN_STEP`, `CLOSED` and `HAS_ACTIVITY`. A `SOLD` listing has `canEdit` and `canDelete` false and the app hides both actions.
 
 ```http
 PATCH /api/v1/listings/{listingId}
 ```
 
 ```json
-{ "title": "Apple iPhone 13 128GB", "price": 34000, "description": "..." }
+{ "title": "Apple iPhone 13 128GB", "price": 34000, "description": "...",
+  "addMediaIds": ["..."], "removeImageIds": ["..."] }
 ```
 
-A major edit without `confirmRemoderation=true` applies nothing and answers 409:
+The response is the listing as for any other edit; a `status` of `TRUST_SAFETY_REVIEW` tells the app the edit was major. A major edit without `confirmRemoderation=true` applies nothing and answers 409; `reasons` is a comma separated string, because error details are a string map:
 
 ```json
-{ "success": false, "error": { "code": "ERROR_REMODERATION_CONFIRMATION_REQUIRED", "message": "This change needs a review before it goes live. Confirm to continue", "details": { "reasons": ["PRICE_CHANGE_TOO_HIGH"] } } }
+{ "success": false, "error": { "code": "ERROR_REMODERATION_CONFIRMATION_REQUIRED", "message": "These changes need a new review before the listing is live again", "details": { "reasons": "PRICE_CHANGE_TOO_HIGH,PHOTOS_ADDED" } } }
 ```
 
-Photos of a `PUBLISHED` listing: `POST .../images` appends a photo (total at most 10; the restricted-item check runs on the listing as it would be with the new photo, and an unclear result is a major edit that needs the same confirmation); `DELETE .../images/{imageId}` refuses the main photo and any delete that would leave fewer than 2 photos. Neither is available for AI photo suggestions: `POST /ai-suggestions` stays `DRAFT`-only.
+Photos of a `PUBLISHED` listing are part of the `PATCH`: `addMediaIds` appends ready photos after the existing ones (total at most 10; an added photo is always a major edit); `removeImageIds` refuses the main photo and any removal that would leave fewer than 2 photos. The draft image endpoints stay `DRAFT`-only, and photo fields on a draft or a listing that never went live are refused (`ERROR_PHOTOS_NOT_EDITABLE`). `POST /ai-suggestions` stays `DRAFT`-only.
 
 ```http
 DELETE /api/v1/listings/{listingId}
@@ -3218,40 +3220,31 @@ public EditListingResult edit(UUID listingId, UUID sellerId, EditListingRequest 
 
     var reasons = new ArrayList<String>();
     if (priceChangeOver(listing.getApprovedPrice(), req.price(), 0.20)) reasons.add("PRICE_CHANGE_TOO_HIGH");
-    if (changes.touchesText()) {                   // title or description
-        switch (restrictedItemCheck.checkAsEdited(listing, req).outcome()) {   // Part D
-            case RESTRICTED, SEVERE_VIOLATION -> throw restrictedError();      // nothing applied
-            case UNCLEAR -> reasons.add("CONTENT_NEEDS_REVIEW");
-            default -> { }
-        }
+    if (changes.touchesTextOrPhotos()) {           // title, description or photos
+        // text only: the rules cannot read photos; policies the seller already agreed to on this listing are carried over
+        var check = restrictedItemCheck.checkEdit(listing, sellerId, req.title(), req.description(), mediaAfterEdit);  // Part D
+        // RESTRICTED / SEVERE_VIOLATION: EditRefusedException, nothing applied; the check row is kept (noRollbackFor)
+        if (check.needsReview()) reasons.add("CONTENT_NEEDS_REVIEW");   // UNCLEAR, or a newly matched Conditional policy
     }
-    boolean major = !reasons.isEmpty();
+    if (!req.addMediaIds().isEmpty()) reasons.add("PHOTOS_ADDED");
+    boolean major = listing.getStatus() == PUBLISHED && !reasons.isEmpty();
     if (major && !confirmRemoderation)
-        throw new RemoderationConfirmationRequired(reasons);   // 409 ERROR_REMODERATION_CONFIRMATION_REQUIRED
+        throw new ConfirmationRequiredException("ERROR_REMODERATION_CONFIRMATION_REQUIRED", reasons);   // 409, rolls back
 
     applyFields(listing, req);
+    applyPhotoChange(listing, req);                // remove, then append; media of a removed photo is deleted only now
     editHistoryRepository.save(new ListingEditHistory(listingId, sellerId, changes, major));
     if (major)
-        lifecycleService.transition(listingId, ListingState.TRUST_SAFETY_REVIEW, "EDIT_FOR_REVIEW", sellerId, "major_edit");
+        lifecycleService.transition(listingId, ListingState.TRUST_SAFETY_REVIEW, "EDIT_FOR_REVIEW", sellerId, reasons);
     afterCommit(() -> {
-        if (major) trustSafetyReviewService.review(listingId);  // an edit review: never counts as an attempt, never refunds
-        eventPublisher.publish(new ListingEditedEvent(listingId, changes.fieldNames(), major));
+        if (major) trustSafetyReviewService.review(listingId, null);  // an edit review: never counts as an attempt, never refunds
     });
-    return new EditListingResult(listing.getId(), major, List.of());
+    eventPublisher.publish(new ListingEditedEvent(listingId, sellerId, changes.fieldNames(), major));
+    return assemble(listing);                      // status TRUST_SAFETY_REVIEW tells the app the edit was major
 }
 
-@Transactional
-public void deleteImage(UUID listingId, UUID imageId, UUID sellerId) {  // photos of a PUBLISHED listing
-    var listing = lockedOwnedPublished(listingId, sellerId);
-    var images = listingImageRepository.findByListingIdOrderBySortOrderAsc(listingId);
-    var image = images.stream().filter(i -> i.getId().equals(imageId)).findFirst()
-            .orElseThrow(() -> new NotFoundException("LISTING_IMAGE_NOT_FOUND", "Listing image not found"));
-    if (image.equals(images.get(0)))
-        throw new BusinessException("ERROR_MAIN_PHOTO_CANNOT_BE_DELETED", "The main photo can't be deleted. Add another photo instead");
-    if (images.size() <= Listing.MIN_PHOTOS)
-        throw new BusinessException("ERROR_MIN_PHOTOS_REQUIRED", "At least 2 photos required");
-    // delete the photo and its media; not a major edit; write the edit history row
-}
+// A listing in REVISION_REQUIRED follows the same path without the confirmation or the transition: the seller
+// resubmits it afterwards, through the restricted-item check (Part D accepts a listing in REVISION_REQUIRED).
 
 @Transactional
 public void delete(UUID listingId, UUID sellerId) {
@@ -3264,16 +3257,16 @@ public void delete(UUID listingId, UUID sellerId) {
 
     listing.setDeletedAt(Instant.now());
     listing.setDeletedBy(sellerId);
-    lifecycleService.transition(listingId, ListingState.DEACTIVATED_BY_SELLER, "DELETE", sellerId, "seller_deleted");
-    afterCommit(() -> eventPublisher.publish(new ListingDeletedEvent(listingId, sellerId)));
+    lifecycleService.transition(listingId, ListingState.DEACTIVATED_BY_SELLER, "DELETE", sellerId, "SELLER_DELETED");
+    eventPublisher.publish(new ListingDeletedEvent(listingId, sellerId));
 }
 ```
 
-Adding a photo to a `PUBLISHED` listing follows the same pattern as `edit`: lock, require the total after adding to be at most `Listing.MAX_PHOTOS`, run the restricted-item check on the listing as it would be (an unclear result is a major edit that needs `confirmRemoderation=true`, then the photo is attached and the listing goes to review), and append the photo after the existing ones so it can never become the main photo.
+Photos are validated before anything is applied: the main photo (the lowest sort order) cannot be removed, a removal cannot leave fewer than `Listing.MIN_PHOTOS`, the total after the edit is at most `Listing.MAX_PHOTOS`, and a photo id that is not the listing's is not found. The restricted-item check sees the content as it will be after the edit (the candidate title and description and the photos that will remain), so a later resubmission passes the gate.
 
 `ListingDeletionBlocker` is an interface with one method, `Optional<DeletionBlock> check(UUID listingId)`. Sprint 2 has no implementation, because there are no orders, payments by buyers or disputes yet; the Order, Payment and Dispute modules each add a bean in Sprints 5 and 8, so there are no "always false" stubs to maintain and no module needs a change in this one ([HLD §5](../HLD/02-Backend-Architecture.md#5-spring-boot-package-structure) module boundaries).
 
-`approved_price` is written by a listener on `ListingStatusChangedEvent` with `toStatus = APPROVED`, so the 20% rule always compares with the price a reviewer saw and five 10% rises in a row cannot avoid review.
+`approved_price` is written by `ListingLifecycleService.transition` when the target status is `APPROVED` (in the same transaction as the status change, so it cannot be missed), so the 20% rule always compares with the price a reviewer saw and five 10% rises in a row cannot avoid review.
 
 ## J.6 Sequence Diagram — Major Edit With Confirmation and Re-Review
 
@@ -3295,7 +3288,7 @@ sequenceDiagram
     Mobile->>Backend: PATCH /listings/{id}?confirmRemoderation=true
     Backend->>DB: UPDATE listings + INSERT listing_edit_history
     Backend->>Lifecycle: transition PUBLISHED -> TRUST_SAFETY_REVIEW (EDIT_FOR_REVIEW)
-    Backend-->>Mobile: 200 { majorEdit: true }
+    Backend-->>Mobile: 200 (status TRUST_SAFETY_REVIEW)
     Backend->>Review: after commit: review(listingId) as an edit review
     Review->>Lifecycle: APPROVED, then PUBLISHED without restarting the plan validity
     Note over Lifecycle: The listing is hidden from buyers and search until approved
@@ -3308,9 +3301,12 @@ sequenceDiagram
 | Cannot delete with active orders/pending payment/open disputes | `ERROR_CANNOT_DELETE_ACTIVE_ORDER` | "Cannot delete listing with active orders" |
 | Listing cannot be deleted in its status (payment in progress, in review, sold, rejected, removed) | `ERROR_LISTING_NOT_DELETABLE` | "This listing can't be deleted right now. Try again after the review is done" |
 | Listing cannot be edited in its status | `ERROR_LISTING_NOT_EDITABLE` | "This listing can't be edited right now" |
-| Major edit not yet confirmed | `ERROR_REMODERATION_CONFIRMATION_REQUIRED` (409, reasons `PRICE_CHANGE_TOO_HIGH`, `CONTENT_NEEDS_REVIEW`) | "This change needs a review before it goes live. Confirm to continue"; for the price reason: "Price change >20% requires admin approval" |
+| Major edit not yet confirmed | `ERROR_REMODERATION_CONFIRMATION_REQUIRED` (409, reasons `PRICE_CHANGE_TOO_HIGH`, `CONTENT_NEEDS_REVIEW`, `PHOTOS_ADDED`) | "These changes need a new review before the listing is live again"; the app words each reason itself (price: "The price is more than 20% away from the approved price") |
+| Edited text is restricted | `ERROR_RESTRICTED_ITEM` / `ERROR_ACCOUNT_SUSPENDED` (400; the check is stored, nothing is applied) | as Part D |
+| Photo fields on a draft or a listing that never went live | `ERROR_PHOTOS_NOT_EDITABLE` | "Photos can be changed here only after the listing has gone live" |
+| Unknown My Listings filter | `ERROR_INVALID_LISTING_FILTER` | "Choose All, Active or Sold" |
 | Category changed after the listing has gone live | `ERROR_CATEGORY_LOCKED` | "The category can't be changed after your listing has gone live" |
-| Main photo deleted | `ERROR_MAIN_PHOTO_CANNOT_BE_DELETED` | "The main photo can't be deleted. Add another photo instead" |
+| Main photo removed | `ERROR_MAIN_PHOTO_CANNOT_BE_DELETED` | "The main photo can't be deleted" |
 | More than 10 photos / fewer than 2 photos | `ERROR_MAX_PHOTOS_EXCEEDED` / `ERROR_MIN_PHOTOS_REQUIRED` (existing) | existing messages |
 | My Listings fails to load (client message) | `ERROR_LOADING_MY_LISTINGS` | "Unable to load your listings. Try again" |
 | Edit history maintained for audit | `listing_edit_history` insert on every `PATCH` and photo change | — |
@@ -3325,7 +3321,7 @@ sequenceDiagram
 | Delete while buyer is viewing | Not blocked by viewership alone (only by orders, payments and disputes); `ListingDeletedEvent` lets Sprint 3 notify viewers |
 | Seller changes item drastically (different item) | The category is locked and the main photo cannot be deleted. A title or description change is minor unless the restricted-item check is unclear; a price change is compared with the last approved price, so repeated small rises cannot avoid review |
 | Edit violates new platform policies | The restricted-item check runs on edited text and on new photos; a minor edit that touches neither is not rescanned |
-| Review hand-over fails after a confirmed major edit | The listing stays in `TRUST_SAFETY_REVIEW`; the extended US-009 recovery job restarts reviews that have no open review row |
+| Review hand-over fails after a confirmed major edit | The listing stays in `TRUST_SAFETY_REVIEW`; the US-009 recovery job (`retryStuckReviews`) restarts reviews that have no open review row |
 | Edit, delete and expiry race on one listing | All take the same row lock (`findByIdAndSellerIdForUpdate`); one wins and the other gets a clean error |
 | Sold listing | Read-only for the seller: no edit, no delete; it stays in My Listings and opens the sale details (US-126) |
 | Unsold listing that cannot be edited (processing payment, under review, expired, rejected) | Opens the same details read-only with a status banner; Delete only where the status is deletable (for example expired) |
@@ -3333,7 +3329,7 @@ sequenceDiagram
 ## J.9 NFR & Security
 
 - Ownership comes from `findByIdAndSellerIdForUpdate` (a row lock for the owner only), so another seller gets "not found" and there is no new IDOR surface; the same applies to the image endpoints and `GET /mine`.
-- `listing_edit_history.changed_fields` stores only field-level diffs (not full before/after snapshots) to keep the audit table lightweight while still satisfying "edit history maintained for audit."
+- `listing_edit_history.changed_fields` stores only field-level diffs (not full before/after snapshots) to keep the audit table lightweight while still satisfying "edit history maintained for audit." Category-specific values are stored per changed key as before and after text, and photo changes as `{added, removed}` counts.
 - Soft-delete (`deleted_at`) rather than hard `DELETE` ensures `listing_status_history` and `listing_edit_history` foreign keys remain valid and the 90-day retention requirement can be met by the purge job of US-127.
 - Photos reach the app only through short-lived read links; no public storage URL is ever returned. Live listings never call the vision model: AI suggestions stay `DRAFT`-only.
 
