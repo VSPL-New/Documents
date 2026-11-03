@@ -36,7 +36,7 @@
 - US-007: Restricted Items Prevention
 - US-008: Seller Chooses Listing Plan
 - US-009: Listing Publication After Payment
-- US-010: Edit/Delete Listing
+- US-010: View/Edit/Delete My Listings
 - US-084: Pre-Publication Trust & Safety Review
 - US-089: Lifecycle State - Listing
 
