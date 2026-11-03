@@ -1992,6 +1992,13 @@ public class RedisCacheService {
 
 Set up automated CI/CD pipelines for all repositories using GitHub Actions.
 
+> **Implementation note (S0-006):** the workflows as built differ from the samples in 7.2–7.4. Each repository is
+> standalone, so paths are repo-root relative. Backend runs `mvn clean verify` (Checkstyle, tests via Testcontainers,
+> JaCoCo gate) plus a SonarQube scan that activates when `SONAR_TOKEN` and `SONAR_HOST_URL` are configured. Web is a
+> no-op until `package.json` exists and has no Docker or deploy job yet. Mobile follows its own existing workflow
+> (`flutter analyze --fatal-infos`, 85% coverage gate). See
+> [S0-006-Implementation-Plan.md](../US-Implementation-Plans/S0-006-Implementation-Plan.md).
+
 ## 7.2 Backend CI/CD Pipeline
 
 ```yaml
