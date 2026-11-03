@@ -84,6 +84,6 @@ Also recommended: branch protection on `main` requiring the CI checks.
 
 - [x] Backend CI runs build, tests, Checkstyle, JaCoCo gate on every PR (verified green on PR #47).
 - [ ] Backend Sonar scan active — blocked on server and token (see above).
-- [ ] AI CI green on PR #9 (pending first run).
+- [x] AI CI green on PR #9 (pytest and the 90% coverage gate passed; Ruff is non-blocking).
 - [x] Web CI present; real checks begin when the app is scaffolded.
 - [x] Mobile CI reviewed; includes `flutter analyze --fatal-infos`.
