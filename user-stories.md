@@ -505,19 +505,30 @@
 
 ---
 
-### US-010: Edit/Delete Listing
-> **Update (2026-10-25, category taxonomy):** A change of L3 category is a major edit (re-moderation) and clears fields that are not in the new category's schema; metadata edits follow the category schema; the price maximum is ₹10,00,00,000.
+### US-010: View/Edit/Delete My Listings
+> **Update (2026-10-25, category taxonomy):** A change of L3 category is a major edit (re-moderation) and clears fields that are not in the new category's schema; metadata edits follow the category schema; the price maximum is ₹10,00,00,000. (Superseded on 2026-11-02: the L3 category cannot be changed once a listing has gone live.)
+> **Update (2026-11-02, My Listings):** The story now includes viewing: the My Listings screen (designed in Figma Make) is part of it, and Edit and Delete are used from that screen. Delete is the trash button on each card, as in the design, except on sold listings, which are read-only. Tapping a card opens the item details: editable for unsold listings, read-only with the sale details for sold ones (US-126). The same design also shows Boost (US-064), Pause/Activate (US-124) and Relist Item (US-125, unsold expired listings only); those actions are not part of this story. View counts, chat counts and the Total Views card show 0 until US-067 supplies the data. Sold listings stay in My Listings and are never deleted by the seller. For a live listing the seller can add photos (10 in total) and delete any photo except the main one, and no AI photo suggestion is used.
 **As a** seller  
-**I want to** edit or delete my listings  
-**So that** I can keep information accurate and remove sold items
+**I want to** view, edit and delete my listings  
+**So that** I can see where each listing stands, keep information accurate and remove listings I no longer want to sell
 
 **Acceptance Criteria:**
-- Given I have published listings
-- When I view my listings
-- Then I can select "Edit" or "Delete"
+- Given I have listings
+- When I open My Listings (from my Profile)
+- Then I see how many listings I have, and how many are active and how many are sold, and the total views (0 until view counts exist)
+- And each listing shows its photo (a placeholder when it has none), title, price, plan, status, and its views and chats (0 until that data exists)
+- When I filter by All, Active or Sold
+- Then only the matching listings are shown
+- And each listing offers "Edit" and "Delete" when its status allows them
+- And sold listings stay in the list with no Edit or Delete
+- When I tap a listing
+- Then I see its item details, which I can edit when it is not sold
+- And for a sold listing I see the item details read-only plus the sale details (US-126)
 - When I edit and save
 - Then changes reflect immediately
 - And active negotiations are notified of changes
+- And I can add photos to a live listing (up to 10 in total) and delete photos except the main one
+- And I cannot change the category of a live listing
 - When I delete a listing with no active orders
 - Then listing is removed from platform
 - When I try to delete a listing with active orders
@@ -525,15 +536,23 @@
 - And shows error message
 
 **Edge Cases:**
+- Seller has no listings yet (empty state with a way to sell an item)
+- Listing has no photo, or a very long title
 - Seller edits price during active negotiation
 - Seller deletes listing while buyer is viewing
-- Seller changes item drastically (different item)
+- Seller changes item drastically (different item): the category is locked and the main photo cannot be deleted
+- Seller deletes photos until only the main photo and one more remain
 - Seller tries to delete listing with pending payment
 - Edit violates new platform policies
 
 **Validation Rules:**
+- My Listings shows only my own listings that are not deleted, newest update first, in pages
+- Sold listings are never deleted by the seller and stay visible in My Listings
 - Cannot delete listing with: active orders, pending payment, open disputes
-- Major edits (category, price >20% change) require re-moderation
+- Major edits (price >20% change, or content the restricted-item check cannot clear) require re-moderation
+- The L3 category cannot be changed once a listing has gone live
+- A live listing keeps 2 to 10 photos; the main photo (the first) cannot be deleted
+- Live listings never use the AI photo suggestion (US-005)
 - Edit history maintained for audit
 - Deleted listings retained for 90 days (soft delete)
 
@@ -541,11 +560,21 @@
 - `ERROR_CANNOT_DELETE_ACTIVE_ORDER`: "Cannot delete listing with active orders"
 - `ERROR_PRICE_CHANGE_TOO_HIGH`: "Price change >20% requires admin approval"
 - `WARNING_BUYERS_WILL_BE_NOTIFIED`: "Active viewers will be notified of changes"
+- `ERROR_LOADING_MY_LISTINGS`: "Unable to load your listings. Try again"
+- `ERROR_LISTING_NOT_EDITABLE`: "This listing can't be edited right now"
+- `ERROR_LISTING_NOT_DELETABLE`: "This listing can't be deleted right now. Try again after the review is done"
+- `ERROR_REMODERATION_CONFIRMATION_REQUIRED`: "This change needs a review before it goes live. Confirm to continue"
+- `ERROR_CATEGORY_LOCKED`: "The category can't be changed after your listing has gone live"
+- `ERROR_MAIN_PHOTO_CANNOT_BE_DELETED`: "The main photo can't be deleted. Add another photo instead"
 
 **Flutter Implementation Notes:**
 - Edit launches pre-filled CreateListingScreen with existing data
-- Delete requires confirmation bottom sheet with warning
-- Swipe-to-delete with undo option in MyListingsScreen (within 2s)
+- Editing a live listing shows the category read-only, the main photo marked Main without a delete control, the other photos with a delete control (never below 2), and Add photos up to 10; no AI suggestion controls
+- Delete is the trash button on each card except sold ones, and requires a confirmation bottom sheet with a warning (the plan fee of a paid listing is not refunded), then an undo option for 5 seconds
+- A card tap opens the item details: editable when the listing can be edited (the same as the Edit icon), read-only for other unsold listings (for example under review), and for sold listings read-only with the sale details (US-126)
+- MyListingsScreen is opened from the Profile "My Listings" row and follows the Figma Make "My Listings" screen: back arrow, title with "N total listings", Active and Sold summary cards, All/Active/Sold filter chips, and a card per listing (plan name and status badge, edit icon, photo, title, price, views and chats, delete button)
+- Not part of this story although shown in that design: Boost button (US-064), Pause/Activate (US-124) and Relist Item (US-125)
+- View and chat counts and the Total Views card show 0 until US-067 supplies the data
 
 ---
 
@@ -5598,10 +5627,10 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 **So that** I can check it before and after it goes live
 
 **Acceptance Criteria:**
-- Given I own a listing in any of my states (details complete, under review, revision required, published)
+- Given I own a listing in any of my states (details complete, under review, revision required, published, paused, sold, expired)
 - When I tap "Preview your listing" (on the under-review page of US-009, and later on My Listings)
 - Then I see the listing page as buyers will see it: photos, title, price, category path, condition, description, category-specific details, location and, once published, the plan badge
-- And a status banner says where the listing is (under review, revision required with the reason, published, expired)
+- And a status banner says where the listing is (under review, revision required with the reason, published, paused, sold, expired)
 - And buyer actions (chat, buy, save) are shown but not active
 - And no one but the owner can open the preview
 
@@ -5616,7 +5645,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Read-only; it never changes the listing
 - Owner only (another user gets not found)
 - Photos come through short-lived read links, never public storage URLs
-- One reusable preview component, also used by the My Listing details page (US-010 or a later My Listings story) and, where the layout matches, the buyer page (US-012)
+- One reusable preview component, also used by the Sold Listing Details page (US-126) and, where the layout matches, the buyer page (US-012)
 
 **Error Scenarios:**
 - `LISTING_NOT_FOUND`: "Listing not found"
@@ -5632,11 +5661,193 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-124: Pause and Resume Listing
+> **Placeholder (2026-11-02):** drafted from the product owner's rules; points and sprint are not estimated and the details below are to be refined before it is planned.
+**As a** seller  
+**I want to** pause a published listing and resume it later  
+**So that** buyers cannot see it while I am unavailable, without creating it again
+
+**Acceptance Criteria:**
+- Given I have a published listing
+- When I tap "Pause" on it in My Listings (US-010)
+- Then I see a warning that pausing does not pause my plan: the plan validity keeps running and I can resume the listing only until the plan's expiry date, which is shown
+- When I confirm
+- Then the listing becomes "Paused" and is hidden from buyers and from search
+- When I tap "Activate" on a paused listing within its plan validity
+- Then the listing is visible again with the same expiry date
+- When the plan validity ends while the listing is paused
+- Then the listing becomes "Expired" and cannot be activated
+- And I must buy a listing plan to list it again (US-125)
+
+**Edge Cases:**
+- Plan expires while the listing is paused
+- Seller pauses with only a short validity left
+- Pause with an active negotiation, a pending buyer payment or an open order
+- Seller edits a paused listing
+- Seller pauses and resumes repeatedly
+
+**Validation Rules:**
+- Only a published listing can be paused; only a paused listing within its plan validity can be activated
+- Pausing never changes the plan expiry date
+- Pausing needs the seller to confirm the warning
+- Status changes go through the listing lifecycle (US-089), which gains a Paused state
+
+**Error Scenarios:**
+- `ERROR_LISTING_NOT_PAUSABLE`: "This listing can't be paused right now"
+- `ERROR_LISTING_PLAN_EXPIRED`: "Your listing plan has expired. Buy a plan to list it again"
+
+**Flutter Implementation Notes:**
+- Pause and Activate buttons and the Paused chip on the My Listings card (Figma Make design); Activate is shown only while the plan is valid
+- Confirmation sheet with the warning and the expiry date
+
+**Open items (to be decided when planned):**
+1. Pausing a listing that has active orders, pending payments or open negotiations
+2. Whether a paused listing can be edited, and whether resuming needs a new review (proposed: no review, as the content is unchanged)
+3. A reminder before a paused listing's plan expires (US-115)
+4. US-089 changes: the Paused state and its transitions; the expiry job must also expire paused listings
+5. Story points and sprint
+
+---
+
+### US-125: Relist Listing
+> **Placeholder (2026-11-02):** drafted from the product owner's rules; points and sprint are not estimated and the details below are to be refined before it is planned.
+**As a** seller  
+**I want to** relist an item whose plan expired without a sale  
+**So that** I can sell it again without entering everything again
+
+**Acceptance Criteria:**
+- Given I have a listing whose plan expired without a sale ("Expired")
+- When I tap "Relist Item"
+- Then I choose a listing plan and pay (US-008, US-117)
+- And when the payment succeeds the listing is published again at once, with no Trust & Safety review and no restricted-item check, because it was already approved
+- And the new plan validity starts when it is published again
+- Given I have a listing that is "Sold"
+- Then I do not see "Relist Item" on it: sold listings cannot be relisted and stay in My Listings unchanged
+
+**Edge Cases:**
+- Payment fails or is cancelled (the listing stays Expired)
+- Plan prices have changed since the first listing
+- Restricted-item policy has changed since the listing was approved
+- Seller taps Relist twice, or relists while an earlier payment is pending
+- Active-listing or daily listing limits (US-008, US-050)
+
+**Validation Rules:**
+- Only an unsold listing whose plan expired can be relisted; a sold listing cannot be relisted
+- Relisting skips moderation (Trust & Safety review) because the listing was already approved
+- No automatic renewal (US-089); relisting is always the seller's action
+- The new plan is paid for at the current price
+
+**Error Scenarios:**
+- `ERROR_LISTING_NOT_RELISTABLE`: "This listing can't be relisted"
+- `ERROR_PAYMENT_FAILED`: "Payment failed. Try again"
+
+**Flutter Implementation Notes:**
+- "Relist Item" is shown on Expired cards only (a correction: the Figma Make design shows it on Sold cards, which cannot be relisted)
+- Opens the plan selection (US-008)
+- This is also the destination of the "Renew it" action in the listing-expired notification (US-115)
+
+**Open items (to be decided when planned):**
+1. Whether the restricted-item check is skipped too (proposed: yes, as stated, but a policy change since approval is a risk)
+2. US-089 and US-009 changes: a path from Expired through payment to Published without review, and the validity restarting at publication
+3. Story points and sprint
+
+---
+
+### US-126: Sold Listing Details
+> **Placeholder (2026-11-02):** drafted from the product owner's rules (tapping a sold item in My Listings); points and sprint are not estimated and the details below are to be refined before it is planned. It needs order, payout and shipping data, so it cannot be built before those sprints.
+**As a** seller  
+**I want to** open a sold listing and see the item and everything about its sale  
+**So that** I can refer to it after the sale
+
+**Acceptance Criteria:**
+- Given I have a sold listing
+- When I tap it in My Listings (US-010)
+- Then I see the item details as buyers saw them, read-only (US-123)
+- And I see the sale details:
+  - Order: order number and status, with a link to the order
+  - Payout: sold price, platform fee, net amount, payout status and date, and the account it was paid to (masked)
+  - Buyer: name and city
+  - Key dates: listed, published, sold, shipped, delivered, completed and paid out
+  - Shipping: delivery mode, courier and tracking status, and the packing and delivery proofs
+  - After the sale: return or dispute status, ratings given and received, and the invoice or receipt
+- And I cannot edit or delete a sold listing
+- And no one but me can open the page
+
+**Edge Cases:**
+- The sale has a return, a dispute or a cancelled order
+- Payout is pending or failed
+- Listing has no photo or a very long description
+- Some sale data is not available yet
+
+**Validation Rules:**
+- Owner only (another user gets not found)
+- Sold listings are read-only for the seller
+- Amounts come from the stored order and payment records, not recalculated
+- The buyer's details are limited to what a seller needs (name and city); no phone number or address
+- Photos come through short-lived read links, never public storage URLs
+- Uses the same preview component as US-123
+
+**Error Scenarios:**
+- `LISTING_NOT_FOUND`: "Listing not found"
+- `ERROR_LOADING_LISTING_DETAILS`: "Unable to load this listing. Try again"
+
+**Flutter Implementation Notes:**
+- Opened by tapping a sold card in My Listings
+- Reuses the `ListingPreview` of US-123 in read-only mode, with a sale section below the item details
+
+**Open items (to be decided when planned):**
+1. Whether the buyer's identity should be more than name and city, and the exact list of sale details (order, payout, buyer, key dates, shipping and after-sale items above are proposals)
+2. Whether this page and the US-123 preview are one page or two
+3. Story points and sprint (proposed: Sprint 6 or later, after the order, payout and shipping stories)
+
+---
+
+### US-127: Listing Archival and Retention
+> **Placeholder (2026-11-02):** drafted from the product owner's note that retention and deletion of sold and deleted listings are handled in an archival story; points and sprint are not estimated, and the retention periods need legal and finance input. Proposed sprint: Sprint 10, with the audit trail (US-083).
+**As a** platform  
+**I want** sold, deleted and expired listings to be archived and, when their retention ends, purged  
+**So that** data is kept as long as it must be and no longer
+
+**Acceptance Criteria:**
+- Given a seller deleted a listing (US-010)
+- When 90 days have passed
+- Then the listing, its photos in object storage and its edit history are purged
+- And records that must be kept (orders, payments, audit entries) stay, anonymized as required
+- Given a listing is sold
+- Then it is archived: hidden from search and buyers, and still visible to its seller in My Listings and Sold Listing Details (US-126) for the retention period
+- When the retention period of a sold or expired listing ends
+- Then it is purged in the same way
+- And every purge is recorded in the audit trail (US-083)
+
+**Edge Cases:**
+- A purge fails half-way (database rows removed, photos left in storage, or the reverse)
+- The listing is part of an open dispute, return or investigation
+- The seller's account is deleted (US-098) or a data export is requested (US-097)
+- A seller relists an expired listing (US-125) while it is close to its purge date
+
+**Validation Rules:**
+- Nothing is purged before its retention period ends
+- Nothing under dispute, return or investigation is purged
+- Legal retention rules win: transaction records kept for 7 years, anonymized (US-071); order history for 2 years (US-070)
+- The purge runs on a schedule, is repeatable, and alerts when it fails
+
+**Error Scenarios:**
+- No user-facing errors; failures raise an operations alert
+
+**Open items (to be decided when planned):**
+1. Retention periods for sold listings and for expired listings (the soft delete of 90 days is already decided in US-010)
+2. Which records are kept anonymized, and how
+3. Interaction with account deletion (US-098) and data export (US-097)
+4. How photos in object storage are cleaned up safely
+5. Story points and sprint
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 123  
+**Total User Stories:** 127  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
-**Version:** 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
+**Version:** 3.19 (Updated 2026-11-02) — US-010 is now View/Edit/Delete My Listings: the My Listings screen (Figma Make design) is part of the story, views and chats show 0 until US-067, and sold listings are never deleted; added US-124 (Pause and Resume Listing), US-125 (Relist Listing) and US-126 (Sold Listing Details), placeholders; sold listings are read-only with no Edit or Delete, and tapping a sold listing opens its sale details (US-126); US-123 also covers paused, sold and expired listings; live listings: the L3 category is locked and photos can be added (10 in total) or deleted except the main one; added US-127 (Listing Archival and Retention), placeholder. Version 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
 **Next Steps:**  
 1. Product team to prioritize stories into sprints (see sprint-plan.md)

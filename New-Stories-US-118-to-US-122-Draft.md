@@ -49,7 +49,7 @@
 - Then they see that L1's plans, features, price and tax
 - Until this story is built, all categories use the current plans and a banner "Plan is under revision until US-119" shows in Dev builds only
 
-**Edge Cases:** an L1 with no plan configured; a plan retired while a seller is on the page; a listing whose L1 changes after a plan was chosen (a category change re-runs plan selection per US-010).
+**Edge Cases:** an L1 with no plan configured; a plan retired while a seller is on the page; a listing whose L1 changes after a plan was chosen (a category change before the listing has gone live re-runs plan selection; once live the category is locked, US-010).
 
 **Validation Rules:** every enabled L1 has at least one active plan; GST rules follow US-078 and US-116.
 
