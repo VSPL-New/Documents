@@ -78,30 +78,30 @@ No database, backend, AI-service or web change is needed.
 - [ ] Add the decisions to the design-system decision log (§11) and list the conflicts and decisions in the PR description.
 
 ### Mobile — storage and state (`valuex-mobile`)
-- [ ] Create branch `feature/US-044-multi-language-support` from `main` (design system §6 step 7).
-- [ ] `core/constants/storage_keys.dart`: add `appLanguage = 'app_language'`.
-- [ ] `core/storage/preferences_service.dart`: add `getAppLanguage()` / `setAppLanguage(String)` on top of `getString` / `setString` (keeps the key in one place).
-- [ ] `features/settings/domain/supported_languages.dart`: `SupportedLanguage(code, nativeName)` and the list `[en: English, hi: हिन्दी]`; `defaultLocale = Locale('en')`; a helper `localeFromCode(String?)` that returns the default for `null`, empty or unsupported codes (a corrupted or removed language falls back to English).
-- [ ] `features/settings/presentation/providers/locale_controller.dart`: generated Riverpod `Notifier<Locale>` (`@riverpod`, run `build_runner`); `select(Locale)` as in design decision 2; if saving fails, the UI keeps the new language for the session and the error is logged, not shown.
-- [ ] `main.dart`: read the saved code before `runApp` and override the controller's initial value (decision 3). Keep the existing start-up order for the other services.
-- [ ] `lib/app.dart`: `locale: ref.watch(localeControllerProvider)`; keep `supportedLocales` and the delegates; add a `localeResolutionCallback` that never returns anything but `en` or `hi` (so a stray value cannot select an unsupported locale).
-- [ ] `core/utils/date_utils.dart` and `core/utils/formatters.dart`: confirm `DateFormat` and `NumberFormat` use the app locale (they use the default `Intl` locale today). Either set `Intl.defaultLocale` when the locale changes or pass the locale from the caller. Digit style in Hindi (decided): Latin digits 0–9 with Hindi month names; add a test that Hindi amounts and dates show Latin digits and Hindi month names.
+- [x] Create branch `feature/US-044-multi-language-support` from `main` (design system §6 step 7).
+- [x] `core/constants/storage_keys.dart`: add `appLanguage = 'app_language'`.
+- [x] `core/storage/preferences_service.dart`: add `getAppLanguage()` / `setAppLanguage(String)` on top of `getString` / `setString` (keeps the key in one place).
+- [x] `features/settings/domain/supported_languages.dart`: `SupportedLanguage(code, nativeName)` and the list `[en: English, hi: हिन्दी]`; `defaultLocale = Locale('en')`; a helper `localeFromCode(String?)` that returns the default for `null`, empty or unsupported codes (a corrupted or removed language falls back to English).
+- [x] `features/settings/presentation/providers/locale_controller.dart`: generated Riverpod `Notifier<Locale>` (`@riverpod`, run `build_runner`); `select(Locale)` as in design decision 2; if saving fails, the UI keeps the new language for the session and the error is logged, not shown.
+- [x] `main.dart`: read the saved code before `runApp` and override the controller's initial value (decision 3). Keep the existing start-up order for the other services.
+- [x] `lib/app.dart`: `locale: ref.watch(localeControllerProvider)`; keep `supportedLocales` and the delegates; add a `localeResolutionCallback` that never returns anything but `en` or `hi` (so a stray value cannot select an unsupported locale).
+- [x] `core/utils/date_utils.dart` and `core/utils/formatters.dart`: confirm `DateFormat` and `NumberFormat` use the app locale (they use the default `Intl` locale today). Either set `Intl.defaultLocale` when the locale changes or pass the locale from the caller. Digit style in Hindi (decided): Latin digits 0–9 with Hindi month names; add a test that Hindi amounts and dates show Latin digits and Hindi month names.
 
 ### Mobile — Language screen, language chip and Profile menu
-- [ ] `core/routing/route_names.dart`: add `language = '/profile/language'`; `core/routing/app_router.dart`: register it as a child of the Profile route (name `language`); `core/routing/route_guard.dart`: add it to the same `_profileSteps` map as `accountSecurity`.
-- [ ] `features/settings/presentation/providers/pending_language_provider.dart`: small auto-disposed Riverpod provider holding the row chosen but not yet saved (starts as the current language); dropped when the screen or sheet closes, so going back discards it.
-- [ ] `features/settings/presentation/widgets/language_option_list.dart`: the shared card of rows (from `supportedLanguages`), two lines per row (name in the app language from ARB plus native name constant), minimum 48 dp, one `Semantics` button each with "selected" state, tinted row and check circle for the chosen one (icon plus text, not colour alone). Tapping a row updates the pending choice only.
-- [ ] `features/settings/presentation/widgets/language_save_bar.dart`: the fixed footer button "Save Language Preference"; on tap calls `localeController.select(pending)` then closes (screen: go back; sheet: dismiss). No loading or error state (state is synchronous).
-- [ ] `features/settings/presentation/language_screen.dart`: page background `brandBackground`, back button, header (globe icon, title as `Semantics(header: true)`, subtitle), the option list in a scrollable area and the save bar in a fixed footer (safe-area padding; list scrolls at 200 % text).
-- [ ] `features/settings/presentation/widgets/language_chip.dart` and `language_sheet.dart`: the chip (globe icon plus native name of the current language) and the bottom sheet that shows `LanguageOptionList` and the save bar; the sheet closes after Save. Add the chip to `onboarding_screen.dart`, `create_account_screen.dart` and `sign_in_mobile_screen.dart` without moving their existing controls; check no overlap at 200 % text in both languages.
-- [ ] `profile_screen.dart`: give the Language row `onTap: () => context.push(RouteNames.language)`; show the current language's native name as the row's trailing text if the menu row widget supports it (otherwise leave as is; the check mark on the Language screen is the indicator).
+- [x] `core/routing/route_names.dart`: add `language = '/profile/language'`; `core/routing/app_router.dart`: register it as a child of the Profile route (name `language`); `core/routing/route_guard.dart`: add it to the same `_profileSteps` map as `accountSecurity`.
+- [x] `features/settings/presentation/providers/pending_language_provider.dart`: small auto-disposed Riverpod provider holding the row chosen but not yet saved (starts as the current language); dropped when the screen or sheet closes, so going back discards it.
+- [x] `features/settings/presentation/widgets/language_option_list.dart`: the shared card of rows (from `supportedLanguages`), two lines per row (name in the app language from ARB plus native name constant), minimum 48 dp, one `Semantics` button each with "selected" state, tinted row and check circle for the chosen one (icon plus text, not colour alone). Tapping a row updates the pending choice only.
+- [x] `features/settings/presentation/widgets/language_save_bar.dart`: the fixed footer button "Save Language Preference"; on tap calls `localeController.select(pending)` then closes (screen: go back; sheet: dismiss). No loading or error state (state is synchronous).
+- [x] `features/settings/presentation/language_screen.dart`: page background `brandBackground`, back button, header (globe icon, title as `Semantics(header: true)`, subtitle), the option list in a scrollable area and the save bar in a fixed footer (safe-area padding; list scrolls at 200 % text).
+- [x] `features/settings/presentation/widgets/language_chip.dart` and `language_sheet.dart`: the chip (globe icon plus native name of the current language) and the bottom sheet that shows `LanguageOptionList` and the save bar; the sheet closes after Save. Add the chip to `onboarding_screen.dart`, `create_account_screen.dart` and `sign_in_mobile_screen.dart` without moving their existing controls; check no overlap at 200 % text in both languages.
+- [x] `profile_screen.dart`: give the Language row `onTap: () => context.push(RouteNames.language)`; show the current language's native name as the row's trailing text if the menu row widget supports it (otherwise leave as is; the check mark on the Language screen is the indicator).
 
 ### Mobile — strings (`app_en.arb` template, `app_hi.arb`)
-- [ ] Add keys for the Language screen and chip: `languageTitle` ("Language"), `languageSubtitle` ("Choose your preferred language"), `languageSave` ("Save Language Preference"), `languageNameEnglish` ("English") and `languageNameHindi` ("Hindi", the name shown on the first line of each row in the app language), `languageSelected` (screen-reader text, "{name}, selected"), `languageChipLabel` (screen-reader text, "Language, {name}"), `languageSheetTitle`. The second line of each row (English, हिन्दी) is a constant shown the same in every language, not an ARB key.
-- [ ] `WARNING_PARTIAL_TRANSLATION` is **not** shown in the UI (decided); no ARB key is added for it. The key-parity test below is the guard.
+- [x] Add keys for the Language screen and chip: `languageTitle` ("Language"), `languageSubtitle` ("Choose your preferred language"), `languageSave` ("Save Language Preference"), `languageNameEnglish` ("English") and `languageNameHindi` ("Hindi", the name shown on the first line of each row in the app language), `languageSelected` (screen-reader text, "{name}, selected"), `languageChipLabel` (screen-reader text, "Language, {name}"), `languageSheetTitle`. The second line of each row (English, हिन्दी) is a constant shown the same in every language, not an ARB key.
+- [x] `WARNING_PARTIAL_TRANSLATION` is **not** shown in the UI (decided); no ARB key is added for it. The key-parity test below is the guard.
 - [ ] Hindi wording for the new keys goes in `app_hi.arb` and is reviewed by **Abhay** (native-speaker review): a release gate (as in US-115). Set the review date before the end of Sprint 14.
-- [ ] Run `flutter gen-l10n` (or `flutter pub get`) and commit the regenerated `app_localizations*.dart` as the repo already does.
-- [ ] Audit for hardcoded user-facing strings in `lib/` (widgets, snackbars, semantics labels, tooltips, validators, error mapping) and move any found to the ARB files. **Cap (decided):** fix them in this story unless the audit finds more than about 20 strings or more than 3 screens; the rest are listed in the PR and become a follow-up story. The lint-style test below stops new ones.
+- [x] Run `flutter gen-l10n` (or `flutter pub get`) and commit the regenerated `app_localizations*.dart` as the repo already does.
+- [x] Audit for hardcoded user-facing strings in `lib/` (widgets, snackbars, semantics labels, tooltips, validators, error mapping) and move any found to the ARB files. **Cap (decided):** fix them in this story unless the audit finds more than about 20 strings or more than 3 screens; the rest are listed in the PR and become a follow-up story. The lint-style test below stops new ones.
 
 ### Deferred (not in this story)
 - Translate toggle for listings and messages (Open Gap 4): needs the Item Details page (US-012/US-114) and a translation provider and privacy decision. In this story, listing and message text render as stored (already true) and nothing is auto-translated.
@@ -109,63 +109,63 @@ No database, backend, AI-service or web change is needed.
 - Server-side language preference and localized email and SMS (Open Gap 11).
 
 ### Documentation
-- [ ] `Documents/Manual Testing Guides/US-044-Testing-Guide.md` after implementation.
-- [ ] Add a US-044 part to a new Sprint 14 LLD after the build (Open Gap 1), with the design in section 3.
-- [ ] Correct the US-044 story: remove "LanguageScreen already scaffolded", remove the region-detection edge case, state that the translate toggle is deferred and `WARNING_PARTIAL_TRANSLATION` is not shown, and add the pre-login language chip. Add the Language screen entry to the design-system decision log.
+- [x] `Documents/Manual Testing Guides/US-044-Testing-Guide.md` after implementation.
+- [x] Add a US-044 part to a new Sprint 14 LLD after the build (Open Gap 1), with the design in section 3.
+- [x] Correct the US-044 story: remove "LanguageScreen already scaffolded", remove the region-detection edge case, state that the translate toggle is deferred and `WARNING_PARTIAL_TRANSLATION` is not shown, and add the pre-login language chip. Add the Language screen entry to the design-system decision log.
 
 ## 5. Test Plan
 
 Target above 90 % coverage for new code (`flutter test --coverage`).
 
 Unit tests (`test/features/settings/`)
-- [ ] `localeFromCode`: `en` → en, `hi` → hi, `null`, empty, `fr`, `ta`, `HI`/`hi-IN` (decide normalisation) → default en. (Validation: exactly two languages.)
-- [ ] `PendingLanguage` provider: starts as the current language; choosing a row changes only the pending value; it is dropped when the screen or sheet closes (no change to the saved language).
-- [ ] `LocaleController`: initial value is English with nothing saved; initial value is Hindi when saved; `select(hi)` updates state and writes `app_language = hi`; `select(Locale('fr'))` is ignored; a failing write keeps the new state.
-- [ ] `PreferencesService.getAppLanguage/setAppLanguage` round trip (`SharedPreferences.setMockInitialValues`).
+- [x] `localeFromCode`: `en` → en, `hi` → hi, `null`, empty, `fr`, `ta`, `HI`/`hi-IN` (decide normalisation) → default en. (Validation: exactly two languages.)
+- [x] `PendingLanguage` provider: starts as the current language; choosing a row changes only the pending value; it is dropped when the screen or sheet closes (no change to the saved language).
+- [x] `LocaleController`: initial value is English with nothing saved; initial value is Hindi when saved; `select(hi)` updates state and writes `app_language = hi`; `select(Locale('fr'))` is ignored; a failing write keeps the new state.
+- [x] `PreferencesService.getAppLanguage/setAppLanguage` round trip (`SharedPreferences.setMockInitialValues`).
 
 Widget tests
-- [ ] **New install uses English:** with no saved value and the platform locale set to Hindi (`localeTestValue`), `ValueXApp` shows English. *(Fails today; proves the default.)*
-- [ ] **Saved Hindi is used on start:** the first frame is Hindi.
-- [ ] **Language screen:** shows exactly English and हिन्दी (two lines each); the current one is marked (tint, check, "selected" state); tapping the other row marks it but the UI language does **not** change yet; **Save** switches the screen text and the Profile page text and goes back; going back without Save changes nothing; Save with no change just goes back; the saved choice survives disposing and recreating the app (persisted); the Save button stays visible when the list scrolls and at 2x text.
-- [ ] **Language chip (before sign-in):** shown on onboarding, Create Account and Sign In; opens the sheet with the same two options and Save; Save in Hindi changes the screen at once and the choice is the one Profile → Language shows after sign-in; dismissing the sheet without Save changes nothing; the chip does not overlap other controls at 2x text in English and Hindi.
-- [ ] **Hindi numbers and dates:** amounts and dates use Latin digits and Hindi month names.
+- [x] **New install uses English:** with no saved value and the platform locale set to Hindi (`localeTestValue`), `ValueXApp` shows English. *(Fails today; proves the default.)*
+- [x] **Saved Hindi is used on start:** the first frame is Hindi.
+- [x] **Language screen:** shows exactly English and हिन्दी (two lines each); the current one is marked (tint, check, "selected" state); tapping the other row marks it but the UI language does **not** change yet; **Save** switches the screen text and the Profile page text and goes back; going back without Save changes nothing; Save with no change just goes back; the saved choice survives disposing and recreating the app (persisted); the Save button stays visible when the list scrolls and at 2x text.
+- [x] **Language chip (before sign-in):** shown on onboarding, Create Account and Sign In; opens the sheet with the same two options and Save; Save in Hindi changes the screen at once and the choice is the one Profile → Language shows after sign-in; dismissing the sheet without Save changes nothing; the chip does not overlap other controls at 2x text in English and Hindi.
+- [x] **Hindi numbers and dates:** amounts and dates use Latin digits and Hindi month names.
 - [ ] **Mid-transaction:** on a form with typed text (for example the listing details form or address form), switch language from the Language screen and go back: the typed text, the step and the navigation stack are unchanged.
-- [ ] **Profile menu:** the Language row opens the Language screen (no longer "coming soon").
-- [ ] **Sign out keeps the language;** sign-in screens then appear in the saved language.
+- [x] **Profile menu:** the Language row opens the Language screen (no longer "coming soon").
+- [x] **Sign out keeps the language;** sign-in screens then appear in the saved language.
 - [ ] **Listings and messages stay as written:** a listing and a message with English and Hindi text render unchanged in both UI languages.
 - [ ] Notifications: the US-115 messages follow the selected language (existing tests keep passing).
 
 Localization tests (extend `test/l10n/localization_test.dart`)
-- [ ] `app_en.arb` and `app_hi.arb` have identical key sets and the same placeholders and plural forms (this is the guard for the "missing strings" edge case; the Hindi file must never lack a key).
-- [ ] No empty values; Hindi values differ from English except for allowed identical strings (brand name, numbers, abbreviations) kept in an explicit allow-list.
-- [ ] Existing "JustQlic" brand-name test covers the new keys.
-- [ ] Lint-style test (or script run in CI) that no `Text('...')` literal with letters is left in `lib/features` and `lib/core` widgets (allow-list for non-user text), so new hardcoded strings fail the build.
+- [x] `app_en.arb` and `app_hi.arb` have identical key sets and the same placeholders and plural forms (this is the guard for the "missing strings" edge case; the Hindi file must never lack a key).
+- [x] No empty values; Hindi values differ from English except for allowed identical strings (brand name, numbers, abbreviations) kept in an explicit allow-list.
+- [x] Existing "JustQlic" brand-name test covers the new keys.
+- [x] Lint-style test (or script run in CI) that no `Text('...')` literal with letters is left in `lib/features` and `lib/core` widgets (allow-list for non-user text), so new hardcoded strings fail the build.
 
 Accessibility tests
-- [ ] Add `LanguageScreen` and the language sheet to `test/accessibility_test.dart` and `test/all_screens_accessibility_test.dart` (English and Hindi, 1x and 2x text, tap targets, labelled guidelines), and `LanguageScreen` to `test/screen_headings_test.dart`; add a row to `test/core/theme/contrast_test.dart` for any new colour pair (design system §6 step 6).
+- [x] Add `LanguageScreen` and the language sheet to `test/accessibility_test.dart` and `test/all_screens_accessibility_test.dart` (English and Hindi, 1x and 2x text, tap targets, labelled guidelines), and `LanguageScreen` to `test/screen_headings_test.dart`; add a row to `test/core/theme/contrast_test.dart` for any new colour pair (design system §6 step 6).
 - [ ] Screen reader announces the selected language and the change.
 - [ ] Screenshots on the Android emulator and iOS simulator, for the product owner's review (design system §6).
 
 Regression
-- [ ] `flutter analyze` clean, `dart format` clean, full `flutter test` green (the 986-test baseline from US-115 plus new ones).
+- [x] `flutter analyze` clean, `dart format` clean, full `flutter test` green (the 986-test baseline from US-115 plus new ones).
 
 ## 6. Validation Checklist
 
 - [ ] Profile → Language lists English and Hindi only (two lines each, chosen row marked), a fixed "Save Language Preference" button applies the choice, and the screen matches the approved design (Figma Make screenshot, JustQlic tokens, conflict decisions logged).
-- [ ] The language chip on onboarding, Create Account and Sign In works and shares the saved choice.
+- [x] The language chip on onboarding, Create Account and Sign In works and shares the saved choice.
 - [ ] Choosing a language changes the whole UI (every screen in the app today, including snackbars, errors, validators and dialogs) with no restart.
-- [ ] A fresh install is English even on a Hindi phone; Hindi is used only after the user picks it.
-- [ ] The choice survives app restart and sign-out.
+- [x] A fresh install is English even on a Hindi phone; Hindi is used only after the user picks it.
+- [x] The choice survives app restart and sign-out.
 - [ ] Switching language in the middle of a flow keeps the user's input and place.
 - [ ] Listings and messages are shown in their original language; nothing is auto-translated; the translate toggle is not built (deferred, decided).
-- [ ] Missing-string guard: the key-parity test passes; `WARNING_PARTIAL_TRANSLATION` is not shown (decided).
+- [x] Missing-string guard: the key-parity test passes; `WARNING_PARTIAL_TRANSLATION` is not shown (decided).
 - [ ] Hindi text fits at 200 % text size and large fonts; no overflow on small phones.
-- [ ] Dates, times and currency follow the selected language consistently, with Latin digits and Hindi month names.
-- [ ] RTL: not supported and not required; no layout hardcodes `left`/`right` in the new screen (use start/end) so it stays possible later.
-- [ ] Adding a third language needs only one ARB file and one list entry (checked by reading the code, not built).
-- [ ] No sensitive data stored in the language preference or logged.
+- [x] Dates, times and currency follow the selected language consistently, with Latin digits and Hindi month names.
+- [x] RTL: not supported and not required; no layout hardcodes `left`/`right` in the new screen (use start/end) so it stays possible later.
+- [x] Adding a third language needs only one ARB file and one list entry (checked by reading the code, not built).
+- [x] No sensitive data stored in the language preference or logged.
 - [ ] Hindi wording reviewed by a native speaker before release (release gate).
-- [ ] Checkstyle is not applicable; `flutter analyze`, tests and coverage pass before push; new code above 90 % coverage.
+- [x] Checkstyle is not applicable; `flutter analyze`, tests and coverage pass before push; new code above 90 % coverage.
 
 ## 7. Open Gaps / Questions
 
@@ -190,4 +190,22 @@ All gaps were decided by the product owner on 2026-11-07.
 15. **Save step (from the design).** *Decided (2026-11-07, plan approved with the proposal):* follow the design (choose, then Save); the pre-login chip sheet uses the same Save button. "Save" is added to the story's acceptance wording (see Documentation).
 16. **Language names on each row.** *Decided (2026-11-07, plan approved with the proposal):* the first line is an ARB string in the app language (two new keys); the second line is a constant native name.
 
-**Status:** Approved — approved by the user on 2026-11-07. Open Gaps 13 and 14 (story and sprint-plan edits) and the exact Figma measurements (Gap 12) are carried into implementation as listed tasks.
+**Status:** Approved — approved by the user on 2026-11-07. Gaps 13 and 14 were applied on 2026-11-07 (see section 8); the exact Figma measurements (Gap 12) are still open.
+
+## 8. Implementation Notes (2026-11-07)
+
+Implemented in `valuex-mobile` on branch `feature/US-044-multi-language-support` (not yet committed). The design is Part A of `Documents/LLD/Sprint-14-Localization-Compliance-LLD.md`; the manual tests are in `Documents/Manual Testing Guides/US-044-Testing-Guide.md`.
+
+**Done and verified:** `dart format` (no diff), `flutter analyze` (no issues), `flutter test --dart-define=SKIP_PIXEL_CONTRAST=true` as in CI (1,109 tests, all pass; without the define one pixel-contrast test fails locally on `main` too, below), line coverage 95.5 % overall (`tool/check_coverage.sh` minimum 85 %); the new settings code is 94 to 100 % covered. Sonar: the mobile repo has no SonarQube configuration (`sonar-project.properties` and the Sonar guide cover the backend), so no scan was run.
+
+**Deviations from the plan, and why:**
+1. **Back button.** The screenshot shows a plain arrow; the design system's decision log says `SquareBackButton` everywhere, so the Language screen uses it (default decision A). Same for the Save button: `BrandGradientButton` instead of a solid blue one. The conflict report to the product owner and the decision-log row are still to do (open items above); nothing has been applied as an approved exception.
+2. **Figma file not read.** No Figma access in this session; the screenshot was the only design source. Measurements and the chip's look are from the design-system tokens and need a visual review.
+3. **`AppHarness` change.** The app no longer follows the phone's language, so a test that set the platform language before launch would silently run in English. The harness now saves the platform language as the user's choice (`deviceLanguageSaved: true` by default; `false` for fresh-install tests). Tests that changed the language after launch (profile, account security, My Listings) now call `LocaleController.select`.
+4. **Date utilities.** `DateFormat` is already called with the app locale where it is used, and `Formatters` uses `en_IN` (Latin digits), so no code change was needed; a test pins Hindi month names with Latin digits. `AppDateUtils` has English-only text but is unused.
+5. **Hardcoded-string audit** found no user-facing literals (only demo listing titles in `mock_home_repository.dart`, a flag emoji and interpolated labels), well under the cap; `test/l10n/no_hardcoded_strings_test.dart` now blocks new ones.
+6. **Story points.** Header estimate stays 5; the chip and the Save step were built within it.
+
+**Still open:** the Figma conflict report and decision-log row (owner approval), emulator and simulator screenshots, the two untested checklist items (mid-transaction on the listing form, user-written content in Hindi UI), and Abhay's Hindi review (date to be set).
+
+**Not caused by this story:** `test/features/listing/item_details_live_test.dart` "the page passes the tap target and label guidelines" (condition chips contrast 1.6:1) fails locally on `main` as well (CI skips pixel contrast); `tool/check_store_compliance.sh` reports 5 existing findings (for example the placeholder prod API host).

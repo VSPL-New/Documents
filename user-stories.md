@@ -1929,37 +1929,47 @@
 **I want to** use the app in my preferred language  
 **So that** I can understand content easily
 
+> **Update (2026-11-07):** MVP is the mobile app only, with two languages (English default, Hindi). The web half, the listing "Translate" toggle and region detection are not part of this story (see Deferred). A language chip before sign-in and a Save step were added (from the Figma Make "Language options" design).
+
 **Acceptance Criteria:**
 - Given I am in app settings
 - When I tap "Language"
 - Then I see the list of supported languages: English and Hindi (MVP decision; English is the default)
-- When I select a language
-- Then entire app UI changes to that language
-- And listings/messages remain in original language
-- And I see translation option for user-generated content
+- When I choose a language and tap "Save Language Preference"
+- Then the entire app UI changes to that language, without restarting the app
+- And the choice is remembered on this device, also after I sign out
+- And listings/messages remain in their original language (not translated)
+- Given I am not signed in (onboarding, Create Account, Sign In)
+- When I tap the language chip and save a language
+- Then the screen changes to that language and the same choice is used after I sign in
 
 **Edge Cases:**
-- Language not fully translated (missing strings)
-- User switches language mid-transaction
-- Language detection based on region
+- Language not fully translated (missing strings): prevented by a test that keeps the English and Hindi files on the same keys
+- User switches language mid-transaction: the screen, typed text and place in the flow are kept
+- Going back without saving: the language does not change
+- A saved language that is no longer supported: English is used
 - RTL language support (future)
 
 **Validation Rules:**
 - MVP supports exactly two languages: English (default) and Hindi; other Indian languages are post-MVP
-- A new install uses English until the user picks Hindi
-- UI text translated
+- A new install uses English until the user picks Hindi; the phone's language and region are not used
+- UI text translated; Hindi uses Latin digits (0-9) and Hindi month names
 - User-generated content (listings, messages) not auto-translated
-- Translation toggle available for listings
+- Email and SMS stay English until a language preference is stored on the server
 
-**Error Scenarios:**
-- `WARNING_PARTIAL_TRANSLATION`: "Some content not available in this language"
+**Deferred (follow-up stories):**
+- Web language support (the web stack and translation file format are not chosen yet)
+- "Translate" toggle for listings and messages (needs the Item Details page and a translation provider and privacy decision)
+- Warning `WARNING_PARTIAL_TRANSLATION` ("Some content not available in this language"): not shown; revisit with server-provided or partly translated content
+- Server-side language preference and Hindi email/SMS
 
 **Flutter Implementation Notes:**
 - `flutter_localizations` + `intl` package with ARB files per language
-- Language selection persisted in `SharedPreferences`
-- App restarts locale without full rebuild via `Locale` state in Riverpod
-- LanguageScreen already scaffolded — needs localization wiring
+- Language selection persisted in `SharedPreferences` (`app_language`); read before the first frame
+- App switches locale without full rebuild via `Locale` state in Riverpod
+- The Language screen is built new (Profile → Language); the Profile row was only a placeholder
 - Only `app_en.arb` (template, default) and `app_hi.arb` exist for the MVP; adding a language later means adding one ARB file and one list entry
+- Hindi wording needs native-speaker review (Abhay) before release
 
 ---
 

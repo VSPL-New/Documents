@@ -453,10 +453,12 @@ Add language selection (English and Hindi for MVP, English default) and complian
 
 | ID     | Story                                    | Repo            | SP | Dependency |
 | ------ | ---------------------------------------- | --------------- | -- | ---------- |
-| US-044 | Multi-Language Support (English, Hindi)  | mobile, web     | 8  | None       |
+| US-044 | Multi-Language Support (English, Hindi)  | mobile          | 5  | None       |
 | US-097 | Data Export Request (GDPR Compliance)    | backend, mobile | 5  | US-001     |
 | US-098 | Data Deletion Request (Right to Forget)  | backend, mobile | 5  | US-097     |
 | US-099 | Screen Reader and Accessibility Support  | mobile, web     | 8  | None       |
+
+Follow-up stories split out of US-044 (IDs to be assigned): web language support (after the web stack and translation file format are chosen) and the listing "Translate" toggle (after the Item Details page and a translation provider are decided).
 
 ## Exit Criteria
 
