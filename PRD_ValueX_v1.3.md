@@ -69,7 +69,7 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 - Provide end-to-end transaction flow (listing → negotiation → payment → delivery → confirmation)
 - Minimize fraud using identity verification, escrow, and activity monitoring
 - Enable AI-assisted listing creation and discovery
-- Provide multi-language accessibility
+- Provide language accessibility: English (default) and Hindi for MVP
 - Support scalable and reliable infrastructure
 - Enable AI-powered visual search to improve product discovery
 - Introduce premium buyer features to generate additional revenue streams
@@ -253,7 +253,7 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Support & Assistance
 - On-screen bot assistant
-- Multi-language UI
+- Multi-language UI (MVP: English as default, plus Hindi)
 - Chat with human support person
 - Call with human support person
 

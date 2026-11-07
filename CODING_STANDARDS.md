@@ -530,7 +530,7 @@ core/
 
 - All user-facing strings must have entries in `lib/l10n/app_en.arb` (and other language ARB files).
 - No hardcoded strings in widgets — use `AppLocalizations.of(context).keyName`.
-- Supported languages for MVP: English, Hindi. Additional regional languages in later sprints.
+- Supported languages for MVP: English (default and fallback) and Hindi only. Additional regional languages are post-MVP.
 
 ---
 

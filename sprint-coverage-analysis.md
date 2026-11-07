@@ -103,7 +103,7 @@
 
 ### Support & Assistance (5 stories) - Sprint 12 planned
 - **US-043**: On-Screen AI Bot Assistance
-- **US-044**: Multi-Language Support
+- **US-044**: Multi-Language Support (English default, Hindi)
 - **US-045**: Chat with Human Support
 - **US-046**: Call Human Support
 - **US-047**: Raise Dispute/Grievance

@@ -1932,7 +1932,7 @@
 **Acceptance Criteria:**
 - Given I am in app settings
 - When I tap "Language"
-- Then I see list of supported languages (English, Hindi, Tamil, Telugu, Bengali, Marathi, Gujarati, Kannada, Malayalam, Punjabi)
+- Then I see the list of supported languages: English and Hindi (MVP decision; English is the default)
 - When I select a language
 - Then entire app UI changes to that language
 - And listings/messages remain in original language
@@ -1945,7 +1945,8 @@
 - RTL language support (future)
 
 **Validation Rules:**
-- Minimum 10 Indian languages supported
+- MVP supports exactly two languages: English (default) and Hindi; other Indian languages are post-MVP
+- A new install uses English until the user picks Hindi
 - UI text translated
 - User-generated content (listings, messages) not auto-translated
 - Translation toggle available for listings
@@ -1958,6 +1959,7 @@
 - Language selection persisted in `SharedPreferences`
 - App restarts locale without full rebuild via `Locale` state in Riverpod
 - LanguageScreen already scaffolded — needs localization wiring
+- Only `app_en.arb` (template, default) and `app_hi.arb` exist for the MVP; adding a language later means adding one ARB file and one list entry
 
 ---
 
@@ -2019,7 +2021,7 @@
 
 **Validation Rules:**
 - Phone support: 9 AM - 9 PM IST
-- Calls routed based on user's language preference
+- Calls routed based on user's language preference (MVP: English or Hindi)
 - Call recording with user consent
 - Callback option if wait time > 10 minutes
 
