@@ -14,7 +14,7 @@ undo). The dummy gateway is used; no money is charged.
 > edit mode.
 > **Not in this story:** views, chats and Total Views (they read 0 until US-067), Pause and Relist (US-124, US-125), sale
 > details of a sold listing (US-126, the app says "Sale details are coming soon"), the read-only page for a listing in review
-> (US-123, the app shows a short status sheet), buyers, orders and negotiations, purging deleted listings after 90 days (US-127).
+> (US-123 now opens the read-only preview, see `US-123-Testing-Guide.md`), buyers, orders and negotiations, purging deleted listings after 90 days (US-127).
 
 | Setting | Value |
 |---|---|
@@ -122,7 +122,7 @@ SELECT result, matched_policy_codes FROM listing_moderation_checks WHERE listing
 | TC-A07 | Tap a published card, then the edit icon | Both open **Edit Listing** with the stored values, no progress steps, the category with a lock and the note that it cannot be changed, the **Photos** section and **Save changes** |
 | TC-A08 | Tap a draft | Item Details opens with the draft's values; **Choose Listing Plan** is the button |
 | TC-A09 | Tap a listing whose payment failed | Plan selection opens |
-| TC-A10 | Tap a listing in review, one expired, one rejected, one with a payment in progress | A sheet explains where it stands; **Close** closes it |
+| TC-A10 | Tap a listing in review, one expired, one rejected, one with a payment in progress | The read-only preview (US-123) opens with a banner that says where it stands; back returns to My Listings. Each card also has its own **Preview** link |
 | TC-A11 | Tap a sold listing | "Sale details are coming soon" |
 | TC-A12 | Minor edit: change the description, **Save changes** | The page closes, "Changes saved", and the list shows the change |
 | TC-A13 | Major edit: change the price by more than 20%, **Save changes** | A sheet "This change needs a review" lists the reason ("The price is more than 20% away from the approved price") and says "Your plan keeps running meanwhile"; **Keep editing** returns without saving anything |

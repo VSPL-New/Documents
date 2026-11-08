@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>US-123 | JustQlic revised preview C</title>
+  <style>
+    @font-face { font-family: Poppins; src: url('../../valuex-mobile/assets/fonts/Poppins-SemiBold.ttf'); font-weight: 600; }
+    @font-face { font-family: DMSans; src: url('../../valuex-mobile/assets/fonts/DMSans-Regular.ttf'); font-weight: 400; }
+    @font-face { font-family: DMSans; src: url('../../valuex-mobile/assets/fonts/DMSans-Bold.ttf'); font-weight: 700; }
+    :root { --bg:#f4f6ff; --surface:#fff; --fg:#0a0d1e; --muted:#5b6b82; --blue:#135cff; --accent:#c026d3; --tint:#eef0ff; --soft:#e2e8ff; --line:#dce4e8; --control:#76839b; --error:#c81e1e; --gradient:linear-gradient(135deg,var(--blue),var(--accent)); }
+    * { box-sizing:border-box; letter-spacing:0; }
+    body { margin:0; font:16px/1.5 DMSans,sans-serif; color:var(--fg); background:#fff; }
+    button,select { font:inherit; }
+    button { cursor:pointer; }
+    button:disabled { cursor:not-allowed; }
+    button:focus-visible,select:focus-visible,[tabindex]:focus-visible { outline:3px solid var(--blue); outline-offset:3px; }
+    .review { max-width:1452px; padding:32px; margin:auto; }
+    .review-head { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; padding-bottom:24px; border-bottom:1px solid var(--line); }
+    .eyebrow { font-size:12px; font-weight:700; color:var(--blue); margin:0 0 8px; }
+    h1 { font:600 28px/1.35 Poppins,sans-serif; margin:0 0 8px; }
+    .intro { margin:0; color:var(--muted); font-size:14px; }
+    .controls { display:grid; gap:8px; min-width:190px; font-size:14px; }
+    select { min-height:48px; border:1px solid var(--control); border-radius:10px; padding:8px 16px; background:var(--bg); color:var(--fg); }
+    .comparison { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:32px; margin-top:24px; align-items:start; }
+    .option { min-width:0; }
+    .option-heading { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+    .letter { display:grid; place-items:center; width:32px; height:32px; background:var(--fg); color:white; border-radius:6px; flex:none; font-weight:700; }
+    h2 { font:600 18px/1.4 Poppins,sans-serif; margin:0; }
+    .option-note { color:var(--muted); font-size:14px; margin:0 0 16px; min-height:42px; }
+    .phone { height:926px; max-width:428px; width:100%; margin:auto; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); border-radius:16px; overflow:hidden; box-shadow:0 8px 24px #0a0d1e0a; }
+    .top { display:flex; align-items:center; gap:12px; min-height:88px; padding:16px 24px; flex-shrink:0; }
+    .top-title { flex:1; min-width:0; }
+    .top-title h3 { font:600 16px/24px Poppins,sans-serif; margin:0; }
+    .top-title small { color:var(--muted); font-size:12px; }
+    .icon-button { min-width:48px; height:48px; border:0; background:transparent; color:var(--fg); display:grid; place-items:center; flex:none; }
+    .back { border-radius:12px; background:var(--tint); }
+    svg { width:22px; height:22px; flex-shrink:0; }
+    .status { padding:16px 24px; background:var(--tint); flex-shrink:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .status-title { display:flex; gap:8px; align-items:center; color:var(--blue); font-size:14px; font-weight:700; }
+    .status-title svg { width:18px; height:18px; }
+    .status p { margin:4px 0 0; color:var(--muted); font-size:14px; line-height:20px; }
+    .status[data-state="revision"] .status-title { color:var(--error); }
+    .scroll { min-height:0; flex:1; overflow:auto; scrollbar-width:thin; scrollbar-color:var(--line) transparent; overscroll-behavior:contain; }
+    .gallery { margin:24px 24px 0; }
+    .photo { width:100%; height:240px; padding:0; border:0; display:block; background:var(--tint); border-radius:12px; overflow:hidden; position:relative; }
+    .photo img { width:100%; height:100%; object-fit:cover; display:block; }
+    .counter { position:absolute; bottom:12px; right:12px; background:var(--surface); padding:4px 8px; font-size:12px; border-radius:6px; color:var(--fg); font-weight:700; }
+    .image-caption { font-size:12px; color:var(--muted); text-align:center; margin:8px 0 0; }
+    .summary { padding:24px; }
+    .category { font-size:12px; line-height:18px; color:var(--muted); margin:0 0 8px; overflow-wrap:anywhere; }
+    .title { font:600 24px/1.4 Poppins,sans-serif; margin:0 0 8px; overflow-wrap:anywhere; }
+    .title-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:8px; margin-bottom:8px; }
+    .title-row .title { margin:0; }
+    .title-row .condition { margin-top:4px; justify-self:end; }
+    .price-row { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+    .price { color:var(--blue); font-size:24px; font-weight:700; line-height:36px; }
+    .negotiable { font-size:14px; color:var(--muted); }
+    .facts { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; align-items:center; font-size:14px; }
+    .facts:has(.plan-badge[hidden]) { display:none; }
+    .condition,.plan-badge { border-radius:6px; padding:4px 8px; background:var(--soft); font-size:12px; font-weight:700; }
+    .plan-badge { color:var(--blue); }
+    .place { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--muted); margin-top:12px; }
+    .place svg { width:16px; height:16px; }
+    .section { margin:0 24px; padding:24px 0; border-top:1px solid var(--line); }
+    .section h4 { font:600 16px/24px Poppins,sans-serif; margin:0 0 12px; }
+    .section p { font-size:14px; line-height:22px; margin:0; }
+    dl { margin:0; font-size:14px; }
+    .detail { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; padding:8px 0; }
+    dt { color:var(--muted); }
+    dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+    .actions { flex-shrink:0; padding:16px 24px 24px; border-top:1px solid var(--line); background:var(--bg); }
+    .preview-note { font-size:14px; color:var(--muted); margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+    .preview-note svg { width:16px; height:16px; }
+    .action-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .action { min-height:56px; padding:12px; border:0; border-radius:16px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .primary { color:white; background:var(--gradient); }
+    .secondary { color:var(--fg); background:var(--soft); }
+    .action:disabled,.icon-button:disabled { opacity:.4; }
+    .contact-row { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+    .contact-row .action { padding:8px 4px; font-size:14px; gap:6px; }
+    .contact-row svg { width:18px; height:18px; }
+    .choose { width:100%; min-height:48px; margin-top:16px; border:1px solid var(--control); border-radius:10px; background:white; color:var(--fg); font-weight:700; }
+    .choose[aria-pressed="true"] { background:var(--tint); color:var(--blue); border:2px solid var(--blue); }
+    .tradeoff { color:var(--muted); font-size:14px; margin:12px 0 0; }
+    .compact .summary { padding-bottom:16px; }
+    .compact .gallery { margin-top:0; }
+    .compact .photo { height:176px; }
+    .compact .title { font-size:24px; }
+    .compact .quick-facts { margin:16px 24px 0; padding:0 0 16px; display:grid; grid-template-columns:1fr 1fr; gap:16px; border-bottom:1px solid var(--line); }
+    .quick-facts span { display:block; font-size:12px; color:var(--muted); }
+    .quick-facts strong { font-size:14px; font-weight:700; }
+    .compact .section:first-of-type { border-top:0; }
+    .tabbed .gallery { margin:0; }
+    .tabbed .photo { height:216px; border-radius:0; }
+    .tabbed .summary { padding-top:16px; padding-bottom:16px; }
+    .tabs { display:flex; gap:0; border-bottom:1px solid var(--line); background:var(--bg); position:sticky; top:0; z-index:1; padding:0 16px; }
+    .tab { flex:1; min-width:0; min-height:48px; padding:8px 4px; background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); font-size:14px; }
+    .tab[aria-selected="true"] { border-color:var(--blue); color:var(--blue); font-weight:700; }
+    .tabbed .section { border-top:0; }
+    [hidden] { display:none !important; }
+    .review-footer { margin-top:32px; padding-top:20px; border-top:1px solid var(--line); font-size:14px; color:var(--muted); }
+    #selection { color:var(--fg); font-weight:700; min-height:24px; }
+    dialog { border:0; padding:16px; border-radius:12px; max-width:min(90vw,680px); background:var(--bg); }
+    dialog::backdrop { background:#0a0d1e99; }
+    dialog img { display:block; width:100%; max-height:70vh; object-fit:contain; }
+    .dialog-top { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+    @media(min-width:1452px) { .review { padding-left:32px; padding-right:32px; } }
+    @media(max-width:1050px) { .review { padding:24px; } .comparison { grid-template-columns:repeat(3,380px); overflow-x:auto; padding-bottom:16px; gap:24px; } }
+    @media(max-width:600px) { .review { padding:16px; } .review-head { flex-direction:column; gap:16px; } h1 { font-size:24px; } .controls { width:100%; } .comparison { display:flex; flex-direction:column; overflow:visible; gap:32px; } .option { width:100%; } .option-note { min-height:0; } .phone { height:926px; } .top,.status,.summary,.actions { padding-left:16px; padding-right:16px; } .gallery { margin-left:16px; margin-right:16px; } .section { margin-left:16px; margin-right:16px; } .title { font-size:24px; } .action-row { gap:8px; } }
+    @media(prefers-reduced-motion:no-preference) { .option { animation:arrive .4s ease both; } .option:nth-child(2) { animation-delay:.08s; } .option:nth-child(3) { animation-delay:.16s; } @keyframes arrive { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } } }
+    .comparison { grid-template-columns:minmax(0,428px); justify-content:center; overflow:visible; }
+  </style>
+</head>
+<body>
+  <main class="review">
+    <header class="review-head">
+      <div><p class="eyebrow">JUSTQLIC / US-123 / DESIGN REVIEW</p><h1>Listing preview</h1><p class="intro">Revised C: two tabs and expanded buyer actions. Sample content, not live data.</p></div>
+      <label class="controls">Listing status<select id="status-select"><option value="review">Under review</option><option value="revision">Revision required</option><option value="published">Published</option><option value="paused">Paused</option><option value="sold">Sold</option><option value="expired">Expired</option><option value="complete">Details complete</option></select></label>
+    </header>
+    <div class="comparison" id="comparison"></div>
+    <footer class="review-footer"><p id="selection" aria-live="polite">C selected. Revised design awaiting review.</p><p>Draft concept only. Overview and Details tabs work; location stays above them. Chat, Call, Video, Make an Offer and Buy Now are inactive in owner preview. Exact location precision, plan-badge rules and review wording remain planning decisions.</p></footer>
+  </main>
+  <dialog id="photo-dialog" aria-labelledby="photo-title"><div class="dialog-top"><strong id="photo-title">Listing photo</strong><button class="icon-button" id="close-photo" aria-label="Close photo"></button></div><img src="../../valuex-mobile/assets/images/home_listing_watch.jpg" alt="Sample watch listing photo"></dialog>
+  <script>
+    const asset = '../../valuex-mobile/assets/images/home_listing_watch.jpg';
+    const paths = {
+      back:'<path d="m12 19-7-7 7-7"/><path d="M5 12h14"/>',
+      heart:'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/>',
+      clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+      pin:'<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+      lock:'<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+      chat:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>',
+      call:'<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.96.36 1.9.7 2.79a2 2 0 0 1-.45 2.11L8.09 9.89a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.89.34 1.83.58 2.79.7A2 2 0 0 1 22 16.92z"/>',
+      video:'<path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/>',
+      chevron:'<path d="m9 18 6-6-6-6"/>',
+      close:'<path d="m18 6-12 12M6 6l12 12"/>'
+    };
+    const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
+    const header = () => `<div class="top"><button class="icon-button back" aria-label="Back to design choices" title="Back to design choices">${icon('back')}</button><div class="top-title"><h3>Listing preview</h3><small>JustQlic</small></div><button class="icon-button" disabled aria-label="Save unavailable in preview" title="Save unavailable in preview">${icon('heart')}</button></div>`;
+    const status = () => `<div class="status" data-state="review"><div class="status-title">${icon('clock')}<span>Under review</span></div><p>Only you can see this listing.</p></div>`;
+    const gallery = () => `<div class="gallery"><button class="photo" aria-label="Enlarge listing photo" title="Enlarge photo"><img src="${asset}" alt="Watch shown in the sample listing"><span class="counter">1 / 1</span></button></div>`;
+    const summary = () => `<div class="summary"><p class="category">Electronics &gt; Wearables &gt; Smartwatches</p><div class="title-row"><h4 class="title">Apple Watch, 44 mm</h4><span class="condition">Like new</span></div><div class="price-row"><span class="price">&#8377;14,500</span><span class="negotiable">Negotiable</span></div><div class="facts"><span class="plan-badge" hidden>Boosted</span></div><div class="place">${icon('pin')}<span>Indiranagar, Bengaluru</span></div></div>`;
+    const description = () => `<section class="section"><h4>About this item</h4><p>Lightly used Apple Watch with a black strap. No visible scratches. Charging cable and original box included.</p></section>`;
+    const details = () => `<section class="section"><h4>Item details</h4><dl>${[['Brand','Apple'],['Size','44 mm'],['Strap colour','Black'],['Connectivity','Bluetooth'],['Quantity','1']].map(([label,value]) => `<div class="detail"><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl></section>`;
+    const footer = () => `<div class="actions"><p class="preview-note">${icon('lock')}<span>Buyer actions unavailable in preview</span></p><div class="action-row contact-row"><button class="action secondary" disabled>${icon('chat')}Chat</button><button class="action secondary" disabled>${icon('call')}Call</button><button class="action secondary" disabled>${icon('video')}Video</button></div><div class="action-row"><button class="action secondary" disabled>Make an Offer</button><button class="action primary" disabled>Buy Now${icon('chevron')}</button></div></div>`;
+    const options = [
+      {id:'C',name:'Gallery + tabs',note:'Revised: Overview and Details, with location above.',className:'tabbed',content:gallery()+summary()+'<div class="tabs" role="tablist" aria-label="Listing sections">'+['Overview','Details'].map((label,index)=>`<button class="tab" role="tab" id="tab-${index}" aria-selected="${index===0}" aria-controls="panel-${index}" tabindex="${index===0?0:-1}">${label}</button>`).join('')+'</div>'+[description(),details()].map((content,index)=>`<div role="tabpanel" id="panel-${index}" aria-labelledby="tab-${index}" tabindex="0" ${index?'hidden':''}>${content}</div>`).join(''),tradeoff:'Five buyer actions in a fixed, two-row footer. All remain disabled in seller preview.'}
+    ];
+    document.getElementById('comparison').innerHTML = options.map(option=>`<section class="option" aria-labelledby="heading-${option.id}"><div class="option-heading"><span class="letter">${option.id}</span><h2 id="heading-${option.id}">${option.name}</h2></div><p class="option-note">${option.note}</p><div class="phone ${option.className}">${header()}${status()}<div class="scroll" tabindex="0" aria-label="Option ${option.id} listing content">${option.content}</div>${footer()}</div><button class="choose" data-choice="${option.id}" aria-pressed="true">Selected ${option.id}</button><p class="tradeoff">${option.tradeoff}</p></section>`).join('');
+    const states = {
+      review:['Under review','Only you can see this listing.'],
+      revision:['Revision required','Add a clearer photo of the watch face.'],
+      published:['Published','Your listing is visible to buyers.'],
+      paused:['Paused','Hidden from buyers. Your plan validity continues.'],
+      sold:['Sold','This item is no longer available.'],
+      expired:['Expired','Your listing is no longer visible to buyers.'],
+      complete:['Details complete','Your listing has not been published yet.']
+    };
+    document.getElementById('status-select').addEventListener('change',event=>{
+      const state=event.target.value;
+      document.querySelectorAll('.status').forEach(banner=>{banner.dataset.state=state;banner.querySelector('.status-title span').textContent=states[state][0];banner.querySelector('p').textContent=states[state][1];});
+      document.querySelectorAll('.plan-badge').forEach(badge=>{badge.hidden=state!=='published';});
+    });
+    document.querySelectorAll('.choose').forEach(button=>button.addEventListener('click',()=>{
+      document.querySelectorAll('.choose').forEach(choice=>choice.setAttribute('aria-pressed',String(choice===button)));
+      const option=options.find(entry=>entry.id===button.dataset.choice);
+      document.getElementById('selection').textContent=`Selected ${option.id}: ${option.name}. Tell me your choice in chat to continue planning; this selection is not saved.`;
+    }));
+    const tabs=[...document.querySelectorAll('.tab')];
+    function selectTab(selected) { tabs.forEach((tab,index)=>{const active=tab===selected;tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;document.getElementById(`panel-${index}`).hidden=!active;}); }
+    tabs.forEach((tab,index)=>{
+      tab.addEventListener('click',()=>selectTab(tab));
+      tab.addEventListener('keydown',event=>{let target=index;if(event.key==='ArrowRight')target=(index+1)%tabs.length;else if(event.key==='ArrowLeft')target=(index+tabs.length-1)%tabs.length;else if(event.key==='Home')target=0;else if(event.key==='End')target=tabs.length-1;else return;event.preventDefault();selectTab(tabs[target]);tabs[target].focus();});
+    });
+    const dialog=document.getElementById('photo-dialog');
+    document.querySelectorAll('.photo').forEach(button=>button.addEventListener('click',()=>dialog.showModal()));
+    document.getElementById('close-photo').innerHTML=icon('close');
+    document.getElementById('close-photo').addEventListener('click',()=>dialog.close());
+    document.querySelectorAll('.back').forEach(button=>button.addEventListener('click',()=>button.closest('.option').querySelector('.choose').focus()));
+  </script>
+</body>
+</html>

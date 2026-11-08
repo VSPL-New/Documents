@@ -11,7 +11,7 @@ publication (US-009), the three review attempts, the refund flag, late payments,
 > (payment succeeded, failed and late), `TrustSafetyReviewService`, `ListingPublicationService`, `ListingRefundDueListener`,
 > `ListingRecoveryJob`; `POST /api/v1/listings/{id}/trust-safety-review` and `.../appeal`; the app page `/sell/submitted`.
 > **Not in this story:** admin approve/reject endpoints (no admin role until Sprint 10, the decisions are services only),
-> seller notifications (US-115), the listing preview page (US-123, the button says "Preview is coming soon"), search ranking
+> seller notifications (US-115), the listing preview page (US-123, the button opens the owner preview, see `US-123-Testing-Guide.md`), search ranking
 > for boosted and priority plans (Sprint 3), issuing the refund (finance approves it later with `approveAndExecute`).
 
 | Setting | Value |
@@ -89,7 +89,7 @@ SELECT attempt_number, review_reason, auto_decision, admin_decision, sla_deadlin
 |---|---|---|
 | TC-A01 | Pay a plan in the test sheet (**Pay**) | The sheet closes and the page "Your listing is submitted" opens; no snackbar; it never says the listing is live; it says "We will notify you if any action is required" (US-115) |
 | TC-A02 | Read the page | Title, the message about the Trust & Safety compliance review, the buttons **Preview your listing** and **Back to Home** |
-| TC-A03 | Tap **Preview your listing** | "Preview is coming soon"; stay on the page |
+| TC-A03 | Tap **Preview your listing** | The owner preview of this listing opens (US-123, see `US-123-Testing-Guide.md`) with the "Under review" banner; back returns to this page |
 | TC-A04 | Tap **Back to Home**; or press the system back button | Home opens; the app does not close and the review page is not shown again |
 | TC-A05 | Plan priced at zero, tap **Publish** | The same submitted page opens; no checkout |
 | TC-A06 | Payment not settled yet (stop the backend after **Pay**) | "We're confirming your payment" and Home (not the submitted page) |
