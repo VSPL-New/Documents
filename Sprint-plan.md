@@ -104,7 +104,7 @@ Allow sellers to create and publish listings.
 | US-009 | Listing Publication After Payment     | backend, mobile | 5  | US-008, US-084 (built together) |
 | US-010 | View/Edit/Delete My Listings          | backend, mobile | 8  | US-009     |
 | US-115 | Listing Lifecycle Notifications       | backend, mobile | 3  | US-077, US-089 |
-| US-123 | Preview Listing (placeholder, to be detailed; points not estimated yet) | mobile, backend | TBD | US-004, US-006, US-089; opened from the US-009 under-review page |
+| US-123 | Preview Listing ([approved plan](US-Implementation-Plans/US-123-Implementation-Plan.md), 2026-11-08; built locally, not yet committed) | mobile, backend | TBD | US-004, US-114, US-006, US-089; US-009/US-084 review context and US-010 preview entry |
 
 ## Exit Criteria
 
@@ -518,7 +518,7 @@ Add advanced features and optimize platform.
 
 \* Category taxonomy (2026-10-25): US-006 is rewritten and raised from 3 to 13 SP (Sprint 2 and total points +10). Added US-118 (5) and US-120 (8) in Sprint 3, US-122 (13) in Sprint 6, and US-119 (5) and US-121 (8) in Sprint 10. Story points for these are proposals.
 
-\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total). Sprint 2 adds US-123 (Preview Listing, a placeholder story with no estimate yet, so its points are not included in the 78 or the total). US-010 is raised from 5 to 8 (2026-11-02): the My Listings screen is now part of it. US-124 (Pause and Resume Listing) and US-125 (Relist Listing) are placeholders with no estimate and no sprint yet, so they are not counted. US-126 (Sold Listing Details) is a placeholder with no estimate and no sprint yet (it needs order, payout and shipping data), so it is not counted. US-127 (Listing Archival and Retention) is also a placeholder with no estimate (proposed Sprint 10, with the audit trail), so it is not counted.
+\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total). Sprint 2 adds US-123 (Preview Listing, implementation plan approved on 2026-11-08; built locally and not yet committed, no estimate yet, so its points are not included in the 78 or the total). US-010 is raised from 5 to 8 (2026-11-02): the My Listings screen is now part of it. US-124 (Pause and Resume Listing) and US-125 (Relist Listing) are placeholders with no estimate and no sprint yet, so they are not counted. US-126 (Sold Listing Details) is a placeholder with no estimate and no sprint yet (it needs order, payout and shipping data), so it is not counted. US-127 (Listing Archival and Retention) is also a placeholder with no estimate (proposed Sprint 10, with the audit trail), so it is not counted.
 
 ## Coverage
 
@@ -542,7 +542,7 @@ Add advanced features and optimize platform.
 - Listing Notifications (US-115): ✅ 1 story (Sprint 2)
 - Plan Administration (US-116): ✅ 1 story (Sprint 10)
 - Payment Gateway (US-117): ✅ 1 story (Sprint 2)
-- Listing Preview (US-123): ✅ 1 story (Sprint 2, placeholder)
+- Listing Preview (US-123): ✅ 1 story (Sprint 2, implementation plan approved 2026-11-08; not implemented; points TBD)
 - Category Taxonomy (US-118 to US-122): ✅ 5 stories (US-118 and US-120 in Sprint 3, US-122 in Sprint 6, US-119 and US-121 in Sprint 10)
 
 **Not Yet Planned (Future Backlog):**

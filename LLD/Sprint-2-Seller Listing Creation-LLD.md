@@ -3,7 +3,7 @@
 **Document Version:** 2.0
 **Product:** ValueX
 **Sprint:** Sprint 2 - Seller Listing Creation
-**Stories Covered:** US-004, US-114, US-005, US-006, US-007, US-089, US-078, US-008, US-009, US-084, US-010, US-115
+**Stories Covered:** US-004, US-114, US-005, US-006, US-007, US-089, US-078, US-008, US-009, US-084, US-010, US-115, US-123 (built, not yet committed)
 **Repos:** valuex-backend, valuex-mobile, valuex-ai
 **Sprint Goal:** Allow sellers to create and publish listings, with AI-assisted metadata, moderation, and paid plan monetization.
 
@@ -56,6 +56,7 @@ This document contains one self-contained LLD section per story, in dependency o
 - [Part I - US-009: Listing Publication After Payment](#part-i---us-009-listing-publication-after-payment)
 - [Part J - US-010: View/Edit/Delete My Listings](#part-j---us-010-vieweditdelete-my-listings)
 - [Part K - US-115: Listing Lifecycle Notifications](#part-k---us-115-listing-lifecycle-notifications)
+- [Part L - US-123: Preview Listing](#part-l---us-123-preview-listing)
 
 ---
 
@@ -3394,5 +3395,85 @@ Migration `V23__notification_params_dedupe.sql`:
 - Push is not built: medium-priority messages are in-app only. Email and SMS are English only. Hindi text is a draft for native-speaker review.
 - A late payment sent to refund review (`LATE_PAYMENT_NOT_APPLICABLE`) gets no message; "refund issued" is added with the refund step.
 - `AccountEventNotificationListener` saves through the plain `@Transactional` dispatcher in an AFTER_COMMIT callback (same pattern risk as above); not changed by this story.
+
+---
+
+# Part L - US-123: Preview Listing
+
+> **As built (2026-11-08, not yet committed).** Implemented as approved in [US-123-Implementation-Plan.md](../US-Implementation-Plans/US-123-Implementation-Plan.md) (G1-G4). The deviations are listed in section L.7 and in the plan's section 8. No migration and no AI-service change were needed.
+
+**Repos:** valuex-backend, valuex-mobile. **Story points:** TBD. **Dependencies:** Parts A/C/E/F/I/J and the saved item-details flow. No AI-service change or migration is currently proposed.
+
+## L.1 Scope and Layout
+
+- Owner-only, read-only rendering of the latest saved listing before and after publication. Reusable content for US-126 and compatible portions of US-012; neither future story is implemented here.
+- The selected design is [revised C](../US-Implementation-Plans/US-123-preview-options.html): photo gallery, summary, exactly Overview and Details tabs, seller status and an inactive two-row buyer footer. No new Figma frame exists; the MCP account quota blocked creation.
+- Condition is right-aligned beside the title. Title/price/category/applicable condition/location stay in the summary. No Location tab and no duplicated location section.
+- Footer row one: Chat, Call, Video. Row two: Make an Offer, Buy Now. Header Save also stays disabled. No call/video permissions, offer, payment, favourite, edit, delete, resubmit or appeal operations are triggered by preview.
+- The buyer screenshot does not authorize seller ratings/profile data, sharing, analytics, shipping/returns/escrow promises or verification claims.
+
+## L.2 Schema-Driven Field Projection
+
+Use the schema and saved attribute map from Part C, not the AI suggestion payload or form defaults:
+
+1. Apply common-field visibility for the selected profile. Summary-owned fields are displayed once.
+2. For each category field, evaluate `required` or its `requiredWhen` against saved values, using the existing `ListingSchema.isRequired` semantics. Form `section=CATEGORY/MORE` and `aiPrefill` are not the preview split.
+3. Overview contains remaining applicable mandatory common/category fields and the saved description. Details contains all remaining populated applicable fields. Preserve schema order within each group.
+4. Blank optional values are omitted; numeric zero and boolean false are not blank. Missing mandatory fields use the G4-approved fallback rather than silently disappearing or receiving an edit-form default.
+5. Resolve labels, options, units and typed values from schema metadata. Lists, dates and nested objects need a readable, plain-text representation; never render raw executable markup or debug object strings.
+6. For Real Estate, use the saved derived listing price; suppress only its identical active schema amount in the tabs. Retain transaction intent and other distinct monetary fields. Do not show condition/quantity when the profile hides them.
+7. Manual, AI-filled and seller-corrected values have identical presentation. Preview does not run AI, save, submit or change category.
+
+The HTML's watch fields are illustrative only; its hard-coded description/Details split is not the taxonomy contract.
+
+## L.3 Existing APIs and Contract Gap
+
+| API | Existing behavior | US-123 use |
+|---|---|---|
+| `GET /api/v1/listings/{listingId}` | Owner/non-deleted lookup, saved values, status, category path, attributes, ordered image/media IDs and plan code | Reused; now also returns the four preview fields (G1, as built below) |
+| `GET /api/v1/categories/{code}/listing-schema` | Part C schema; requires a selectable leaf | Do not blindly use for older listings: disabled categories fail selection checks |
+| `POST /api/v1/media/{mediaId}/access` | Owned READY asset -> `accessUrl`, `expiresAt` | Reuse short-lived private reads; no public-storage fallback |
+| `POST /api/v1/listings/{listingId}/trust-safety-review` | Can start/resubmit review | Forbidden for preview reads |
+
+**G1 as built:** `GET /api/v1/listings/{listingId}` (`ListingDraftService.getDraft`) returns the existing `ListingDraftResponse` with four new nullable fields: `listingSchema` (the `ListingSchemaResponse` shape), `reviewReason`, `planName` and `publishedAt`. They are added only by this owner GET, through `ListingPreviewAssembler.addPreviewContext`; the PATCH, category, submit and create responses leave them null. The owner and non-deleted check runs first, so another seller or a deleted listing gets `LISTING_NOT_FOUND` before anything else is read.
+
+- `listingSchema` is built from the stored category (`CategoryService.findLeafById` then `ListingSchemaService.schemaFor`), so a category that was disabled later still has its form; `requireSelectableLeaf` is not applied and the selection checks elsewhere are unchanged. If building it fails the field is null and a warning is logged, and the app says details are unavailable.
+- `reviewReason` is the `rejection_reason` of the latest review, only when the listing is `REVISION_REQUIRED` or `REJECTED` and that review failed. Otherwise null.
+- `planName` is the name of the listing's plan code; `publishedAt` is `published_at`. The app shows the plan badge only when both exist.
+- No new endpoint, table or migration. Photo links use the existing `POST /api/v1/media/{mediaId}/access`.
+
+Review reasons come from the latest matching stored review only while revision/rejected status applies. Do not leak old reasons after publication, reviewer identity or raw model results. Reuse existing plan lookup sources; badge eligibility is G3, not implied by selecting a paid plan.
+
+## L.4 Entry Points and State Handling
+
+- The US-009 submitted-page preview button opens by listing ID and replaces its coming-soon snackbar.
+- **G2 approved navigation:** preserve US-010 editable-card and plan-recovery taps; add an explicit Preview action to every card. Non-editable unsold card taps replace their status sheet with this preview. A sold item gains Preview for its item content; its card-tap sale destination remains US-126. This adds an explicit Preview action without replacing the editable/plan/sold card-tap rules in J.1 or J.8.
+- Load from the backend on entry, do not trust cached card fields for authorization/current content. Back returns to the source, with My Listings as the direct-navigation fallback. Existing buyer/notification `/listing/{id}` routing is unchanged.
+- Use actual lifecycle vocabulary. `DRAFT` is not proof of details completion; `DEACTIVATED_BY_SELLER` is not `PAUSED`. Read current review/payment/published/revision/rejected/sold/expired states without adding transitions. Paused lifecycle production remains US-124.
+- Approved G3 specifies city-only location and known plan name after first publication. Approved G4 governs missing/retired schema, unknown values, admin-removed content visibility and future state labels; see the plan for the exact approved fallbacks.
+
+## L.5 Security, Errors and Resilience
+
+- Owner identity comes from the security context. Another seller, missing ID and soft-deleted row receive the existing `LISTING_NOT_FOUND`; no preview context is assembled first.
+- Do not mutate listing, review, payment, history or AI state during a read. The media-access POST is an authorization operation, not a listing mutation.
+- Photo failures are per-image: each photo fetches its own link when shown, a failed one shows a message with Retry that fetches a new link, and the rest of the page and the other photos are unaffected. There is no automatic refresh when a link expires (see L.7). Signed links are not logged or stored; the preview providers are auto-disposed.
+- Preview state is keyed by listing id and dropped when the screen is left. The route is guarded like My Listings (a signed-out user is sent to sign in) and the listing is always loaded by id, so a stale card or copied link never decides access.
+- Loading/retry, offline/server errors, unavailable schema, missing required values and empty Details need explicit localized states. Never silently guess a mandatory/optional grouping without schema.
+- Show stored city only under G3; no precise address/coordinates, contact details or excluded system attributes.
+
+## L.6 Validation and Delivery
+
+The plan maps AC1-AC10 to tests; results and what is not covered are in the plan's section 8 and in [US-123-Testing-Guide.md](../Manual%20Testing%20Guides/US-123-Testing-Guide.md). The manual guide covers the checks that need a running backend.
+
+## L.7 As Built: Deviations from the Approved Design
+
+1. Chat, Call, Video and Make an Offer are label-only: the design system has no secondary button with an icon, and a new variant needs an owner decision (conflict protocol 6.1).
+2. Above 1.3x text size the status banner and the buyer actions scroll with the page instead of staying fixed, because fixed they overflowed a small phone at 200% text. At normal size they are fixed.
+3. The route is top level, `/profile/listings/:listingId/preview` (`RouteNames.listingPreview(id)`), not a child of My Listings, so opening it does not build Profile and My Listings.
+4. The My Listings status sheet and its strings were removed; every non-editable unsold card now opens the preview (G2). Edit, Delete, plan recovery and the sold-card message are unchanged, and each card has a separate Preview action.
+5. Admin-removed and unknown states show the existing "Unavailable" badge; there is no `PAUSED` state yet.
+6. No automatic photo-link refresh on expiry; Retry or reopening fetches a new link.
+
+Follow the Flutter design system for all tokens/components, English/Hindi UI, screen-reader semantics, minimum targets, 320/390/428-width layouts and 200% text. G1-G4 and the plan were approved on 2026-11-08. SonarQube has not been run (no server or token available).
 
 
