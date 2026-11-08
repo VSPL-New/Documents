@@ -208,7 +208,7 @@ GET  /api/v1/auth/me
 * Profile management (display name and avatar only; the profile holds no location, date of birth or address)
 * Address management (saved addresses with a user-given label, a default address, and address verification for reuse at checkout and listing)
 * Saved items
-* Language preferences
+* Language preference (MVP: English default, Hindi)
 * Notification preferences
 * Payout account management
 

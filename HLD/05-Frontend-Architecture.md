@@ -836,30 +836,20 @@ PlanRenewed
 
 ## Languages
 
-Phase 1:
+MVP (decision 2026-11-06): English (default) and Hindi only.
 
 ```text
-English
+English (default)
 Hindi
-Tamil
-Telugu
-Bengali
-Marathi
-Kannada
-Gujarati
-Malayalam
-Punjabi
 ```
+
+Other Indian languages (Tamil, Telugu, Bengali, Marathi, Kannada, Gujarati, Malayalam, Punjabi) are post-MVP.
 
 ---
 
 ## Translation Strategy
 
-```text
-i18n JSON Files
-```
-
-Example:
+**Mobile (Flutter):** ARB files generated with `flutter_localizations` and `intl`. `app_en.arb` is the template and default; `app_hi.arb` holds Hindi. No hardcoded strings in widgets.
 
 ```json
 {
@@ -867,6 +857,10 @@ Example:
   "search": "Search"
 }
 ```
+
+**Web:** translation file format to be decided with the web stack.
+
+**Server messages:** email and SMS are English only until a language preference is stored on the server (US-115).
 
 ---
 

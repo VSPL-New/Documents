@@ -447,20 +447,22 @@ Enable visual search for premium users.
 
 ## Goal
 
-Add multi-language support and compliance features.
+Add language selection (English and Hindi for MVP, English default) and compliance features.
 
 ## Stories
 
 | ID     | Story                                    | Repo            | SP | Dependency |
 | ------ | ---------------------------------------- | --------------- | -- | ---------- |
-| US-044 | Multi-Language Support                   | mobile, web     | 8  | None       |
+| US-044 | Multi-Language Support (English, Hindi)  | mobile          | 5  | None       |
 | US-097 | Data Export Request (GDPR Compliance)    | backend, mobile | 5  | US-001     |
 | US-098 | Data Deletion Request (Right to Forget)  | backend, mobile | 5  | US-097     |
 | US-099 | Screen Reader and Accessibility Support  | mobile, web     | 8  | None       |
 
+Follow-up stories split out of US-044 (IDs to be assigned): web language support (after the web stack and translation file format are chosen) and the listing "Translate" toggle (after the Item Details page and a translation provider are decided).
+
 ## Exit Criteria
 
-* 10+ Indian languages supported
+* English (default) and Hindi supported; other Indian languages are post-MVP
 * GDPR compliance features working
 * Accessibility WCAG 2.1 AA compliant
 
@@ -579,7 +581,7 @@ All 109 user stories from the user-stories.md file are now covered in the sprint
 - Support system
 - Premium subscriptions
 - AI photo search
-- Multi-language support
+- Language selection (English default, Hindi)
 - Compliance (GDPR)
 - Accessibility
 - Analytics and optimization
