@@ -97,7 +97,7 @@ Allow sellers to create and publish listings.
 | US-006 | Category Taxonomy and Category-driven Item Details | backend, mobile | 13 | US-004, US-114, US-089 (built before US-005 and US-007) |
 | US-007 | Restricted Items Prevention           | backend, AI     | 5  | US-005, US-114 |
 | US-089 | Lifecycle State - Listing             | backend         | 5  | US-004     |
-| US-084 | Pre-Publication Trust & Safety Review | backend, AI     | 5  | US-007, US-009 (built together) |
+| US-084 | Pre-Publication Trust & Safety Review (AI moderation parked 2026-11-08; backend built with AI off) | backend, AI     | 5  | US-007, US-009 (built together) |
 | US-078 | Listing Plan Features and Pricing     | backend, mobile | 3  | US-004     |
 | US-117 | Payment Gateway Integration           | backend, mobile | 5  | S0-001     |
 | US-008 | Seller Chooses Listing Plan           | backend, mobile | 5  | US-078, US-007, US-117 |
@@ -134,6 +134,8 @@ Enable buyers to discover items.
 | US-073 | Save and Bookmark Listings | backend, mobile | 3  | US-012     |
 | US-066 | Saved Searches and Alerts  | backend, mobile | 5  | US-011     |
 | US-111 | Home Page (backend feed, categories, promos; mobile UI already built on a mock repository) | backend, mobile | 8 | US-011 |
+| US-128 | Listing Photo Variants (thumbnail, card, detail, zoom; built in parallel with US-120, [LLD Part H](LLD/Sprint-3-Discovery-Search-LLD.md)) | backend | 5 | US-004 |
+| US-129 | Voice Search (speak a search in English or Hindi; native speech recognition fills the search box, [LLD Part I](LLD/Sprint-3-Discovery-Search-LLD.md)) | mobile, backend | 5 | US-011 |
 
 ## Exit Criteria
 
@@ -142,6 +144,9 @@ Enable buyers to discover items.
 * Listing detail view complete
 * Saved items and search alerts working
 * Home page served by real endpoints for categories, featured listings near the user and promos, replacing the mock repository (US-111)
+* Listing photos delivered as thumbnail, card, detail and zoom variants (US-128)
+* Buyers can speak a search in English or Hindi; the text lands in the normal search box and no audio is sent to ValueX (US-129)
+* Sprint 3 design: [Sprint-3-Discovery-Search-LLD.md](LLD/Sprint-3-Discovery-Search-LLD.md) (final, 2026-11-09); search, saved-item, Home and rate-limit numbers are Admin-managed settings
 
 ---
 
@@ -356,7 +361,7 @@ Build admin dashboard and moderation tools.
 | US-057 | Admin Content Moderation         | backend,web | 5  | US-016     |
 | US-056 | Admin Transaction Monitoring     | backend,web | 5  | US-023     |
 | US-100 | Admin Analytics Dashboard        | backend,web | 8  | US-056     |
-| US-116 | Admin Manage Listing Plans and Tax Settings | backend,web | 5  | US-078, US-053 |
+| US-116 | Admin Manage Listing Plans, Tax Settings and Discovery Settings | backend,web | 5  | US-078, US-053 |
 | US-119 | Category-wise Listing Plans      | backend,mobile,web | 5 | US-078, US-116 |
 | US-121 | Admin Categories, Attributes, Options and AI Settings | backend,web | 8 | US-006, US-053 |
 
@@ -367,6 +372,7 @@ Build admin dashboard and moderation tools.
 * Analytics and monitoring in place
 * Audit trail complete
 * Management can change listing plans, features, prices and the GST setting from the admin console (US-116), per L1 category (US-119)
+* Management can change the Admin-managed discovery settings (ranking weights, search and saved-item limits, retention, alert time, Home limits, rate limits) from the admin console (US-116)
 * Admins can enable or disable categories, set popular categories, manage attributes and options (including bulk upload) and switch AI on or off (US-121)
 
 ---
@@ -499,7 +505,7 @@ Add advanced features and optimize platform.
 | S0     | Foundation & Architecture           | 8       | 41  | 2 weeks  |
 | S1     | Identity & User Management          | 13      | 59  | 2 weeks  |
 | S2     | Seller Listing Creation             | 14      | 78* | 2 weeks  |
-| S3     | Discovery & Search                  | 7       | 42  | 2 weeks  |
+| S3     | Discovery & Search                  | 9       | 52  | 2 weeks  |
 | S4     | Communication & Negotiation         | 10      | 56  | 2 weeks  |
 | S5     | Cart, Checkout & Payments           | 13      | 62* | 2 weeks  |
 | S6     | Shipping & Delivery                 | 12      | 62  | 2 weeks  |
@@ -512,15 +518,15 @@ Add advanced features and optimize platform.
 | S13    | AI Photo Search                     | 3       | 26  | 2 weeks  |
 | S14    | Localization & Compliance           | 4       | 26  | 2 weeks  |
 | S15    | Enhancement & Optimization          | 4       | 23  | 2 weeks  |
-| **Total** | **16 Sprints (32 weeks / 8 months)** | **126** | **696*** | **32 weeks** |
+| **Total** | **16 Sprints (32 weeks / 8 months)** | **128** | **706*** | **32 weeks** |
 
 \* Category taxonomy (2026-10-25): US-006 is rewritten and raised from 3 to 13 SP (Sprint 2 and total points +10). Added US-118 (5) and US-120 (8) in Sprint 3, US-122 (13) in Sprint 6, and US-119 (5) and US-121 (8) in Sprint 10. Story points for these are proposals.
 
-\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total). Sprint 2 adds US-123 (Preview Listing, implementation plan approved on 2026-11-08; built locally and not yet committed, no estimate yet, so its points are not included in the 78 or the total). US-010 is raised from 5 to 8 (2026-11-02): the My Listings screen is now part of it. US-124 (Pause and Resume Listing) and US-125 (Relist Listing) are placeholders with no estimate and no sprint yet, so they are not counted. US-126 (Sold Listing Details) is a placeholder with no estimate and no sprint yet (it needs order, payout and shipping data), so it is not counted. US-127 (Listing Archival and Retention) is also a placeholder with no estimate (proposed Sprint 10, with the audit trail), so it is not counted.
+\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 3 and total points also add US-128 (Listing Photo Variants, 5, proposed, 2026-11-09) and US-129 (Voice Search, 5, proposed, 2026-11-11). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total). Sprint 2 adds US-123 (Preview Listing, implementation plan approved on 2026-11-08; built locally and not yet committed, no estimate yet, so its points are not included in the 78 or the total). US-010 is raised from 5 to 8 (2026-11-02): the My Listings screen is now part of it. US-124 (Pause and Resume Listing) and US-125 (Relist Listing) are placeholders with no estimate and no sprint yet, so they are not counted. US-126 (Sold Listing Details) is a placeholder with no estimate and no sprint yet (it needs order, payout and shipping data), so it is not counted. US-127 (Listing Archival and Retention) is also a placeholder with no estimate (proposed Sprint 10, with the audit trail), so it is not counted.
 
 ## Coverage
 
-### Stories Planned: 126 / 123 total user stories
+### Stories Planned: 128 / 124 total user stories
 
 **Planned in Sprints:**
 - All MVP core stories (US-001 to US-059): ✅ 59 stories
@@ -535,6 +541,8 @@ Add advanced features and optimize platform.
 - Mobile App Security (US-109): ✅ 1 story (Sprint 9)
 - UI Quality (US-110): ✅ 1 story (Sprint 9)
 - Home (US-111): ✅ 1 story (Sprint 3)
+- Listing Photo Variants (US-128): ✅ 1 story (Sprint 3, proposed 5 SP)
+- Voice Search (US-129): ✅ 1 story (Sprint 3, proposed 5 SP)
 - Seller Order Management (US-112): ✅ 1 story (Sprint 6)
 - Listing Details (US-114): ✅ 1 story (Sprint 2)
 - Listing Notifications (US-115): ✅ 1 story (Sprint 2)

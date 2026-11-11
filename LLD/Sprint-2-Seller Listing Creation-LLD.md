@@ -2679,7 +2679,7 @@ Unlike US-007 (hard fail-closed reject), a fraud-scoring outage here **queues fo
 **Story Points:** 3 | **Repos:** valuex-backend, valuex-mobile
 **Dependency:** US-004 (listing draft must exist to select a plan for it)
 
-> **Update 2026-10-16 (dynamic plans and GST):** Plans, features and prices are data managed from the admin console (US-116), not fixed values, so the seed in §G.3 is only the starting catalog (Basic ₹49, original ₹99; no free plan; a plan whose price is set to zero is free). Plan codes carry no behavior. The catalog is read from `GET /api/v1/plans/seller` (cached, evicted on every admin save). Prices include GST for now: a `platform_settings` table (created with the `plans` table) holds `GST_MODE` (`INCLUSIVE` or `EXCLUSIVE`) and `GST_RATE_PERCENT`, and the catalog response adds `priceIncludesGst`, `gstRatePercent` and the GST part of the price. Plans have `display_order`, `badge` and a `version` column for concurrent edit checks. `FeaturedListingRotationService` and the `PLAN_EXPIRED` read check move to Sprint 3. When a seller selects a plan, US-008 copies the price, validity days and tax mode onto the listing, so later changes never alter existing listings or open payments.
+> **Update 2026-10-16 (dynamic plans and GST):** Plans, features and prices are data managed from the admin console (US-116), not fixed values, so the seed in §G.3 is only the starting catalog (Basic ₹49, original ₹99; no free plan; a plan whose price is set to zero is free). Plan codes carry no behavior. The catalog is read from `GET /api/v1/plans/seller` (cached, evicted on every admin save). Prices include GST for now: a `platform_settings` table (created with the `plans` table) holds `GST_MODE` (`INCLUSIVE` or `EXCLUSIVE`) and `GST_RATE_PERCENT`, and the catalog response adds `priceIncludesGst`, `gstRatePercent` and the GST part of the price. Plans have `display_order`, `badge` and a `version` column for concurrent edit checks. The `PLAN_EXPIRED` read check moves to Sprint 3, and `FeaturedListingRotationService` is dropped (2026-11-09): Home and search share one ranking by plan tier (Sprint 3 LLD, B.5). Plans also gain `search_tier` and `listing_badge`, copied onto the listing with the price snapshot. When a seller selects a plan, US-008 copies the price, validity days and tax mode onto the listing, so later changes never alter existing listings or open payments.
 
 > **As built (2026-10-17).** `V15__seller_plans.sql` creates `plans` and `platform_settings`. Differences from §G.3 and §G.4: `original_price` is nullable; `plans` also has `display_order`, `badge` (`POPULAR`, `BEST_VALUE`), `is_recommended`, `version` (JPA `@Version`) and timestamps, with checks on audience, prices (not negative) and validity (positive); `features` hold only the marketing lines (validity and support are shown separately, from `validity_days` and `support_level`); `support_level` is free text with the known values `AI_EMAIL`, `AI_EMAIL_CHAT`, `AI_EMAIL_CHAT_CALL`. `GET /api/v1/plans/seller` returns an array of plans with `code`, `name`, `originalPrice`, `discountedPrice`, `discountAmount`, `discountPercent`, `validityDays`, `supportLevel`, `features`, `badge`, `recommended`, `priceIncludesGst`, `gstRatePercent`, `gstAmount` and `totalAmount` (rupees, 2 decimals). Inclusive GST is the part of the price (`price × rate / (100 + rate)`); exclusive GST is added (`price × rate / 100`, total = price + GST). `PlanCatalogService.sellerPlans()` is cached in the `sellerPlans` cache (Redis, `spring.cache.redis.time-to-live: 1h`; in-memory in tests) and `evictCatalog()` clears it. `TaxSettingsService.current()` reads `GST_MODE` and `GST_RATE_PERCENT` and fails loudly when they are missing or invalid. The mobile Choose Listing Plan page (`ListingPlanScreen`) opens after Item Details and shows the cards and the breakdown; Review Listing is wired by US-008.
 
@@ -2689,7 +2689,7 @@ Unlike US-007 (hard fail-closed reject), a fraud-scoring outage here **queues fo
 
 ## G.2 Scope
 
-**In scope:** `GET /api/v1/plans/seller` (catalog with pricing/features), plan validity computation, Featured-listing rotation cap (max 20).
+**In scope:** `GET /api/v1/plans/seller` (catalog with pricing/features), plan validity computation (the Featured-listing rotation cap was dropped on 2026-11-09, see G.5).
 **Out of scope:** Payment processing (US-008/US-009), plan upgrade mid-validity (US-064, later sprint), buyer-side plans (US-079, Sprint 12).
 
 ## G.3 Data Model
@@ -2742,6 +2742,8 @@ GET /api/v1/plans/seller
 
 ## G.5 Service Logic — Featured Rotation Cap
 
+> **Superseded (2026-11-09):** the rotation service below is not built. Featured Deals on Home use the same ranking as search (plan tier first, then same city, then same state, then recency), capped by the Admin setting `HOME_FEATURED_MAX` (default 20). See [Sprint 3 LLD](Sprint-3-Discovery-Search-LLD.md) Parts B and G. The code is kept for history.
+
 The only non-trivial business rule in this story is "Featured items shown max 20 on landing page (rotation basis)":
 
 ```java
@@ -2771,7 +2773,7 @@ public class FeaturedListingRotationService {
 |---|---|---|
 | Validity starts from publication | `listings.expires_at` set by US-009 when the listing is published (after payment and approval), not at payment or catalog-read time | n/a (informational here) |
 | Plan features non-transferable | No "transfer plan" endpoint exists | n/a |
-| Max 20 featured on landing page | `FeaturedListingRotationService` | n/a (silent cap, not a user-facing error) |
+| Max 20 featured on landing page | Home feed ranking and the `HOME_FEATURED_MAX` setting (Sprint 3; `FeaturedListingRotationService` is dropped) | n/a (silent cap, not a user-facing error) |
 | Payment required before plan activates | Enforced downstream in US-008/US-009 | `ERROR_PAYMENT_REQUIRED` |
 | Plan expired | Read-path check when serving a listing whose `expires_at < now()` | `PLAN_EXPIRED` |
 

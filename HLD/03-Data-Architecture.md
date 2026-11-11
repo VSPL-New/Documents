@@ -805,22 +805,27 @@ Supports:
   },
   "price": 42000,
   "condition": "GOOD",
-  "location": { "city": "Pune", "locality": "Kothrud", "point": { "lat": 18.5, "lon": 73.8 } },
+  "location": { "city": "Pune", "cityKey": "pune", "state": "Maharashtra", "stateKey": "maharashtra", "locality": null },
   "attributes": [
     { "key": "brand", "type": "KEYWORD", "keywordValue": "Apple" },
     { "key": "storage_gb", "type": "INTEGER", "numberValue": 128 }
   ],
   "sellerRating": 4.8,
-  "planType": "BOOSTED",
-  "publishedAt": "2026-10-25T12:00:00Z"
+  "planTier": 2,
+  "planBadge": "FEATURED",
+  "publishedAt": "2026-10-25T12:00:00Z",
+  "expiresAt": "2026-11-24T12:00:00Z",
+  "primaryMediaId": "uuid"
 }
 ```
 
-`price` is the normalized listing price (`listing_price_inr`). Real Estate searches always filter on `transactionIntent` before any price range or sort. Attributes are nested typed records to avoid a field-mapping explosion. Addresses, phone numbers and the seller pincode are never indexed; the point is rounded. A disabled category (or any listing under a disabled parent) is excluded at query time. Indexing runs from an outbox after publication (US-120).
+`price` is the normalized listing price (`listing_price_inr`). Real Estate searches always filter on `transactionIntent` before any price range or sort. Attributes are nested typed records to avoid a field-mapping explosion. Addresses, phone numbers, the seller name and the pincode are never indexed. Location is city and state (normalised keys, with aliases such as Bangalore and Bengaluru); the property locality is indexed for Real Estate only; there is no point and no distance ranking (decided 2026-11-09). The plan tier and badge are copied from the plan onto the listing when it is chosen. Photo variants are looked up at read time, not indexed. A disabled category (or any listing under a disabled parent) is excluded at query time. Indexing runs from a PostgreSQL outbox after publication (US-120); the index can always be rebuilt from PostgreSQL. Details: `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part A.
 
 ---
 
 ## Ranking Strategy
+
+The order below is implemented as bounded multipliers on the text score (tier, location, rating, recency), so a paid listing lifts a good match but never turns a weak match into the strongest one. All numbers are Admin-managed settings (Sprint 3 LLD, B.5 and 1.6).
 
 ```text
 1. Exact match
