@@ -294,8 +294,10 @@ transactionIntent (required for Real Estate)
 attribute facets (from the category's profile)
 priceMin
 priceMax
-location
+city, state (filters)
+nearCity, nearState (ranking only, never stored or logged)
 condition
+sort, page, size
 ```
 
 ---
@@ -308,14 +310,34 @@ GET /api/v1/categories/search?q=
 GET /api/v1/categories/{code}/listing-schema
 ```
 
+`GET /api/v1/search/categories` is not built: the category endpoints above serve category browsing and search (Sprint 3 LLD).
+
 ---
 
 ## Saved Searches
 
 ```http
-POST /api/v1/search/saved
-GET  /api/v1/search/saved
+POST   /api/v1/search/saved
+GET    /api/v1/search/saved
+PATCH  /api/v1/search/saved/{id}
+DELETE /api/v1/search/saved/{id}
 ```
+
+## Listing Details, Saved Items and Home
+
+```http
+GET    /api/v1/listings/{listingId}/public
+GET    /api/v1/sellers/{sellerId}/listings
+GET    /api/v1/sellers/{sellerId}/reviews
+PUT    /api/v1/saved-listings/{listingId}
+DELETE /api/v1/saved-listings/{listingId}
+GET    /api/v1/saved-listings
+POST   /api/v1/listings/{listingId}/close
+GET    /api/v1/home/featured
+GET    /api/v1/home/promos
+```
+
+Admin-managed discovery settings: `GET` and `PUT /api/v1/admin/settings/discovery` (with US-116).
 
 ---
 

@@ -303,17 +303,21 @@ GET    /api/v1/categories/{code}/listing-schema
 
 ### Owns
 
-* search_queries
 * saved_searches
+* search_index_outbox
+* home_promos
 * OpenSearch indexes
 
 ### APIs
 
 ```http
 GET  /api/v1/search/listings
-GET  /api/v1/search/categories
 POST /api/v1/search/saved
 GET  /api/v1/search/saved
+PATCH /api/v1/search/saved/{id}
+DELETE /api/v1/search/saved/{id}
+GET  /api/v1/home/featured
+GET  /api/v1/home/promos
 POST /api/v1/search/photo
 ```
 

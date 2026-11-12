@@ -581,7 +581,10 @@
 ## Buyer - Discovery & Search
 
 ### US-011: Browse and Search Listings
+> **Update (2026-11-11, minimum clicks):** Expanding L1 shows all L2 groups immediately (popular first); expanding L2 shows all L3 tiles without Other groups or Show more controls. Top-level More categories is unchanged. Search, Home and the Home category list share a curated, bundled vector icon catalog for the full taxonomy, with related categories sharing appropriate artwork.
 > **Update (2026-10-25, category taxonomy):** Browsing goes L1 to L2 to L3 (popular first, then Others); search and filters run in OpenSearch (US-120) using the category, the profile's facets, location and the normalized listing price. Real Estate search always runs within one transaction intent: a search without an intent prompts the buyer to choose Buy, Rent or Lease, and price ranges and sorting apply only after that. Disabled categories never appear. Ranking follows the HLD (exact match, category relevance, seller rating, plan boost, recency).
+> **Update (2026-11-09, Sprint 3 LLD):** Location is city and state level (no coordinates and no distance ranking). Property and goods are never mixed in one result list: a Real Estate search always names its intent, and a search with no category returns goods only. The caller's own listings are not shown. The ranking numbers, query length, page size, result window and facet limit are Admin-managed settings; paid plans rank above unpaid ones when browsing, and a weak text match never outranks a strong one. New errors: `ERROR_QUERY_TOO_LONG`, `ERROR_INTENT_REQUIRED`, `ERROR_SEARCH_UNAVAILABLE`. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part B.
+> **Update (2026-11-11, auto-complete):** While the buyer types in the search box (two characters or more), suggestions appear: up to three matching categories, then titles of live listings with a word starting with the typed text. Choosing a title searches for it; choosing a category opens its results. Suggestions never include property listings or the buyer's own listings, and the typed text is never stored. Search history and popular-search suggestions are not part of this story.
 **As a** buyer  
 **I want to** browse and search for items  
 **So that** I can find what I need
@@ -618,6 +621,7 @@
 ---
 
 ### US-012: View Listing Details
+> **Update (2026-11-09, Sprint 3 LLD):** The photo gallery uses detail and zoom variants and lists use thumbnail and card variants (US-128). Chat, call, video, cart and Buy Now are shown disabled with a coming-soon label until Sprints 4 and 5 (Real Estate never shows cart or Buy Now). The seller's reviews are empty until Sprint 8. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part C.
 > **Update (2026-10-25, category taxonomy):** Details show the category path and the category's attributes (labels from the Metadata Dictionary). Real Estate shows the intent and the price by intent ("Starting from" for New Developments). The seller's pincode and the serial number value are never shown.
 **As a** buyer  
 **I want to** view complete listing details  
@@ -654,6 +658,78 @@
 **Error Scenarios:**
 - `ERROR_LISTING_NOT_AVAILABLE`: "This listing is no longer available"
 - `ERROR_SELLER_SUSPENDED`: "Seller account is suspended"
+
+---
+
+### US-129: Voice Search
+> **Added (2026-11-11, Sprint 3 LLD Part I):** lets a buyer speak a search instead of typing it. Proposed 5 SP, Sprint 3, depends on US-011. Based on the tentative design in `Documents/VoiceSearchTentativeDesignByChatGPT.md`, adapted to the ValueX search API and app. Product decisions V1 to V8 in the LLD (section 9.5) still need confirmation.
+**As a** buyer  
+**I want to** search by speaking  
+**So that** I can find items quickly without typing, in English or Hindi
+
+**Related User Stories:**
+- US-011: voice search fills the same search box and runs the same search, filters, category and Real Estate intent rules
+- US-066: a saved search never records that its text was spoken
+- US-099: screen reader and large text rules apply to the new control
+- US-100 (later): spoken-search usage is counted as a metric only
+
+**Acceptance Criteria:**
+- Given I am on the Search screen
+- When I tap the microphone button in the search box
+- Then, the first time, the app explains that my phone's speech service turns speech into text and asks for microphone (and, on iPhone, speech recognition) permission
+- And a listening panel opens, showing the words as I speak
+- When I stop speaking for about 3 seconds, or tap Stop
+- Then the recognised text is placed in the search box, tidied (see rules), and the results for it appear without any extra tap, exactly as for typed text
+- When the text is wrong
+- Then I can edit it in the search box and search again, or tap the microphone to speak again
+- Given the app language is English or Hindi
+- Then listening starts in that language (English India or Hindi India), and I can switch to the other language in the listening panel; my last choice is remembered
+- Given I had chosen a category, filters or a Real Estate intent
+- When I search by voice
+- Then they are kept, as they are when I type
+- When I deny the permission
+- Then I see how to enable it (with an Open Settings button when the phone will not ask again) and typing still works
+- When speech recognition, or the chosen language, is not available on my phone
+- Then I see a clear message and can switch language or type instead
+- When nothing is recognised
+- Then I see "Didn't catch that" with Try again, and no search is made
+- When I leave the screen, the app goes to the background, or another app takes the microphone
+- Then listening stops
+
+**Edge Cases:**
+- Background noise or a wrong word: the text can be edited before or after the search
+- A long sentence: the text is cut at 200 characters, the same silent limit as typing
+- Hinglish (Hindi and English mixed): not promised; recognition depends on the phone's speech service and is a named test case
+- Hindi (Devanagari) text searches the listing text as written; listings written in English do not match a Hindi word (transliteration or translation is not part of this story)
+- Spoken numbers and conditions such as "under twenty thousand" are searched as words, not turned into a price filter
+- Two quick taps on the microphone: only one listening session runs
+- Permission removed in Settings while the app is open
+- No internet and no on-device language pack: a message explains that this language needs a connection
+- Screen reader on: the panel announces "Listening" and the recognised text
+- Search service unavailable after speaking: the usual search error with Retry; the spoken text stays in the box
+
+**Validation Rules:**
+- The recognised text is an ordinary search query: same 200 character limit, validation, ranking, results, rate limit and errors as US-011
+- Tidying removes only a short list of leading command phrases ("show me", "find", "search for", "I want", "looking for") when words remain after them, and trailing punctuation
+- Listening never starts without a tap; it stops after about 3 seconds of silence or 20 seconds in total
+- The app never records, stores or uploads audio to ValueX; the recognised text is not stored or logged, and no search history is kept
+- The listening panel is not shown on a phone that has no speech recognition; the microphone button then explains that voice search is unavailable
+- Spoken searches send `source=VOICE` (typed searches `TYPED`, the default) so usage can be counted; any other value is rejected
+
+**Error Scenarios:**
+- `VOICE_PERMISSION_DENIED`: "Allow microphone access to search by voice"
+- `VOICE_PERMISSION_BLOCKED`: "Microphone access is off. Turn it on in Settings"
+- `VOICE_UNAVAILABLE`: "Voice search isn't available on this phone. Type your search instead"
+- `VOICE_LANGUAGE_UNAVAILABLE`: "This language isn't available for voice search on your phone. Try another language"
+- `VOICE_NO_SPEECH`: "Didn't catch that. Try again"
+- `VOICE_NETWORK_REQUIRED`: "Voice search in this language needs an internet connection"
+- `VOICE_BUSY`: "The microphone is being used by another app"
+- `ERROR_INVALID_FILTERS`: unknown `source` value (the app never sends one)
+- The search errors of US-011 apply to the search that follows
+
+(`VOICE_*` are in-app messages; the backend has no voice error codes.)
+
+**Not in this story:** spoken price or filter understanding, voice commands, a wake word, reading results aloud, uploading audio or server-side speech recognition (`valuex-ai`), Hindi to English transliteration or synonyms, search history, and photo search (Sprint 13).
 
 ---
 
@@ -2764,6 +2840,7 @@
 
 ### US-066: Saved Searches and Alerts
 > **Update (2026-10-25, category taxonomy):** A saved search stores the category code, the facets and, for Real Estate, the transaction intent. A search whose category is disabled or removed is marked invalid.
+> **Update (2026-11-09, Sprint 3 LLD):** Alerts are one in-app digest per saved search per day (time, limits and sample size are Admin-managed settings, defaults 09:00 IST, 10 searches, 3 titles); push comes later. Criteria that are no longer valid show `ERROR_INVALID_CRITERIA` and stop alerting. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part F.
 **As a** buyer  
 **I want to** save my search criteria and get alerts  
 **So that** I'm notified when matching items are listed
@@ -2796,7 +2873,7 @@
 - Distinct from SavedItemsScreen (bookmarked listings); this is SavedSearchesScreen
 - Save Search button in HomeScreen/search results header
 - Toggle switch per saved search for alert on/off
-- FCM topic subscription per saved search criteria
+- FCM topic subscription per saved search criteria (deferred, 2026-11-09: there is no push infrastructure yet, so alerts are an in-app daily digest; a push channel is added later without changing the alert logic)
 
 ---
 
@@ -3044,6 +3121,7 @@
 ---
 
 ### US-073: Save and Bookmark Listings
+> **Update (2026-11-09, Sprint 3 LLD):** The limit (default 200) and the retention period (default 90 days) are Admin-managed settings. Retention counts from the day a saved listing became unavailable (sold, expired, removed, deleted or seller suspended); entries of listings that are still available are never removed. A listing that is only hidden for review is shown as temporarily unavailable, with no notification. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part D.
 **As a** buyer  
 **I want to** save listings I'm interested in  
 **So that** I can review them later
@@ -4861,6 +4939,7 @@
 ## Home
 
 ### US-111: Home Page
+> **Update (2026-11-09, Sprint 3 LLD):** The backend delivers `GET /api/v1/home/featured` (city and state, up to `HOME_FEATURED_MAX` listings, same ranking as search: plan tier, then same city, then same state, then recency; the caller's own listings are not shown), `GET /api/v1/home/promos` (in-app targets only; managed by a SQL seed until an admin story exists) and the popular and Others categories with an image key. Limits (featured count, promo count, popular category counts) are Admin-managed settings. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part G.
 **As a** logged-in buyer  
 **I want** a home page that shows items near me, lets me search, browse categories and reach the main areas of the app  
 **So that** I can find something to buy quickly and start from one familiar place
@@ -4895,7 +4974,7 @@
 - And when I select one with its radio button and tap "Use this address", listings near that address (its city, state and pincode) are shown
 - Given I have no saved address
 - Then the pop-up tells me an address is saved when I buy or sell an item, and I can close it or use my current location
-- And the place chosen on Home is used only to find listings near it; it is not saved as an address and is never sent to the server
+- And the place chosen on Home is used only to find listings near it; it is not saved as an address or stored. Its city and state are sent to the server as search parameters (never logged) so the server can rank and filter listings; the device coordinates, area and pincode are never sent
 - When I tap the bell
 - Then I open my notifications (US-077), and an unread badge shows when there are unread items
 - When I tap the cart
@@ -4956,7 +5035,7 @@
 - Promo content (text, image, target, start and end date) comes from the backend; the app shows at most the active promos
 - Location permission is requested on Home with a short explanation of why, not at app start
 - Only the area and city (or the city, state and pincode of a saved address) are used for listings; exact coordinates are not logged, and are not stored without consent
-- The chosen place is kept on the device only so it survives an app restart; it is never saved as an address and no Google Places or address verification call is made from Home
+- The chosen place is kept on the device only so it survives an app restart; it is never saved as an address and no Google Places or address verification call is made from Home. Only its city and state go to the server, as transient search parameters
 - Every control has a tap area of at least 48 by 48 dp, every control has a label, titles are headings, text is at least 14 px for anything important and passes 4.5:1 contrast (US-110)
 - The screen is added to the automated accessibility and heading tests
 
@@ -5192,7 +5271,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Condition: required, one of NEW, LIKE_NEW, GOOD, FAIR, POOR (shown as Brand New, Like New, Good, Fair, Poor)
 - Description: required, up to 2000 characters
 - Price: required, greater than zero, at most 2 decimal places, in rupees, up to ₹10,00,00,000
-- Location: the city of the Home location; the device coordinates are never sent to the server or stored
+- Location: the city of the Home location, and its state when known (stored as `seller_state` for search; update 2026-11-09); the device coordinates are never sent to the server or stored
 - At least 2 photos must be on the listing to continue (the server checks this too)
 - Details can be changed only while the listing is a draft or needs revision
 
@@ -5336,6 +5415,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 ## Plan Administration
 
 ### US-116: Admin - Manage Seller Listing Plans and Tax Settings
+> **Update (2026-11-09, Sprint 3 LLD):** Each plan also has a search tier (0 to 3) and an optional listing badge (Boosted or Featured) that drive ranking and the card badge; they are copied onto the listing when the seller chooses the plan. This story also delivers the Discovery settings screen (`GET` and `PUT /api/v1/admin/settings/discovery`): every business number of search, saved items, saved searches, Home and rate limits is edited there, with its default, allowed range and who last changed it, audited through US-083. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` section 1.6.
 > **Update (2026-10-25, category taxonomy):** Plans will vary by L1 category (US-119); this story's screens are extended there.
 **As an** admin with plan management permission  
 **I want to** create, change and switch off seller listing plans, and set how GST is applied, from the admin console  
@@ -5498,6 +5578,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 ---
 
 ### US-118: Real Estate Listing Specifics
+> **Update (2026-11-09, Sprint 3 LLD):** The seller marks a published property Sold, Rented or Leased with `POST /api/v1/listings/{id}/close` (from the published state; Sprint 4 adds the negotiation states). Property and goods are never mixed in one search result list, and a Real Estate search without an intent is refused with `ERROR_INTENT_REQUIRED`. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part E.
 **As a** buyer and seller of property  
 **I want** property listings to follow a sale, rent or lease flow that ends at price negotiation  
 **So that** property can be advertised and negotiated without the goods checkout and delivery flow
@@ -5551,6 +5632,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 ---
 
 ### US-120: OpenSearch Setup and Listing Indexing
+> **Update (2026-11-09, Sprint 3 LLD):** Location in the index is city and state (plus the property locality for Real Estate); no point and no distance ranking. The index is hosting-neutral (hosting and sizing stay with Infra). This story also owns the expiry sweep that moves listings past their end date to `EXPIRED`, the plan tier and badge used for ranking (stored on the plan and copied to the listing when the plan is chosen), and a reconciliation job that repairs lost index events. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part A.
 **As a** platform  
 **I want** a managed listing search index  
 **So that** buyers get fast keyword, filter and facet search
@@ -5581,7 +5663,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - When I enable or disable a category
 - Then all its descendants are runtime-disabled without rewriting their own flags
 - When I set a category popular and give it a rank
-- Then at most 15 L1 and 10 L2 per L1 are accepted
+- Then at most 15 L1 and 10 L2 per L1 are accepted (the limits are Admin-managed settings `CATEGORY_POPULAR_L1_MAX` and `CATEGORY_POPULAR_L2_MAX`, defaults 15 and 10, edited on the Discovery settings screen of US-116)
 - When I edit an attribute or its options, or bulk upload options from a file
 - Then the change applies to the Item Details form and to search facets
 - When I switch AI on or off and set confidence thresholds
@@ -5866,9 +5948,47 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-128: Listing Photo Variants
+> **Added (2026-11-09, Sprint 3 LLD Part H):** a prerequisite for fast discovery screens. Proposed 5 SP, Sprint 3, built in parallel with US-120.
+**As a** buyer  
+**I want** listing photos to load quickly in lists and galleries  
+**So that** browsing is smooth on mobile networks
+
+**Related User Stories:**
+- US-004: photo upload and the media tables this story builds on
+- US-011, US-012, US-073, US-111: cards, gallery, Saved Items and Home use the variants
+- US-010: the seller's My Listings thumbnail can switch to the thumbnail variant
+
+**Acceptance Criteria:**
+- Given a listing photo is ready
+- Then four copies are created: thumbnail (about 300 px), card (about 600 px), detail (about 1200 px) and zoom (about 1600 px), keeping the aspect ratio and never enlarging
+- And the copies are corrected for rotation and contain no location or other camera data
+- When a buyer sees a list or Home card
+- Then it shows the card variant, or the thumbnail variant in compact lists
+- When a buyer opens a listing
+- Then the gallery shows the detail variant and full-screen zoom shows the zoom variant
+- And buyers never receive the original once variants exist
+- Given the variants are not ready yet
+- Then the original is shown through a short-lived signed link, so nothing breaks
+- When a listing or its photo is deleted
+- Then its variants are deleted too
+- And photos that were uploaded before this story are processed in the background
+
+**Edge Cases:** HEIC photos from iPhones; very large or corrupt images; one size failing while the others work; a backlog after a mass upload; the CDN not configured in a developer environment.
+
+**Validation Rules:**
+- Only listing photos are processed; profile and evidence images are not
+- A failed photo is retried a limited number of times, then marked failed and keeps using the fallback
+- Variant sizes and quality are deployment configuration, not Admin settings, because changing them means regenerating every photo
+
+**Error Scenarios:**
+- No user-facing errors; failures raise an operations alert
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 127  
+**Total User Stories:** 129  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
 **Version:** 3.19 (Updated 2026-11-02) — US-010 is now View/Edit/Delete My Listings: the My Listings screen (Figma Make design) is part of the story, views and chats show 0 until US-067, and sold listings are never deleted; added US-124 (Pause and Resume Listing), US-125 (Relist Listing) and US-126 (Sold Listing Details), placeholders; sold listings are read-only with no Edit or Delete, and tapping a sold listing opens its sale details (US-126); US-123 also covers paused, sold and expired listings; live listings: the L3 category is locked and photos can be added (10 in total) or deleted except the main one; added US-127 (Listing Archival and Retention), placeholder. Version 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
@@ -5905,6 +6025,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - **Plan Administration (US-116):** 1 story - Admin console pages to create, change and switch off seller listing plans (prices, features, validity) and to set the GST setting
 - **Payment Gateway (US-117):** 1 story - Gateway-neutral payment integration: payment orders, signed callbacks, refunds, reconciliation and the app checkout wrapper, with a sandbox adapter until the gateway is chosen
 - **Category Taxonomy (US-118 to US-122):** 5 stories - Real Estate listing specifics, category-wise plans, OpenSearch setup and indexing, Admin management of categories, attributes, options and AI settings, and the Shiprocket delivery integration
+- **Voice Search (US-129):** 1 story - Speak a search in English or Hindi on the Search screen; native speech recognition fills the same search box, no audio is stored or sent to ValueX
 
 ---
 
