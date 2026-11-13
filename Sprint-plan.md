@@ -148,6 +148,11 @@ Enable buyers to discover items.
 * Buyers can speak a search in English or Hindi; the text lands in the normal search box and no audio is sent to ValueX (US-129)
 * Sprint 3 design: [Sprint-3-Discovery-Search-LLD.md](LLD/Sprint-3-Discovery-Search-LLD.md) (final, 2026-11-09); search, saved-item, Home and rate-limit numbers are Admin-managed settings
 
+**US-129 implementation status:** Code and automated validation are complete on story branches; the iOS simulator
+build passed. Android debug build is pending (no local Android SDK); physical-device speech-service validation
+remains pending by user direction. Hindi native-speaker and legal/privacy reviews are required before release. See
+[US-129 testing guide](Manual%20Testing%20Guides/US-129-Testing-Guide.md).
+
 ---
 
 # Sprint 4 - Communication & Negotiation
