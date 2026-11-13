@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 3: Discovery & Search
 
-**Document Version:** 1.3 (1.0 final design approved by the product owner on 2026-11-09; Part I, Voice Search, added 2026-11-11 and awaiting the product owner's confirmation of V1 to V8; not implemented. Part C public field projection and US-012 save control deferral approved on 2026-11-12 with the US-012 plan.)
+**Document Version:** 1.4 (US-111 Home Page built on 2026-11-13, see G.10; 1.0 final design approved by the product owner on 2026-11-09; Part I, Voice Search, added 2026-11-11 and awaiting the product owner's confirmation of V1 to V8; not implemented. Part C public field projection and US-012 save control deferral approved on 2026-11-12 with the US-012 plan.)
 **Product:** ValueX
 **Sprint:** Sprint 3 - Discovery & Search
 **Stories Covered:** US-120, US-011, US-012, US-073, US-118, US-066, US-111 (backend feed; the mobile page is already built on a mock repository), one new prerequisite story, Listing Photo Variants (Part H, US-128), and one new story, Voice Search (Part I, US-129)
@@ -16,6 +16,7 @@
 | 1.1 | Nov 2026 | Added Part I (US-129 Voice Search, 5 SP proposed), based on the tentative design in `VoiceSearchTentativeDesignByChatGPT.md`: native speech recognition on the phone fills the existing search box, one optional `source` query parameter and metric tags on the search API, no new endpoint, table or Admin setting. Decisions V1 to V8 (section 9.5) are recommendations awaiting the product owner. B.4 and sections 8 and 9 are updated. Parts A to H are unchanged. |
 | 1.2 | Nov 2026 | US-012 public attribute projection is explicitly separate from the US-123 owner preview response. A new `PublicListingFieldProjector` derives buyer-visible values from the stored category schema and excludes owner-only preview context. Approved by the user on 2026-11-12 with the US-012 plan. |
 | 1.3 | Nov 2026 | US-012 does not show or mutate a save/heart control before US-073. Its `saved` response field is `false` until US-073 supplies real saved state. Approved by the user on 2026-11-12 with the US-012 plan revision. |
+| 1.4 | Nov 2026 | US-111 Home Page as built (G.10): migration `V27` (not `V29`), no category `image_key`, `ListingSearchService.browseNear` added to skip the search rate limit, `nearMatch` by city only, the featured size clamped to the page-size maximum, `Accept-Language` sent by the app. Approved by the user on 2026-11-13 with the US-111 plan (G1 to G10). |
 | 1.0 | Nov 2026 | **Final.** All recommendations and proposals accepted (section 9.1, D1 to D19). Every business number is an Admin-managed setting (new section 1.6): ranking weights, search limits, saved-item and saved-search limits, retention, alert time, Home limits and rate limits. Deployment-only values (timeouts, batch sizes, image sizes) stay configuration. |
 
 **Reference Documents:**
@@ -1356,6 +1357,31 @@ The location errors (`ERROR_LOCATION_PERMISSION_DENIED`, `ERROR_LOCATION_UNAVAIL
 **Unit:** `PromoServiceTest` (window edges, disabled, Hindi fallback, limit of 5, cache); `HomeFeedServiceTest` (`nearMatch`, own listings excluded, normalisation).
 **Integration:** featured ordering (Priority and Boosted first, then same city, then recency); a city alias match; no near match; promos active and expired; category nodes carry `imageKey`; each endpoint fails independently when its dependency is down.
 **Mobile:** repository mapping from API payloads; partial-failure states; promo targets; offline banner; Hindi at 200% text; accessibility guidelines; the existing Home widget tests keep running on the mock.
+
+## G.10 As built (2026-11-13)
+
+**Backend** (`valuex-backend`): migration `V27__home_promos.sql` (the `home_promos` table with the in-app target and time-window constraints and the active index, plus the four Home settings seeded without overwriting an Admin value); `DiscoverySetting` gained `HOME_FEATURED_MAX`, `HOME_PROMO_MAX`, `CATEGORY_POPULAR_L1_MAX` and `CATEGORY_POPULAR_L2_MAX`; `CategoryService` reads the popular limits from the settings (the constants `POPULAR_L1_LIMIT` and `POPULAR_L2_LIMIT` are gone); in the search module `HomeController`, `HomeFeedService`, `PromoService` (`@Cacheable`, cache `homePromos`, key = language), `HomePromoRepository` (JDBC), `HomePromo`, `PromoLanguage`, `HomePromoResponse` and `HomeFeed`; `ListingSearchService.browseNear`; `RedisConfig.HOME_PROMOS_CACHE` with a 5-minute TTL (the global cache TTL stays 1 hour). `featured` answers `{ items, nearMatch, advisory }` with `Cache-Control: private, max-age=60`; `advisory` is `NO_LISTINGS_NEAR_YOU` only when there is nothing to show.
+
+Differences from the design above:
+
+| Design | As built | Why |
+|---|---|---|
+| Migration `V29` | `V27` | The next free number when the story was built (V26 was the latest, no other branch held a later one) |
+| `categories.image_key` and `CategoryNode.imageKey` | Not added | The app already picks category artwork by taxonomy code (`categoryArtworkFor`); there is no admin screen for the key until US-121 (decision G1) |
+| `HomeFeedService` calls `ListingSearchService.browseNear` | `browseNear` is new: the same validation, ranking and eligibility pipeline as `search`, without the per-buyer search rate limit | The method named in the design did not exist, and opening or refreshing Home must not use up the buyer's searches (decision G2). `search` is unchanged |
+| `nearMatch` false when no listing is in the buyer's city or state | By city only (through `CityNormalizer`, so aliases match) | The card carries a city, not a state (decision G4) |
+| Featured size = `HOME_FEATURED_MAX` | The smaller of `HOME_FEATURED_MAX` and `SEARCH_PAGE_SIZE_MAX` | An Admin can lower the page-size maximum below the featured count; no new cross-field rule (decision G8) |
+| Promo text chosen by `Accept-Language` ("Hindi when present") | The highest-priority language range decides: Hindi when it is `hi`, otherwise English; a missing Hindi text falls back to English field by field | A browser header such as `en-IN,en;q=0.9,hi;q=0.8` should not give Hindi; the app sends one language |
+| Invalid `state` gives `ERROR_INVALID_FILTERS` (400) | Done in `HomeFeedService` before searching | `SearchRequestValidator` silently ignores an unknown `nearState`, so Home checks it itself. The search endpoint is unchanged |
+| Promo seed | `V27` inserts no promo rows | No promo content has been supplied; the section stays hidden until the product team loads promos (decision G9) |
+
+**Mobile** (`valuex-mobile`, `lib/features/home`): `ApiHomeRepository` replaces `MockHomeRepository` as the default `homeRepository`; the mock stays for tests only (`AppConfig` has no mock-data switch, so there is no Dev fallback). Cards reuse `SearchListing.fromJson(...).toCardListing()`. `Promo` gained a `PromoTarget` (category, search or listing); a promo whose target type the app does not know is left out. `openPromo` (`promo_routes.dart`): a category opens its listings, a search text opens search, a listing target says "Coming soon". `AppAssets.promoArtwork` maps a promo's `imageKey` to bundled artwork (only `home_promo_1` today); an unknown key shows the neutral placeholder. `ApiClient` sends the app language (`LocaleController`) as `Accept-Language` on every request.
+
+- The Home `Listing` already had `startingFrom`, `isBoosted`, `isFeatured` and `image`, so no `priceQualifier`, `badge`, `photo` or `saved` fields were added; the heart waits for US-073.
+- Categories were already read from the real taxonomy by the Home page before this story; nothing changed there.
+- The unread notification count already came from the notifications repository (US-077), so `badges()` returns only the cart count, which is 0 until Sprint 5. No separate `CartBadgeSource` class was added.
+- Listing card taps and a promo for a listing say "Coming soon": the buyer listing details screen (US-012 on mobile, PR #65) was not merged when this story was built. When it is, both open `/listing/:id`.
+- Each section already loaded on its own; a failed promo call hides only the promo card, a failed featured call shows the error with Retry, and "No items near you yet" shows for an empty feed. No screen change was needed beyond the promo tap.
 
 ---
 

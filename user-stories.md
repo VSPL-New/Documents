@@ -5058,9 +5058,9 @@
 - Pull to refresh, loading skeletons, empty and error states; all strings in the English and Hindi ARB files
 
 **Backend Notes:**
-- Needs endpoints for the categories list, the home feed (featured and nearby listings by area or coordinates, ranked by plan) and active promos; none exist yet
-- Promo content is managed by the product team and loaded before launch
-- Scheduling: the mobile page is already built on a mock repository; the backend endpoints are delivered in Sprint 3 (Discovery & Search), after US-011, and the app then switches to them
+- Endpoints (built 2026-11-13): `GET /api/v1/home/featured?city&state` (the home feed: featured listings ranked by plan, then the buyer's city, then state, then recency; no coordinates) and `GET /api/v1/home/promos` (active promos, text chosen by `Accept-Language`). The category lists use the existing `GET /api/v1/categories/children`.
+- Promo content is managed by the product team and loaded by a SQL seed (table `home_promos`) until an admin story exists; with no active promo the promo section is not shown
+- Scheduling: delivered in Sprint 3 (Discovery & Search) after US-011; the app now reads these endpoints instead of the mock repository. Tapping a listing card or a promo for a listing says "Coming soon" until the buyer listing details screen (US-012 on mobile) is merged
 
 ---
 
