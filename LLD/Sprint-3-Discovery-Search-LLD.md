@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 3: Discovery & Search
 
-**Document Version:** 1.1 (1.0 final design approved by the product owner on 2026-11-09; Part I, Voice Search, added 2026-11-11 and awaiting the product owner's confirmation of V1 to V8; not implemented)
+**Document Version:** 1.3 (1.0 final design approved by the product owner on 2026-11-09; Part I, Voice Search, added 2026-11-11 and awaiting the product owner's confirmation of V1 to V8; not implemented. Part C public field projection and US-012 save control deferral approved on 2026-11-12 with the US-012 plan.)
 **Product:** ValueX
 **Sprint:** Sprint 3 - Discovery & Search
 **Stories Covered:** US-120, US-011, US-012, US-073, US-118, US-066, US-111 (backend feed; the mobile page is already built on a mock repository), one new prerequisite story, Listing Photo Variants (Part H, US-128), and one new story, Voice Search (Part I, US-129)
@@ -14,6 +14,8 @@
 | 0.1 | Nov 2026 | First draft of all seven stories. Decided by the product owner on 2026-11-09: city and state level location (no coordinates); hosting-neutral OpenSearch; in-app saved-search alerts with push later; one ranking for Home and search; US-120 owns the listing expiry sweep. Proposed defaults that still need confirmation are listed in section 9. |
 | 0.2 | Nov 2026 | Product owner answers applied: property and goods never mixed (D6), own listings excluded (D7), saved-item retention is an Admin-managed setting, default 90 days (D8), and buyer photos use thumbnail, card, detail and zoom variants (D9). Found that the variant tables and CDN mapping exist but nothing generates variants, so a new prerequisite story is added (Part H). Items 5 and 6 of the previous list (Real Estate close action, ranking numbers) are explained with a recommendation in section 9.3. |
 | 1.1 | Nov 2026 | Added Part I (US-129 Voice Search, 5 SP proposed), based on the tentative design in `VoiceSearchTentativeDesignByChatGPT.md`: native speech recognition on the phone fills the existing search box, one optional `source` query parameter and metric tags on the search API, no new endpoint, table or Admin setting. Decisions V1 to V8 (section 9.5) are recommendations awaiting the product owner. B.4 and sections 8 and 9 are updated. Parts A to H are unchanged. |
+| 1.2 | Nov 2026 | US-012 public attribute projection is explicitly separate from the US-123 owner preview response. A new `PublicListingFieldProjector` derives buyer-visible values from the stored category schema and excludes owner-only preview context. Approved by the user on 2026-11-12 with the US-012 plan. |
+| 1.3 | Nov 2026 | US-012 does not show or mutate a save/heart control before US-073. Its `saved` response field is `false` until US-073 supplies real saved state. Approved by the user on 2026-11-12 with the US-012 plan revision. |
 | 1.0 | Nov 2026 | **Final.** All recommendations and proposals accepted (section 9.1, D1 to D19). Every business number is an Admin-managed setting (new section 1.6): ranking weights, search limits, saved-item and saved-search limits, retention, alert time, Home limits and rate limits. Deployment-only values (timeouts, batch sizes, image sizes) stay configuration. |
 
 **Reference Documents:**
@@ -782,7 +784,7 @@ corpus was available. Sonar was not run (no server).
 ## C.2 Scope
 
 **In scope:** `GET /api/v1/listings/{listingId}/public`, `GET /api/v1/sellers/{sellerId}/listings`, `GET /api/v1/sellers/{sellerId}/reviews` (empty until Sprint 8), the mobile details page and gallery, the seller page.
-**Out of scope:** chat, call and video buttons behaviour (Sprint 4), add to cart (Sprint 5), reviews content (Sprint 8), view counters (US-067), report listing.
+**Out of scope:** save/bookmark control and mutation (US-073; until then the response's `saved` field is `false`), chat, call and video button behaviour (Sprint 4), add to cart (Sprint 5), reviews content (Sprint 8), view counters (US-067), report listing.
 
 ## C.3 Data Model
 
@@ -821,11 +823,12 @@ GET /api/v1/sellers/{sellerId}/reviews?page=0&size=20
 }
 ```
 
-The app computes "Posted 2 days ago" from `publishedAt` and `serverTime`, so a wrong device clock does not change the text. `capabilities` is computed on the server: Real Estate returns `cart` and `buyNow` as `{ "available": false, "reason": "NOT_APPLICABLE" }`; the caller's own listing returns every action as `OWN_LISTING`; flipping an action on in Sprint 4 or 5 is one configuration change (`valuex.features.chat-enabled` and similar), not an app release.
+The app computes "Posted 2 days ago" from `publishedAt` and `serverTime`, so a wrong device clock does not change the text. `saved` is `false` until US-073 implements saved-state reads; US-012 has no save control or mutation. `capabilities` is computed on the server: Real Estate returns `cart` and `buyNow` as `{ "available": false, "reason": "NOT_APPLICABLE" }`; the caller's own listing returns every action as `OWN_LISTING`; flipping an action on in Sprint 4 or 5 is one configuration change (`valuex.features.chat-enabled` and similar), not an app release.
 
 ## C.5 Backend Design
 
-- `PublicListingService.view(listingId, callerId)`: `ListingEligibilityFilter` check (`ERROR_LISTING_NOT_AVAILABLE` for anything not live, including deleted, expired, hidden for review and sold); seller account must be `ACTIVE` (`ERROR_SELLER_SUSPENDED` otherwise). It then reuses the Part L (US-123) read-only projection (`ListingFieldProjector`) to build `attributes` from the category schema, so the same labels, units and hidden-field rules apply.
+- `PublicListingService.view(listingId, callerId)`: `ListingEligibilityFilter` check (`ERROR_LISTING_NOT_AVAILABLE` for anything not live, including deleted, expired, hidden for review and sold); seller account must be `ACTIVE` (`ERROR_SELLER_SUSPENDED` otherwise). It then calls a dedicated `PublicListingFieldProjector` with the listing's stored category schema and persisted attribute values.
+- `PublicListingFieldProjector` returns only populated attributes whose keys are present in the current `ListingSchemaResponse.fields`, carrying the schema label and unit in the Part C public attribute DTO. It omits unknown/unmapped values and all `AttributeRules.EXCLUDED_KEYS`. It is separate from US-123's owner-only `ListingPreviewAssembler`/`ListingDraftResponse`: no status banner, review reason, plan name/code, owner image/media IDs or other owner-preview context is returned. Both may use the same schema metadata, but the public API must not serialize or reuse the owner response as its projection.
 - **Never exposed:** seller pincode, the serial number value, latitude and longitude, `AttributeRules.EXCLUDED_KEYS` values, seller mobile or email, the Aadhaar state, and the seller's full name (only `users.display_name`).
 - **Photos:** all `READY` images in `sort_order`, each with thumbnail, detail and zoom URLs (`ListingPhotoLinkPort`, section 1.4; `expiresAt` is added to a photo only while the signed-link fallback is in use); `GET` responses carry `Cache-Control: no-store`, while the CDN variant files themselves are cached.
 - **Seller block:** `joinedAt` from `users.created_at`; `rating` and `ratingCount` from `SellerReputationPort` (null and 0 until Sprint 8); `city` from the listing's location; `otherListingsCount` is the number of the seller's other live listings (one indexed count).
@@ -859,7 +862,7 @@ sequenceDiagram
 
 ## C.7 Mobile Design
 
-- New feature `lib/features/listing_view` (not `listing`, which is the seller flow): `ListingDetailsScreen`, `PhotoGallery` (swipeable `PageView` showing `detailUrl`, the strip of `thumbnailUrl` images, full-screen pinch-to-zoom loading `zoomUrl` on demand, page indicator, placeholder and retry when a URL fails or its fallback link expires, `cached_network_image` style disk cache keyed by URL), `SellerSummaryCard`, `AttributeList`, `ActionBar` (heart for Part D; Chat, Call, Video and Add to Cart shown disabled with a short "Coming soon" label while `available` is false; hidden for `NOT_APPLICABLE`), `SellerListingsScreen`.
+- New feature `lib/features/listing_view` (not `listing`, which is the seller flow): `ListingDetailsScreen`, `PhotoGallery` (swipeable `PageView` showing `detailUrl`, the strip of `thumbnailUrl` images, full-screen pinch-to-zoom loading `zoomUrl` on demand, page indicator, placeholder and retry when a URL fails or its fallback link expires, `cached_network_image` style disk cache keyed by URL), `SellerSummaryCard`, `AttributeList`, `ActionBar` (Chat, Call, Video and Add to Cart shown disabled with a short "Coming soon" label while `available` is false; hidden for `NOT_APPLICABLE`), `SellerListingsScreen`. Do not show a save/heart control until US-073.
 - Reuse the US-123 `ListingPreview` read-only widgets and the Part L field projection where the layout matches (the US-123 plan already reserves this reuse), instead of a second renderer.
 - Router: `/listing/:id`; deep links from notifications and Saved Items open the same route.
 - States: loading skeleton, `ERROR_LISTING_NOT_AVAILABLE` and `ERROR_SELLER_SUSPENDED` messages with a back action, generic error with Retry.
@@ -883,9 +886,31 @@ All photos of the listing are returned; price is INR; rating is 0 to 5 stars; ag
 
 ## C.10 Testing Strategy
 
-**Unit:** `PublicListingServiceTest` (live and not-live states, suspended seller, hidden fields, capabilities per category and ownership, null rating, seller counts); projection test shows no forbidden keys.
+**Unit:** `PublicListingServiceTest` (live and not-live states, suspended seller, hidden fields, capabilities per category and ownership, null rating, seller counts, `saved=false` before US-073); projection test shows no forbidden keys.
 **Integration:** details of a live listing; the same id after delete, expiry, sale, hide for review and suspension; another buyer cannot see an unpublished listing; variant URLs are returned when variants exist and the signed fallback otherwise; seller listings and the empty reviews response.
 **Mobile:** gallery swipe, zoom and link failure; disabled actions; unavailable and suspended states; Hindi at 200% text; accessibility guidelines.
+
+## C.11 As built (2026-11-12)
+
+**Backend** (`valuex-backend`): `PublicListingController`, `PublicListingService`, `PublicListingFieldProjector`, `PublicListingResponse`, `PublicListingAttribute`, `SellerReviewsResponse` and `ForbiddenException` (403 `ERROR_SELLER_SUSPENDED`, handled in `GlobalExceptionHandler`). Seller listings reuse the Part B search through `ListingSearchService.sellerListings`, `SearchRequestValidator.validateSellerListings` and a new `sellerId` term filter in `OpenSearchQueryBuilder` (`ListingSearchQuery` gained a `sellerId` component with a convenience constructor that leaves it null). `ListingCondition` gained a display `label()`. All three endpoints send `Cache-Control: no-store`.
+
+Differences from the design above:
+
+| Design | As built | Why |
+|---|---|---|
+| `/sellers/{id}/reviews?page&size` | No paging parameters | The response is always empty until Sprint 8; paging is added with the Rating module |
+| `photos[].width/height` | Not returned | The app does not need them; the three variant URLs are enough |
+| `rating.ratingCount` | `0` | The reputation port returns only the rating until Sprint 8 |
+| Seller profile shows the seller's *other* listings | It lists all of the seller's live listings, including the one just viewed; `seller.otherListingsCount` still counts only the others | The seller listings endpoint is the Part B query with a seller filter and has no exclusion |
+| Own listing: every action `OWN_LISTING` | Same, also for Real Estate (so Add to Cart and Buy Now show "Your listing" there) | One rule, no category logic on the client |
+
+**Mobile** (`valuex-mobile`, `lib/features/listing_view`): `ListingViewScreen` (`/listing/:listingId`), `SellerProfileScreen` (`/seller/:sellerId`), `ListingGallery` (swipe on `detailUrl`, thumbnail strip, full-resolution `InteractiveViewer` on `zoomUrl`, "Refresh" only when a photo has `expiresAt`), `ListingViewBody`, `ListingActions`, `PublicListing` model and `ListingViewRepository`. The route guard requires a signed-in account for both routes. Search result cards open `/listing/:id`; Home cards still say "Coming soon".
+
+- The attributes are projected on the server, so the US-123 `projectPreviewFields` and `PreviewGallery` are not reused: they read the owner response and owner-only photo links. Only shared building blocks are reused (`ListingCard`, `AppImage`, `ErrorView`, `SquareBackButton`, `SingleToneButton`, `BrandGradientButton`).
+- The seller profile title is generic ("Seller profile"); the seller name is not passed through navigation, so a copied link cannot show a name the server did not send.
+- Seller reviews show "coming soon" while `reviewsAvailable` is false and "No reviews yet" when it is true and empty; review items are not modelled before Sprint 8.
+- The action area is pinned at normal text sizes and scrolls with the page above 130% text scale.
+- Errors: `ERROR_LISTING_NOT_AVAILABLE`, `ERROR_SELLER_SUSPENDED` and `SELLER_NOT_FOUND` show their message without Retry; other failures show Retry.
 
 ---
 
