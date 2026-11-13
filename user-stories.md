@@ -5578,7 +5578,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 ---
 
 ### US-118: Real Estate Listing Specifics
-> **Update (2026-11-09, Sprint 3 LLD):** The seller marks a published property Sold, Rented or Leased with `POST /api/v1/listings/{id}/close` (from the published state; Sprint 4 adds the negotiation states). Property and goods are never mixed in one search result list, and a Real Estate search without an intent is refused with `ERROR_INTENT_REQUIRED`. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part E.
+> **Update (2026-11-13, Sprint 3 LLD, product clarification of 2026-11-12):** The owner marks a published property Sold, Rented or Leased with `POST /api/v1/listings/{id}/close` at any stage after publication, including when the deal was made outside JustQlic and without any chat, call, video call or negotiation record. The stages that allow it are: published, inquiry pending, negotiation in progress, offer accepted, expired, in Trust & Safety review and revision required; any other stage returns `ERROR_LISTING_NOT_CLOSABLE`. Closing a property that is still in review takes it out of the review queue. The request carries only the outcome: the buyer and a negotiated price are never stored, and a negotiated price stays private to its buyer-seller pair and never changes the shared listing price. Property and goods are never mixed in one search result list, and a Real Estate search without an intent is refused with `ERROR_INTENT_REQUIRED`. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part E.
 **As a** buyer and seller of property  
 **I want** property listings to follow a sale, rent or lease flow that ends at price negotiation  
 **So that** property can be advertised and negotiated without the goods checkout and delivery flow
@@ -5597,10 +5597,12 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - When a buyer opens a property
 - Then they can chat, call or video call the seller and negotiate the price
 - And there is no cart, checkout, escrow, payment or delivery, and "Buy Now" is not shown
-- When the seller and buyer agree a price
-- Then the seller marks the property Sold or Rented
+- When a property has been published
+- Then the owner can mark it Sold, Rented or Leased at any stage after publication, whether the deal was completed inside or outside JustQlic
+- And the outcome must match the listing's intent (Sold for Sale, Rented for Rent, Leased for Lease)
+- And a negotiated price stays private to the buyer and seller who agreed it and never changes the shared listing price
 
-**Edge Cases:** intent not supported by the property family; changing intent after entering prices; New Development with minimum price above maximum price; Commercial Lease without the optional total lease amount; buyer searches without choosing an intent.
+**Edge Cases:** a deal completed outside JustQlic; closing a property that is still in review (it leaves the review queue); closing a property that is already closed, deleted, removed or rejected; intent not supported by the property family; changing intent after entering prices; New Development with minimum price above maximum price; Commercial Lease without the optional total lease amount; buyer searches without choosing an intent.
 
 **Validation Rules:** supported intents by family are Homes: Sale, Rent; New Developments: Sale; Land: Sale, Lease; Commercial: Sale, Rent, Lease; Shared and Managed Living: Rent. `listing_price_inr` is system-derived (Sale: sale price or minimum price; Rent and Lease: monthly rent). The maximum price is ₹10,00,00,000.
 
@@ -5608,6 +5610,8 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - `ERROR_INTENT_NOT_SUPPORTED`: "This option is not available for this property type"
 - `ERROR_PRICE_REQUIRED_FOR_INTENT`: "Enter the price for your option"
 - `ERROR_INVALID_PRICE_RANGE`: "Minimum price cannot be above maximum price"
+- `ERROR_NOT_A_PROPERTY_LISTING`: "Only a published property can be marked as sold, rented or leased"
+- `ERROR_LISTING_NOT_CLOSABLE`: "This property cannot be marked as sold, rented or leased right now"
 
 ---
 

@@ -17,6 +17,7 @@
 | 1.2 | Nov 2026 | US-012 public attribute projection is explicitly separate from the US-123 owner preview response. A new `PublicListingFieldProjector` derives buyer-visible values from the stored category schema and excludes owner-only preview context. Approved by the user on 2026-11-12 with the US-012 plan. |
 | 1.3 | Nov 2026 | US-012 does not show or mutate a save/heart control before US-073. Its `saved` response field is `false` until US-073 supplies real saved state. Approved by the user on 2026-11-12 with the US-012 plan revision. |
 | 1.4 | Nov 2026 | US-111 Home Page as built (G.10): migration `V27` (not `V29`), no category `image_key`, `ListingSearchService.browseNear` added to skip the search rate limit, `nearMatch` by city only, the featured size clamped to the page-size maximum, `Accept-Language` sent by the app. Approved by the user on 2026-11-13 with the US-111 plan (G1 to G10). |
+| 1.5 | Nov 2026 | US-118 Real Estate Listing Specifics as built (Part E, D10, C8): migration `V28`; the close action is allowed from seven stages after publication, including a deal made outside JustQlic; closing from review ends the review as `CLOSED_BY_OWNER` and settles a pending appeal as `MOOT`; `ERROR_LISTING_NOT_CLOSABLE` and the L1/L2 `TransactionIntentCatalog` are added; `ERROR_PRICE_REQUIRED_FOR_INTENT` is raised by the attribute validator; My Listings cards gain `closeOutcome` and `closedOutcome`. Approved by the user on 2026-11-13 with the US-118 plan. |
 | 1.0 | Nov 2026 | **Final.** All recommendations and proposals accepted (section 9.1, D1 to D19). Every business number is an Admin-managed setting (new section 1.6): ranking weights, search limits, saved-item and saved-search limits, retention, alert time, Home limits and rate limits. Deployment-only values (timeouts, batch sizes, image sizes) stay configuration. |
 
 **Reference Documents:**
@@ -1051,6 +1052,10 @@ Can save from search results, Home or the listing page. Entries for unavailable 
 | New Development with a minimum above the maximum | Rejected at listing save by US-006 (`ERROR_INVALID_PRICE_RANGE`); search shows "Starting from" with the minimum |
 | Commercial Lease without the optional total lease amount | Details simply omit it |
 | Property and goods in one list | Never mixed (rule below) |
+| Deal made outside JustQlic | The owner closes the property at any closable stage with no chat, call or negotiation record; only the outcome is stored |
+| Closing a property that is still in review | Allowed; the pending review ends as `CLOSED_BY_OWNER` in the same transaction (E.5) |
+| Closing a closed, deleted, removed, rejected or pre-publication listing | `ERROR_LISTING_NOT_CLOSABLE` (or `ERROR_NOT_A_PROPERTY_LISTING` when it was never published) |
+| Negotiated price | Private to its buyer-seller pair; never written to `listings.price` and never part of the close request |
 
 ## E.2 Scope
 
@@ -1059,24 +1064,31 @@ Can save from search results, Home or the listing page. Entries for unavailable 
 
 ## E.3 Data Model
 
-Migration `V27__listing_closed_outcome.sql` (provisional number):
+Migration `V28__listing_closed_outcome.sql` (`V27` was taken by US-111):
 
 ```sql
 ALTER TABLE listings ADD COLUMN closed_outcome VARCHAR(10);   -- SOLD | RENTED | LEASED, set only by the close action
-ALTER TABLE listings ADD CONSTRAINT chk_listings_closed_outcome CHECK (closed_outcome IN ('SOLD', 'RENTED', 'LEASED'));
+ALTER TABLE listings ADD CONSTRAINT chk_listings_closed_outcome
+    CHECK (closed_outcome IS NULL OR closed_outcome IN ('SOLD', 'RENTED', 'LEASED'));
+-- A closed property leaves the review queue: a new admin decision value and a new appeal status
+ALTER TABLE listing_trust_safety_reviews ... CHECK (admin_decision IS NULL OR admin_decision IN
+    ('APPROVED', 'REJECTED', 'REVISION_REQUESTED', 'CLOSED_BY_OWNER'));
+ALTER TABLE listing_trust_safety_appeals ... CHECK (status IN ('PENDING', 'UPHELD', 'OVERTURNED', 'MOOT'));
 ```
 
-The lifecycle state machine gains one whitelist row: `PUBLISHED -> SOLD`, action `MARK_PROPERTY_CLOSED`. Goods still reach `SOLD` only through `COMPLETE_ORDER`.
+The lifecycle state machine gains seven whitelist rows, one `<state> -> SOLD` with action `MARK_PROPERTY_CLOSED` for each of `PUBLISHED`, `BUYER_INQUIRY_PENDING`, `NEGOTIATION_IN_PROGRESS`, `OFFER_ACCEPTED`, `EXPIRED`, `TRUST_SAFETY_REVIEW` and `REVISION_REQUIRED` (decision D10, revised 2026-11-13). Goods still reach `SOLD` only through `COMPLETE_ORDER`; `ORDER_CREATED`, `SOLD`, `DEACTIVATED_BY_SELLER`, `REMOVED_BY_ADMIN`, `REJECTED` and every pre-publication state have no such row.
 
 ## E.4 API Contract
 
 ```http
 POST /api/v1/listings/{listingId}/close
 { "outcome": "SOLD" | "RENTED" | "LEASED" }
--> 200 { "listingId": "uuid", "status": "SOLD", "closedOutcome": "RENTED" }
+-> 200 { "success": true, "data": { "listingId": "uuid", "status": "SOLD", "outcome": "RENTED" } }
 ```
 
-Search and details contracts are in Parts B and C. The supported intents of a category node come from `GET /api/v1/categories/{code}/listing-schema` (`transactionIntents`) for an L3; for an L1 or L2 the new `TransactionIntentCatalog` returns the union over its descendants (profile option rows for `transaction_intent`, cached with the taxonomy).
+The request carries only the outcome: no buyer and no deal price. My Listings (`GET /api/v1/listings/mine`) cards gain two fields: `closeOutcome` (the outcome the owner can choose now, `SOLD`, `RENTED` or `LEASED`, or null when the listing is not a published property in a closable stage) and `closedOutcome` (how a closed property ended, so a rented one does not read as sold).
+
+Search and details contracts are in Parts B and C. The supported intents of a category node come from `GET /api/v1/categories/{code}/listing-schema` (`transactionIntents`) for an L3; for an L1 or L2 the new `TransactionIntentCatalog` returns the union over its enabled property leaves with one SQL query on the profile option rows for `transaction_intent` (not cached: it is a single indexed query, and no taxonomy cache exists).
 
 Supported intents by family (from the story): Homes: Sale, Rent. New Developments: Sale. Land: Sale, Lease. Commercial: Sale, Rent, Lease. Shared and Managed Living: Rent.
 
@@ -1088,15 +1100,17 @@ Supported intents by family (from the story): Homes: Sale, Rent. New Development
   3. Price filters and price sorts on Real Estate always run inside one intent, so sale and rent amounts are never compared.
 - **Price meaning:** Sale uses the sale price (the minimum price for New Developments, qualifier `STARTING_FROM`); Rent and Lease use the monthly rent. This is `listings.price` as US-006 derives it; no new derivation is added.
 - **No purchase flow:** `capabilities.cart` and `capabilities.buyNow` are `NOT_APPLICABLE` for Real Estate (Part C). The same server-side flag is the source for Sprint 4 and 5, so no later story needs a Real Estate check in the app.
-- **Close action (`ListingClosureService.close`):** owner only; the listing must be `PUBLISHED` and in a Real Estate category (`ERROR_NOT_A_PROPERTY_LISTING` otherwise); `outcome` must fit the listing's intent (`SOLD` for Sale, `RENTED` for Rent, `LEASED` for Lease; `ERROR_INTENT_NOT_SUPPORTED` otherwise); under the row lock it sets `closed_outcome` and calls `ListingLifecycleService.transition(id, SOLD, "MARK_PROPERTY_CLOSED", sellerId, outcome)`. The status event removes it from the index, marks saved entries unavailable (`SOLD`) and notifies savers.
-- The My Listings sold tab (US-010) already lists `SOLD`; the card shows "Rented" or "Leased" from `closedOutcome`.
+- **Seller-side price check:** a missing price for the chosen intent is refused with `ERROR_PRICE_REQUIRED_FOR_INTENT` ("Enter the price for your option") by `AttributeValidator` (the field is `sale_price`, the New Development `price_min` or `monthly_rent`, as `ListingPricing.priceKey` names it); any other missing field keeps `ERROR_ATTRIBUTE_REQUIRED`. The optional Commercial lease amount stays optional.
+- **Close action (`ListingClosureService.close`):** owner only, under the listing row lock. The listing must be in a Real Estate category and have been published at least once (`ERROR_NOT_A_PROPERTY_LISTING` otherwise). It must be in one of the seven closable stages of E.3 (`ERROR_LISTING_NOT_CLOSABLE` otherwise, which also answers a second submission), whether or not the deal or any negotiation happened inside JustQlic. `outcome` must fit the listing's intent (`SOLD` for Sale, `RENTED` for Rent, `LEASED` for Lease; `ERROR_INTENT_NOT_SUPPORTED` otherwise). It then sets `closed_outcome` and calls `ListingLifecycleService.transition(id, SOLD, "MARK_PROPERTY_CLOSED", sellerId, outcome)`. `listings.price` is never touched, and a negotiated price is never read or stored. The status event removes the listing from the index. Saved entries and saver notifications do not exist yet (US-073); US-073 must treat `SOLD` as unavailable and notify savers.
+- **Review queue (decided 2026-11-13):** the queue is not a table; a review is pending while `ListingTrustSafetyReview.isOpen()` is true (`auto_decision = QUEUED_FOR_REVIEW` and no admin decision). When a property in `TRUST_SAFETY_REVIEW` or `REVISION_REQUIRED` is closed, the new `TrustSafetyReviewCloser.closeFor(listingId)` (a separate small component, so `TrustSafetyReviewService` does not grow further) runs in the same transaction: an open latest review gets the decision `CLOSED_BY_OWNER` and `reviewed_at`, with `admin_id` left null, so it drops out of the pending set and `isFailed()` stays false (it is not a failed attempt); a review a person already decided is left alone; a pending appeal against the latest review becomes `MOOT`. A later admin approve, reject or revision request on the closed listing fails with `ERROR_REVIEW_NOT_ALLOWED`, because the listing is no longer in review, and `ListingRecoveryJob` only looks at listings still in `TRUST_SAFETY_REVIEW`. A new appeal on a closed listing is refused with `ERROR_APPEAL_NOT_ALLOWED`. The admin queue screen (US-054) must list only `isOpen()` reviews.
+- The My Listings sold tab (US-010) already lists `SOLD`; the card shows "Rented" or "Leased" from `closedOutcome`, and shows the close action only when `closeOutcome` is present (`ListingClosureService.closableOutcome`, computed only for published listings in a closable stage).
 
 ## E.6 Mobile Design
 
-- `PropertyIntentSheet` (Buy, Rent, Lease) shown when the buyer opens a Real Estate category or enters Real Estate from Home; the chosen intent is part of `SearchCriteria` and shown as a chip that can be changed; changing it clears the price range.
-- Cards show the intent label and "Starting from" for New Developments; details show the price by intent and hide cart and Buy Now.
-- My Listings: a "Mark as Sold, Rented or Leased" action on a live property card with a confirmation sheet (`ConfirmationSheet` from Sprint 2); the label follows the listing's intent.
-- Strings in English and Hindi.
+- `IntentSheet` (Buy, Rent, Lease, built in US-011) shown when the buyer opens a Real Estate category or enters Real Estate from Home; the chosen intent is part of `SearchCriteria` and shown as a chip that can be changed; switching to another intent clears the price range (`chooseIntent`). The app has no list of the intents a category supports, so when the server answers `ERROR_INTENT_NOT_SUPPORTED` the controller remembers the refused intent (`SearchState.unsupportedIntents`), asks again, and the sheet stops offering it and says "This option is not available for this property type".
+- Cards show "Starting from" for New Developments; the intent is the one in the chip, so the shared card carries no extra intent label. Details already use the server `capabilities`: cart and Buy Now are hidden for `NOT_APPLICABLE`, and the details show the price by intent (US-012).
+- My Listings: a "Mark as Sold, Rented or Leased" link on a published property card (the label follows `closeOutcome`), a confirmation sheet (`showConfirmationSheet` from Sprint 2) that says the deal may have been made outside JustQlic and cannot be undone, then a reload of the page so the card, the status and the counts show the server's answer. A closed property reads Sold, Rented or Leased from `closedOutcome`.
+- Strings in English and Hindi, including the new error codes `ERROR_LISTING_NOT_CLOSABLE`, `ERROR_NOT_A_PROPERTY_LISTING` and `ERROR_PRICE_REQUIRED_FOR_INTENT`.
 
 ## E.7 Validation Rules & Error Codes
 
@@ -1104,11 +1118,14 @@ Supported intents by family (from the story): Homes: Sale, Rent. New Development
 |---|---|---|
 | Real Estate search without intent | `ERROR_INTENT_REQUIRED`: "Choose Buy, Rent or Lease" | 400 |
 | Intent not supported | `ERROR_INTENT_NOT_SUPPORTED`: "This option is not available for this property type" | 400 |
-| Price required for the intent | `ERROR_PRICE_REQUIRED_FOR_INTENT`: "Enter the price for your option" (built in US-006) | 400 |
+| Price required for the intent | `ERROR_PRICE_REQUIRED_FOR_INTENT`: "Enter the price for your option" (added in US-118; US-006 had the general `ERROR_ATTRIBUTE_REQUIRED`) | 400 |
 | Minimum above maximum price | `ERROR_INVALID_PRICE_RANGE`: "Minimum price cannot be above maximum price" | 400 |
-| Close a listing that is not a published property | `ERROR_NOT_A_PROPERTY_LISTING`: "Only a published property listing can be closed this way" | 409 |
+| Close a listing that is not a published property (goods, or never published) | `ERROR_NOT_A_PROPERTY_LISTING`: "Only a published property can be marked as sold, rented or leased" | 400 |
+| Close a property in a stage that does not allow it, or a second time | `ERROR_LISTING_NOT_CLOSABLE`: "This property cannot be marked as sold, rented or leased right now" | 400 |
+| Outcome does not fit the intent | `ERROR_INTENT_NOT_SUPPORTED`: "This option is not available for this property type" | 400 |
+| Not the owner | `LISTING_NOT_FOUND` | 404 |
 
-The maximum price is Rs 10,00,00,000 (already enforced at listing save).
+The business errors of this API answer 400 (the shared handler), so the 409 first written for the not-a-property case is not used. The maximum price is Rs 10,00,00,000 (already enforced at listing save).
 
 ## E.8 Security & NFR Notes
 
@@ -1117,9 +1134,9 @@ The maximum price is Rs 10,00,00,000 (already enforced at listing save).
 
 ## E.9 Testing Strategy
 
-**Unit:** intent rules for every family and node level; goods and property separation; `STARTING_FROM`; `ListingClosureService` (owner, state, intent and outcome fit, double call).
-**Integration:** Real Estate search with and without intent; price filter within one intent; a Sale listing never appears in a Rent search; close action removes the listing from search and shows it in My Listings sold; goods listings cannot use the close endpoint.
-**Mobile:** intent sheet, chip and price reset; hidden cart and Buy Now; close action and labels; Hindi at 200% text; accessibility guidelines.
+**Unit:** intent rules for every family and node level; goods and property separation; `STARTING_FROM` (search card and details agree); `ListingClosureService` (owner, each of the seven stages and every other stage, intent and outcome fit, double call, no negotiation record); `TrustSafetyReviewCloser` (open, already decided, no review, pending appeal); `AttributeValidator` price-required code per family and intent; the state machine rows.
+**Integration (PostgreSQL):** V28; close of a property from every closable stage and refusal from every other; the shared price unchanged and only the outcome stored; the listing leaves buyer reads; the review leaves the queue and a later admin decision fails; a pending appeal becomes `MOOT`; My Listings `closeOutcome` and `closedOutcome`; goods and never-published listings cannot use the close endpoint; `TransactionIntentCatalog` per category level. Real Estate search with and without intent and a Sale listing never appearing in a Rent search are covered by the US-011 search tests.
+**Mobile:** intent sheet that stops offering a refused intent, chip and price reset on an intent switch; hidden cart and Buy Now (US-012); the close action, its confirmation, refusals, retry and labels; Hindi strings; accessibility guidelines.
 
 ---
 
@@ -1803,7 +1820,7 @@ sequenceDiagram
 | D7 | Own listings | Excluded from the caller's search and Home results. |
 | D8 | Saved-item retention | An unavailable entry is kept for a number of days after it became unavailable; the number is an Admin-managed platform setting (default 90, 7 to 365), edited in the Admin UI (US-116 platform settings, Sprint 10; a database update until then). Entries of still-available listings are never removed. |
 | D9 | Photos | Buyers get thumbnail, card, detail and zoom variants (CDN URLs), with a signed-original fallback until variants exist. Variant generation is a new prerequisite story (Part H). |
-| D10 | Real Estate Mark as Sold, Rented or Leased | Built in Sprint 3, limited to `PUBLISHED` listings; Sprint 4 adds the same transition from the negotiation states. |
+| D10 | Real Estate Mark as Sold, Rented or Leased | Built in Sprint 3 (US-118) for a published property at any stage after publication, including a deal made outside JustQlic: `PUBLISHED`, `BUYER_INQUIRY_PENDING`, `NEGOTIATION_IN_PROGRESS`, `OFFER_ACCEPTED`, `EXPIRED`, `TRUST_SAFETY_REVIEW` and `REVISION_REQUIRED`, each with its own `<state> -> SOLD` whitelist row (revised 2026-11-13 from "`PUBLISHED` only"). Closing from review takes the listing out of the review queue. |
 | D11 | Ranking | Formula and starting numbers accepted as launch defaults, held as Admin-managed settings, reviewed after about two weeks of beta traffic. Paid listings rank above unpaid ones when browsing; in text search a weak match never beats a strong one. |
 | D12 | Plan tier and badge | Data-driven `plans.search_tier` and `plans.listing_badge`, snapshotted on the listing at plan selection. |
 | D13 | Category images | `categories.image_key` mapped to bundled app images; uploaded images come with US-121. |
@@ -1825,7 +1842,7 @@ sequenceDiagram
 | C5 | US-066 mentions FCM topic subscription; no push infrastructure exists (`NotificationChannelType` has no PUSH). | D3. |
 | C6 | Nothing moves listings to `EXPIRED` although the transition exists. | D5. |
 | C7 | HLD 07 lists `GET /api/v1/search/categories`; US-006 already built `/categories/children` and `/categories/search`. | Not built again; HLD updated. |
-| C8 | US-118 needs the seller to mark a property Sold or Rented, but `SOLD` is reachable only through `COMPLETE_ORDER`. | New transition `PUBLISHED -> SOLD` (`MARK_PROPERTY_CLOSED`) and `closed_outcome` (Part E). |
+| C8 | US-118 needs the owner to mark a property Sold, Rented or Leased, possibly after a deal made outside JustQlic, but `SOLD` is reachable only through `COMPLETE_ORDER`. | Seven new transitions `<state> -> SOLD` (`MARK_PROPERTY_CLOSED`) from the stages listed in D10, and `closed_outcome` (Part E). |
 | C9 | Listings that receive an inquiry leave `PUBLISHED` (`RECEIVE_INQUIRY`), which would remove them from search. | Not an issue in Sprint 3 (no inquiries yet). Sprint 4 decides through `isLiveForBuyers()` (section 8, item 3). |
 | C10 | The tentative voice design calls `POST /api/search` with `{query, source, language}`. | The ValueX search is `GET /api/v1/search/listings`; Part I reuses it and adds only an optional `source` (V4). |
 | C11 | The tentative voice design asks for strict offline recognition as an open question; no product decision exists. | V1 recommends native recognition with an on-device preference and a first-use notice; strict offline is a follow-up. |
@@ -1835,7 +1852,7 @@ sequenceDiagram
 All proposals were accepted (D10 to D19), so nothing in this document is awaiting a decision. Points to keep in mind during the build:
 
 - **Ranking review (D11).** After about two weeks of beta traffic, review the share of paid listings in the top 10, click-through by position and the zero-result rate, and adjust the settings of section 1.6. Golden-order tests lock the behaviour (exact match first, paid above unpaid at similar relevance, a weak match never beats a strong one), not the numbers.
-- **Real Estate close action (D10).** Limited to `PUBLISHED`; Sprint 4 adds whitelist rows for the negotiation states.
+- **Real Estate close action (D10).** Allowed from the seven stages listed in D10, with one whitelist row each (built in US-118); any other stage answers `ERROR_LISTING_NOT_CLOSABLE`. Sprint 4 only has to start entering the inquiry and negotiation states, because their rows already exist. US-073 must treat `SOLD` as unavailable for saved entries and notify savers.
 - **Settings before the Admin screen.** Until US-116 delivers the Discovery settings screen (Sprint 10), changes are made with a SQL update that respects the allowed ranges in section 1.6; the service validates on read and falls back to the default for any bad value.
 - **Part H is parallel work.** The signed-original fallback keeps US-011, US-012, US-073 and US-111 shippable without it.
 
