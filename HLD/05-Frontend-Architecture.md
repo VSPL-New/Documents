@@ -319,6 +319,13 @@ Search
  → Listing Details
 ```
 
+The Search field also has a microphone action for US-129. Tapping it opens the first-use notice (if needed) and the
+phone's speech-recognition permission flow, then a listening panel with live transcript, language selection,
+Stop/Cancel and recovery actions. When recognition ends, the tidied text is placed into the ordinary Search field
+and uses the existing results flow with its selected category, filters and Real Estate intent. ValueX does not
+record or upload audio; the operating-system speech service may use its own network service depending on device
+capability and settings. The voice entry point is in Search, not the Home search field.
+
 ---
 
 ### Sell

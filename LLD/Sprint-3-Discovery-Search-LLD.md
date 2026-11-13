@@ -1478,7 +1478,7 @@ the CI image).
 
 **Story Points:** 5 (proposed) | **Repos:** valuex-mobile (almost all the work), valuex-backend (one optional query parameter and metric tags)
 **Dependency:** US-011 (the search screen, the search API and its rules). Nothing in US-012, US-073, US-118, US-066 or US-111 depends on it.
-**Status:** Design proposed 2026-11-11 from the tentative design `Documents/VoiceSearchTentativeDesignByChatGPT.md`. Decisions V1 to V8 (section 9.5) are recommendations that the product owner has not confirmed yet; V1 can change the estimate.
+**Status:** Implemented on feature branches from `main`; V1 to V8 were accepted by the product owner on 2026-11-12. Automated validation is recorded in the US-129 implementation plan. Real-device validation, Hindi native-speaker review and legal/privacy review remain pending.
 
 ## I.1 Story Overview
 
@@ -1558,8 +1558,8 @@ The zero-result rate for voice searches (`search.results.empty.total{source=VOIC
 
 ### I.7.1 Packages and platform configuration
 
-- `speech_to_text` is added (pin the newest release that supports the project's Flutter 3.22+ and Dart 3.4+ when the spike confirms it). It uses Apple Speech and Android `SpeechRecognizer`; it does not by itself guarantee offline recognition (V1). `permission_handler` (already a dependency) is used only to tell "denied" from "denied for good" and to open Settings.
-- **iOS** `Info.plist`: `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`, in the style of the existing location, camera and photo strings. `Podfile`: `permission_handler` needs the macros `PERMISSION_MICROPHONE=1` and `PERMISSION_SPEECH_RECOGNIZER=1` in the pods build settings; the project has none today. How these macros are applied together with the project's Swift Package Manager setup is checked in the spike (I.11, step 0).
+- `speech_to_text ^7.3.0` and its direct `speech_to_text_platform_interface ^2.5.0` dependency are used (the resolved speech_to_text version is 7.5.0). The adapter uses Apple Speech and Android `SpeechRecognizer`; it does not guarantee offline recognition (V1). `hasOnDeviceSupport(localeId:)` is queried per locale; if the capability query fails, the adapter requests the phone service without the on-device preference. `permission_handler` is used to distinguish denied from permanently denied/restricted and to open Settings. The requested real-device spike was skipped at the user's direction, so the exact behavior on physical devices and by locale remains unverified.
+- **iOS** `Info.plist`: `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`, in the style of the existing location, camera and photo strings. The Podfile enables `PERMISSION_MICROPHONE=1` and `PERMISSION_SPEECH_RECOGNIZER=1` for the permission_handler pod. Simulator build and real-device permission behavior remain validation items.
 - **Android** `AndroidManifest.xml`: `RECORD_AUDIO` and a `<queries>` entry for `android.speech.RecognitionService` (needed on Android 11 and later to find the recogniser). No other permission.
 - No third-party SDK, no network call to a speech service from ValueX code.
 
@@ -1596,7 +1596,7 @@ The search feature imports only `VoiceSearchButton` and the sheet function; the 
 | final event or `ended` | Take the final text, or the last partial if there is none. Normalise (I.7.4). Empty gives `failed(noSpeech)`; otherwise `done(text)`. |
 | error event | Map the platform error name to a `VoiceError` (table below) and go to `failed`. A late error after `done` is ignored. |
 | `stop()` | Ask the recogniser to finish; its final result completes the flow. |
-| `cancel()`, panel closed, route popped, app `paused` or `inactive` | Cancel the recogniser, discard text, back to `idle`. |
+| `cancel()`, panel closed, route popped, app `paused`, or app `inactive` while listening/finishing | Cancel the recogniser, discard text, back to `idle`. |
 | `switchLanguage(lang)` | Saves the preference, restarts listening in the new language (not while `starting`). |
 
 Every session has a counter value; events carrying an older value are dropped, so a slow recogniser can never write into a newer session (the same technique as the request id in `SearchResultsController`). `ref.onDispose` cancels the recogniser.
@@ -1640,7 +1640,7 @@ Follows the Home and Search screens' tokens (Poppins and DM Sans, `AppColors`, 4
 
 ### I.7.6 Lifecycle and screen reader
 
-The controller registers a `WidgetsBindingObserver`: `paused` or `inactive` cancels. The Search screen's disposal cancels too. Announcements use `SemanticsService.announce` for "Listening" and for the final text. The panel meets the existing accessibility guidelines (tap target, label, contrast) and is tested at 200% text in English and Hindi.
+The controller registers a `WidgetsBindingObserver`: `paused` cancels; `inactive` cancels only once listening or finishing. This avoids cancelling the initial permission flow when the OS permission UI temporarily makes the app inactive. The Search screen's disposal cancels too. Announcements use `SemanticsService` for "Listening" and for the final text. The panel meets the existing accessibility guidelines (tap target, label, contrast); simulator/device accessibility validation remains pending.
 
 ## I.8 Sequence Diagram
 
@@ -1695,7 +1695,7 @@ sequenceDiagram
 
 ## I.11 Testing Strategy
 
-**Implementation spike first (step 0, about 1 day, on real devices).** Confirm on one iPhone and two Android phones (one with Google speech services, one without): the plugin version and API, locale names for `en_IN` and `hi_IN`, the exact error names (to fix the I.7.3 table), whether on-device recognition can be requested and detected through the plugin for each language (this decides V1), the `permission_handler` macros in this project's build, and the behaviour when the final result never arrives. The simulator is not enough: Android emulators usually lack speech services and the iOS simulator has no Hindi model. The result is written into the implementation plan before coding.
+**Implementation spike (deferred at the user's direction).** The implementation used `speech_to_text ^7.3.0`, its platform interface's `hasOnDeviceSupport(localeId:)`, and mapped the plugin's documented error names in the adapter. Unit tests cover locale resolution, error mapping and an ended session with partial text. Physical iPhone/Android tests are not replaced by these tests: actual locale availability, on-device behavior, permission prompts/macros and final-result behavior remain pending in the US-129 testing guide and implementation plan. Do not claim strict offline recognition.
 
 **Mobile unit and widget tests** (target above 90% for new code):
 - `normalizeVoiceQuery` table: every phrase in both languages, "only a command word" stays, punctuation, 200-character cut with an emoji at the boundary, control characters, mixed case, digits.
@@ -1711,6 +1711,18 @@ sequenceDiagram
 
 ---
 
+## I.12 As built (US-129 implementation)
+
+- Added the voice feature under `lib/features/voice_search/{domain,data,presentation}`; only `speech_to_text_recognizer.dart` imports the speech plugin. `SpeechToText.withMethodChannel()` is injected in adapter tests so singleton initialization does not leak between fake platform sessions.
+- Dependencies are `speech_to_text ^7.3.0` and direct `speech_to_text_platform_interface ^2.5.0` (resolved `speech_to_text` 7.5.0). The adapter requests partials, 3-second pause and 20-second maximum; it checks on-device support for the chosen locale and falls back to the phone speech service if that capability query throws. Device-specific results were not verified.
+- The notice preference key is `voice_search_notice_shown_v1`; the language key is `voice_search_language`. The preference service gained boolean methods to support the notice.
+- Query normalization removes Unicode C0/C1 controls, collapses whitespace, strips the implemented trailing punctuation, removes only the planned boundary command phrases when words remain, and truncates by Unicode runes to avoid splitting emoji.
+- The Search repository adds `source=VOICE` only for an explicitly voice-originated request. The results controller consumes the voice marker on the first-page request; subsequent typed/edit/filter/page/refresh requests are typed. `SearchCriteria` remains unchanged.
+- The listening-sheet provider owns recognition cleanup: dismissing the sheet disposes the provider and cancels the session. Search does not redundantly call `cancel()` after the modal returns; the controller has already ended for a result, and duplicate cancellation could interfere with applying the returned query.
+- The backend strictly validates supported source values while treating blank/missing as typed for metric purposes. Both search counters receive a stable `source` tag; latency and the existing content-free log line remain unchanged.
+- Lifecycle nuance: `paused` cancels any current session; `inactive` cancels only during listening/finishing. This is intentional because the OS permission UI may make the app temporarily inactive during initial authorization.
+- Validation completed in automation is recorded in `Documents/US-Implementation-Plans/US-129-Implementation-Plan.md`. The iOS simulator build passed; Android build and real-device validation, native-speaker review and legal/privacy review remain pending and are release gates in `Documents/Manual Testing Guides/US-129-Testing-Guide.md`.
+
 # 8. Sprint 3 Cross-Cutting Notes
 
 1. **Privacy of the chosen place.** `nearCity`, `nearState`, `city` and `state` are query parameters used for ranking and filtering only. They are not stored, not written to logs, and not added to metrics labels. Saved searches store `city` and `state` only when the buyer chose them as filters.
@@ -1720,7 +1732,8 @@ sequenceDiagram
 5. **API envelope.** Single resources use `ApiResponse`; lists use the paging fields of `GET /api/v1/listings/mine` (`page`, `size`, `totalItems`, `hasNext`).
 6. **Flyway numbers** V25 to V30 are provisional; take the next free number when each story is built, as Sprint 2 did.
 7. **Observability.** All new jobs (`SearchIndexWorker`, `ListingExpiryJob`, `SearchReconciliationJob`, `SavedSearchAlertJob`, `SavedListingRetentionJob`) log start, count and duration, never user content, and expose Micrometer timers and counters.
-8. **Documentation to update when this LLD is approved** (not done yet): US-111 and HLD 05 (the "never sent to the server" sentence), HLD 03 §6 (document without the point, with `cityKey`, `stateKey`, `primaryMediaId`), HLD 07 §6 (saved-search `PATCH` and `DELETE`, no `/search/categories`), Sprint 2 LLD Part G (rotation service dropped), US-066 (FCM topic deferred), US-116 (plan search tier and badge fields, and the Discovery settings screen and API of section 1.6), US-121 (popular category limits are now settings), US-011, US-066, US-073 and US-111 (the numbers in their rules are Admin-managed settings; add a one-line note to each story), US-114 (`locationState`), Valuex-Object-Storage-Design-Decision.md (state that variants are generated by the Part H job), Sprint-plan Sprint 3 section (add the Photo Variants story). For Voice Search (US-129): HLD 05 (voice button on the Search screen) and HLD 07 §6 (the optional `source` parameter); both to be updated when US-129 is approved. Sprint-plan and user-stories already include US-129 (2026-11-11).
+8. **Documentation reconciliation.** The earlier items in this cross-cutting list remain separate documentation work: US-111 and HLD 05 (the chosen place is sent transiently, not stored/logged), HLD 03 §6, HLD 07 §6 (saved-search `PATCH`/`DELETE`, no `/search/categories`), Sprint 2 LLD Part G, US-066, US-116, US-121, US-011/US-066/US-073/US-111 settings notes, US-114, Valuex-Object-Storage-Design-Decision.md, and Sprint-plan Sprint 3 (US-128). For US-129, HLD 05 now records the Search voice action/panel, HLD 07 §6 documents the optional `source`, and the Sprint plan records implementation and pending device validation; see Part I/I.12.
+8. **Documentation reconciliation.** The earlier items in this cross-cutting list remain separate documentation work. For US-129, HLD 05 now records the voice button/panel on Search, HLD 07 §6 documents `source`, and the Sprint 3 plan records implementation and pending device validation. The US-129-specific documentation changes are complete on the story worktree.
 
 ---
 
@@ -1789,9 +1802,9 @@ All proposals were accepted (D10 to D19), so nothing in this document is awaitin
 10. **Voice search privacy and store review (US-129).** Legal must confirm the first-use notice wording and add the operating-system speech services to the Privacy Policy and the app store privacy answers before the build ships. iOS permission texts are English only unless localised `InfoPlist.strings` are added.
 11. **Voice search and natural language (US-129).** Spoken filters such as "under 20000" are searched as words. A follow-up could parse price and condition (client rules or `valuex-ai`); it needs its own design.
 
-## 9.5 Voice Search decisions (US-129, proposed 2026-11-11, awaiting the product owner)
+## 9.5 Voice Search decisions (US-129, accepted 2026-11-12)
 
-The tentative design ended with open questions on offline use, when to search and language handling. These recommendations answer them; each can be changed before the build starts.
+The product owner accepted recommendations V1 to V8. The implementation and pending validation follow these decisions; no strict-offline guarantee is made.
 
 | # | Topic | Recommendation | If the answer is different |
 |---|---|---|---|

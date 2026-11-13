@@ -298,7 +298,13 @@ city, state (filters)
 nearCity, nearState (ranking only, never stored or logged)
 condition
 sort, page, size
+source (optional: TYPED or VOICE; metrics only, defaults to TYPED)
 ```
+
+For US-129, the mobile app sends `source=VOICE` only on the first-page request initiated by a spoken query. Missing
+or blank source is treated as typed; unsupported non-blank values return the existing `ERROR_INVALID_FILTERS`
+envelope. The value is not persisted, logged or used for matching/ranking. Backend request and empty-result counters
+carry a `source` metric tag; latency remains untagged.
 
 ---
 
