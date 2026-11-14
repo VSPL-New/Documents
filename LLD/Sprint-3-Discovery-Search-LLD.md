@@ -18,6 +18,7 @@
 | 1.3 | Nov 2026 | US-012 does not show or mutate a save/heart control before US-073. Its `saved` response field is `false` until US-073 supplies real saved state. Approved by the user on 2026-11-12 with the US-012 plan revision. |
 | 1.4 | Nov 2026 | US-111 Home Page as built (G.10): migration `V27` (not `V29`), no category `image_key`, `ListingSearchService.browseNear` added to skip the search rate limit, `nearMatch` by city only, the featured size clamped to the page-size maximum, `Accept-Language` sent by the app. Approved by the user on 2026-11-13 with the US-111 plan (G1 to G10). |
 | 1.5 | Nov 2026 | US-118 Real Estate Listing Specifics as built (Part E, D10, C8): migration `V28`; the close action is allowed from seven stages after publication, including a deal made outside JustQlic; closing from review ends the review as `CLOSED_BY_OWNER` and settles a pending appeal as `MOOT`; `ERROR_LISTING_NOT_CLOSABLE` and the L1/L2 `TransactionIntentCatalog` are added; `ERROR_PRICE_REQUIRED_FOR_INTENT` is raised by the attribute validator; My Listings cards gain `closeOutcome` and `closedOutcome`. Approved by the user on 2026-11-13 with the US-118 plan. |
+| 1.6 | Nov 2026 | US-073 Save and Bookmark Listings as built (D.11): migration `V31` with a reason check; settings `SAVED_LISTING_MAX` (10 to 500) and `SAVED_LISTING_RETENTION_DAYS` (7 to 365) in `DiscoverySetting`; a lean list item (no full `ListingCard`); the `saved` flag from a `SavedListingLookupPort` on search, Home and details cards; unavailability handled by a listener that writes in transactions of its own, with a per-buyer dedupe key; the heart on Home, search and details; Saved Items screen and `/saved-items` link. Approved by the user on 2026-11-14 with the US-073 plan (G1 to G5). |
 | 1.0 | Nov 2026 | **Final.** All recommendations and proposals accepted (section 9.1, D1 to D19). Every business number is an Admin-managed setting (new section 1.6): ranking weights, search limits, saved-item and saved-search limits, retention, alert time, Home limits and rate limits. Deployment-only values (timeouts, batch sizes, image sizes) stay configuration. |
 
 **Reference Documents:**
@@ -723,7 +724,7 @@ The implementation follows B.1 to B.11 with these differences:
 | Rate limit | In the controller | In `ListingSearchService` (key `rate:search:<userId>`, 1 minute, error code `RATE_LIMIT_EXCEEDED`); if Redis fails the search is allowed and a warning is logged | Testable with the service; a broken limiter must not stop search |
 | Circuit breaker | Resilience4j around search calls | Programmatic breaker `openSearchSearch` in `OpenSearchListingSearchAdapter` for search calls only; settings `valuex.search.opensearch.circuit-*` (window 20, minimum calls 10, failure rate 50%, open 15 s, half-open 3). Open breaker, timeout, HTTP error or transport failure all become `SearchUnavailableException`, shown as `ERROR_SEARCH_UNAVAILABLE` (503) | Deferred from US-120 (A.10) |
 | Search switched off | Not mentioned | `DisabledListingSearchPort` is the `ListingSearchPort` bean when `valuex.search.enabled=false` and answers every call as unavailable | The search service and controller still start |
-| `saved` | From `saved_listings` | Always `false` until US-073 | Decision G1 |
+| `saved` | From `saved_listings` | `true` when the signed-in buyer has saved it (US-073, `SavedListingLookupPort`); `false` without a caller | Decision G1 |
 | Mobile | Category tiles open category browse | Home tiles and `CategorySelectionScreen` rows come from the mock repository (ids are not taxonomy codes), so they open a search with the category name as the text. Real L1 to L2 to L3 browsing is reached from the Search screen ("Browse all categories"). Real Estate is recognised by the L1 name "Real Estate" because `CategoryNode` has no group flag; `ERROR_INTENT_REQUIRED` is the fallback that opens the chooser. Search routes require sign-in | Home switches to the real taxonomy with US-111. A `group` field on `CategoryNode` would remove the name check |
 
 **Auto-complete (extension, 2026-11-11).** Added at the user's request; before this the LLD listed suggestions as out of scope (B.2). `GET /api/v1/search/suggestions?query=&limit=` returns `ApiResponse<List<{text, type CATEGORY|LISTING, categoryCode}>>`: up to 3 categories (from `CategoryService.search`, kept only when a word of the category name starts with the typed text), then distinct titles of live listings found with a `match` on `title.prefix` (operator `and`; one-letter words dropped, words cut to 15 characters, the length of the edge n-grams in the mapping), filtered like a search (not expired, no property, not the caller's own, not a disabled category) and re-checked with `ListingEligibilityFilter`. Fewer than 2 characters returns `[]` without calling the index; `limit` default 8, max 10; text limit `SEARCH_QUERY_MAX_LENGTH`; per-user rate limit 4 times `RATE_LIMIT_SEARCH_PER_MIN` (key `rate:suggest:<userId>`, no new setting); same circuit breaker and 503 as search; metric `search.suggest.requests.total{result}`; the text is never logged. No recent-search history or popular-query suggestions (no `search_queries` table). Mobile: a 250 ms debounced list under the search field, failures silent.
@@ -786,7 +787,7 @@ corpus was available. Sonar was not run (no server).
 ## C.2 Scope
 
 **In scope:** `GET /api/v1/listings/{listingId}/public`, `GET /api/v1/sellers/{sellerId}/listings`, `GET /api/v1/sellers/{sellerId}/reviews` (empty until Sprint 8), the mobile details page and gallery, the seller page.
-**Out of scope:** save/bookmark control and mutation (US-073; until then the response's `saved` field is `false`), chat, call and video button behaviour (Sprint 4), add to cart (Sprint 5), reviews content (Sprint 8), view counters (US-067), report listing.
+**Out of scope:** save/bookmark control and mutation (built later in US-073), chat, call and video button behaviour (Sprint 4), add to cart (Sprint 5), reviews content (Sprint 8), view counters (US-067), report listing.
 
 ## C.3 Data Model
 
@@ -825,7 +826,7 @@ GET /api/v1/sellers/{sellerId}/reviews?page=0&size=20
 }
 ```
 
-The app computes "Posted 2 days ago" from `publishedAt` and `serverTime`, so a wrong device clock does not change the text. `saved` is `false` until US-073 implements saved-state reads; US-012 has no save control or mutation. `capabilities` is computed on the server: Real Estate returns `cart` and `buyNow` as `{ "available": false, "reason": "NOT_APPLICABLE" }`; the caller's own listing returns every action as `OWN_LISTING`; flipping an action on in Sprint 4 or 5 is one configuration change (`valuex.features.chat-enabled` and similar), not an app release.
+The app computes "Posted 2 days ago" from `publishedAt` and `serverTime`, so a wrong device clock does not change the text. `saved` is read from `saved_listings` for the caller (US-073); the heart on the page saves and removes through the US-073 endpoints. `capabilities` is computed on the server: Real Estate returns `cart` and `buyNow` as `{ "available": false, "reason": "NOT_APPLICABLE" }`; the caller's own listing returns every action as `OWN_LISTING`; flipping an action on in Sprint 4 or 5 is one configuration change (`valuex.features.chat-enabled` and similar), not an app release.
 
 ## C.5 Backend Design
 
@@ -864,7 +865,7 @@ sequenceDiagram
 
 ## C.7 Mobile Design
 
-- New feature `lib/features/listing_view` (not `listing`, which is the seller flow): `ListingDetailsScreen`, `PhotoGallery` (swipeable `PageView` showing `detailUrl`, the strip of `thumbnailUrl` images, full-screen pinch-to-zoom loading `zoomUrl` on demand, page indicator, placeholder and retry when a URL fails or its fallback link expires, `cached_network_image` style disk cache keyed by URL), `SellerSummaryCard`, `AttributeList`, `ActionBar` (Chat, Call, Video and Add to Cart shown disabled with a short "Coming soon" label while `available` is false; hidden for `NOT_APPLICABLE`), `SellerListingsScreen`. Do not show a save/heart control until US-073.
+- New feature `lib/features/listing_view` (not `listing`, which is the seller flow): `ListingDetailsScreen`, `PhotoGallery` (swipeable `PageView` showing `detailUrl`, the strip of `thumbnailUrl` images, full-screen pinch-to-zoom loading `zoomUrl` on demand, page indicator, placeholder and retry when a URL fails or its fallback link expires, `cached_network_image` style disk cache keyed by URL), `SellerSummaryCard`, `AttributeList`, `ActionBar` (Chat, Call, Video and Add to Cart shown disabled with a short "Coming soon" label while `available` is false; hidden for `NOT_APPLICABLE`), `SellerListingsScreen`. The heart (`SaveHeart`) is added by US-073.
 - Reuse the US-123 `ListingPreview` read-only widgets and the Part L field projection where the layout matches (the US-123 plan already reserves this reuse), instead of a second renderer.
 - Router: `/listing/:id`; deep links from notifications and Saved Items open the same route.
 - States: loading skeleton, `ERROR_LISTING_NOT_AVAILABLE` and `ERROR_SELLER_SUSPENDED` messages with a back action, generic error with Retry.
@@ -888,7 +889,7 @@ All photos of the listing are returned; price is INR; rating is 0 to 5 stars; ag
 
 ## C.10 Testing Strategy
 
-**Unit:** `PublicListingServiceTest` (live and not-live states, suspended seller, hidden fields, capabilities per category and ownership, null rating, seller counts, `saved=false` before US-073); projection test shows no forbidden keys.
+**Unit:** `PublicListingServiceTest` (live and not-live states, suspended seller, hidden fields, capabilities per category and ownership, null rating, seller counts, `saved` from the lookup port: true for a saved listing, false without a caller); projection test shows no forbidden keys.
 **Integration:** details of a live listing; the same id after delete, expiry, sale, hide for review and suspension; another buyer cannot see an unpublished listing; variant URLs are returned when variants exist and the signed fallback otherwise; seller listings and the empty reviews response.
 **Mobile:** gallery swipe, zoom and link failure; disabled actions; unavailable and suspended states; Hindi at 200% text; accessibility guidelines.
 
@@ -961,7 +962,7 @@ Differences from the design above:
 
 ## D.3 Data Model
 
-Migration `V26__saved_listings.sql` (provisional number):
+Migration `V31__saved_listings.sql` (built as `V31`; the provisional `V26` was long taken):
 
 ```sql
 CREATE TABLE saved_listings (
@@ -1048,6 +1049,20 @@ Can save from search results, Home or the listing page. Entries for unavailable 
 **Unit:** `SavedListingServiceTest` (save, idempotent save, limit, not live, remove, list mapping of available and unavailable); listener mapping of each status change to a reason; copy test.
 **Integration:** save then list; limit at `SAVED_LISTING_MAX` under two concurrent requests; sold, expired, removed and deleted listings mark entries and send one notification per buyer (a second event sends none); major edit shows "under review" with no notification; retention job (default 90 days, a changed setting applies on the next run, an invalid value falls back to 90); another user cannot see the list.
 **Mobile:** heart optimistic update and rollback; Saved Items states; unavailable card; Hindi at 200% text; accessibility guidelines.
+
+## D.11 As built (2026-11-14)
+
+What differs from D.3 to D.8, and why:
+
+- **Migration and settings.** `V31__saved_listings.sql` adds `saved_listings` with `chk_saved_listings_reason` (the five stored reasons) and seeds `SAVED_LISTING_MAX` = 200 and `SAVED_LISTING_RETENTION_DAYS` = 90. Both are `DiscoverySetting` registry entries (so the existing settings reads and the cache apply); the allowed ranges are 10 to 500 and 7 to 365 (decided 2026-11-14, the LLD named none for the limit).
+- **List item.** `GET /api/v1/saved-listings` returns a lean item, not the full `ListingCard`: `listingId`, `title`, `price`, `condition` (the code, such as `LIKE_NEW`), `photo` (thumbnail and card URL; none when unavailable), `available`, `unavailableReason`, `savedAt`, with the paging fields and `maxSaved`. `page` and `size` out of range are brought into range (size 1 to 50, default 20) instead of refused. `PUT` answers 200 and `DELETE` 204, both with no body. Reason: the list needs only these fields, and building full cards would load every listing from the index.
+- **Availability at read time.** The page asks `ListingEligibilityFilter` which listings are live. For a listing that is not, the reason is worked out from its row: deleted or deactivated by the seller is `DELETED`, sold is `SOLD`, expired is `EXPIRED`, removed by an admin is `REMOVED`, a published listing of a seller who is not active is `SELLER_SUSPENDED`; every other case (review hold, a stage with a buyer, a disabled category) is the temporary `UNDER_REVIEW`.
+- **Listener.** `SavedListingUnavailableListener` runs after commit and not asynchronously (as `ListingEventNotificationListener` does); every write is made in a transaction of its own through `RequiresNewTransaction`, because the committed transaction is still bound to the thread. A seller whose state moves from `ACTIVE` to any other state marks the entries of the seller's published listings; a move back to `ACTIVE` clears only the entries marked `SELLER_SUSPENDED`. A listing that becomes `PUBLISHED` again clears its marks.
+- **Notification.** One in-app message per buyer, each in its own transaction (so a duplicate or a failure affects only that buyer). The dedupe key is `saved:{listingId}:{reason}:{userId}`, not `saved:{listingId}:{reason}`: the unique index on `notifications.dedupe_key` is global, so a key shared by all buyers would send to the first buyer only. No chunking is needed for that reason. The seller-suspended text is "is no longer available", so the buyer is not told about another user's account status. The app shows the Hindi text from `eventType` and `params` (`listingId`, `reason`, `title`).
+- **`saved` flag.** `SavedListingLookupPort` (in the search module, implemented by the saved-listing module) gives `ListingSearchService` one batch query per page and `PublicListingService` one lookup. Home needed no backend change: its feed is built by `ListingSearchService.browseNear`, so its cards carry the flag. A seller's listings page (`/sellers/{id}/listings`) has no caller and keeps `saved` false.
+- **Rate limit.** Save and remove use `RATE_LIMIT_SAVE_PER_MIN` with a counter of their own (`rate:saved-listing:{userId}`); the list is not limited. A broken limiter does not stop the buyer.
+- **Retention job.** `SavedListingRetentionJob` runs daily (`valuex.saved-listing.retention.cron`, default 03:30) and reads the setting on every run; an invalid stored value falls back to 90 through `PlatformSettingsService.loadFresh`. It needs no Redis marker: deleting is idempotent.
+- **Mobile.** `SaveHeart` (48 dp tap area, semantic label, optimistic toggle, rollback with a message) is a sibling of the card on Home and search (the card hides its children from a screen reader) and sits in the header of the listing page. A `SavedHeartsController` keeps one state per listing, so hearts agree across screens. `SavedItemsScreen` is opened from Profile > Saved Items and by the notification link `/saved-items`; "Add to Cart" is shown disabled for an available item. The Profile hub's Saved Items count badge (`SAVED_ITEMS`) is not built (out of scope, D.2).
 
 ---
 
@@ -1438,7 +1453,7 @@ Differences from the design above:
 
 **Mobile** (`valuex-mobile`, `lib/features/home`): `ApiHomeRepository` replaces `MockHomeRepository` as the default `homeRepository`; the mock stays for tests only (`AppConfig` has no mock-data switch, so there is no Dev fallback). Cards reuse `SearchListing.fromJson(...).toCardListing()`. `Promo` gained a `PromoTarget` (category, search or listing); a promo whose target type the app does not know is left out. `openPromo` (`promo_routes.dart`): a category opens its listings, a search text opens search, a listing target opens `/listing/:id`. `AppAssets.promoArtwork` maps a promo's `imageKey` to bundled artwork (only `home_promo_1` today); an unknown key shows the neutral placeholder. `ApiClient` sends the app language (`LocaleController`) as `Accept-Language` on every request.
 
-- The Home `Listing` already had `startingFrom`, `isBoosted`, `isFeatured` and `image`, so no `priceQualifier`, `badge`, `photo` or `saved` fields were added; the heart waits for US-073.
+- The Home `Listing` already had `startingFrom`, `isBoosted`, `isFeatured` and `image`, so no `priceQualifier`, `badge`, `photo` or `saved` fields were added; US-073 added `saved` to the Home `Listing` and the heart on the Home card.
 - Categories were already read from the real taxonomy by the Home page before this story; nothing changed there.
 - The unread notification count already came from the notifications repository (US-077), so `badges()` returns only the cart count, which is 0 until Sprint 5. No separate `CartBadgeSource` class was added.
 - Listing card taps and a promo for a listing opened "Coming soon" when this story was built, because the buyer listing details screen (US-012 on mobile) was not merged. They now open `/listing/:id`, as the acceptance criteria require (follow-up after US-012).
@@ -1896,7 +1911,7 @@ sequenceDiagram
 All proposals were accepted (D10 to D19), so nothing in this document is awaiting a decision. Points to keep in mind during the build:
 
 - **Ranking review (D11).** After about two weeks of beta traffic, review the share of paid listings in the top 10, click-through by position and the zero-result rate, and adjust the settings of section 1.6. Golden-order tests lock the behaviour (exact match first, paid above unpaid at similar relevance, a weak match never beats a strong one), not the numbers.
-- **Real Estate close action (D10).** Allowed from the seven stages listed in D10, with one whitelist row each (built in US-118); any other stage answers `ERROR_LISTING_NOT_CLOSABLE`. Sprint 4 only has to start entering the inquiry and negotiation states, because their rows already exist. US-073 must treat `SOLD` as unavailable for saved entries and notify savers.
+- **Real Estate close action (D10).** Allowed from the seven stages listed in D10, with one whitelist row each (built in US-118); any other stage answers `ERROR_LISTING_NOT_CLOSABLE`. Sprint 4 only has to start entering the inquiry and negotiation states, because their rows already exist. US-073 (built) treats `SOLD` as unavailable for saved entries and notifies savers.
 - **Settings before the Admin screen.** Until US-116 delivers the Discovery settings screen (Sprint 10), changes are made with a SQL update that respects the allowed ranges in section 1.6; the service validates on read and falls back to the default for any bad value.
 - **Part H is parallel work.** The signed-original fallback keeps US-011, US-012, US-073 and US-111 shippable without it.
 
