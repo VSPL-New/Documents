@@ -99,6 +99,16 @@ python import_user_stories_to_github.py
 
 ### Import Specific Range
 
+###########################################################################
+Latest -
+
+$py = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+& $py -m pip install requests
+& $py import_user_stories_to_github.py --story-range 118-128
+
+
+###########################################################################
+
 Import only US-001 to US-010:
 ```bash
 python import_user_stories_to_github.py --story-range 1-10
