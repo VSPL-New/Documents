@@ -146,12 +146,21 @@ Enable buyers to discover items.
 * Home page served by real endpoints for categories, featured listings near the user and promos, replacing the mock repository (US-111)
 * Listing photos delivered as thumbnail, card, detail and zoom variants (US-128)
 * Buyers can speak a search in English or Hindi; the text lands in the normal search box and no audio is sent to ValueX (US-129)
+* Buyers can save a search and get one in-app daily digest of new matches; alerts can be switched off per search (US-066)
 * Sprint 3 design: [Sprint-3-Discovery-Search-LLD.md](LLD/Sprint-3-Discovery-Search-LLD.md) (final, 2026-11-09); search, saved-item, Home and rate-limit numbers are Admin-managed settings
 
 **US-129 implementation status:** Code and automated validation are complete on story branches; the iOS simulator
 build passed. Android debug build is pending (no local Android SDK); physical-device speech-service validation
 remains pending by user direction. Hindi native-speaker and legal/privacy reviews are required before release. See
 [US-129 testing guide](Manual%20Testing%20Guides/US-129-Testing-Guide.md).
+
+**US-066 implementation status (2026-11-14):** Code and automated validation are complete on story branches
+(`feature/US-066-saved-searches-alerts` in `valuex-backend` and `valuex-mobile`; the plan is
+[US-066-Implementation-Plan.md](US-Implementation-Plans/US-066-Implementation-Plan.md), the as-built notes are in
+[LLD F.11](LLD/Sprint-3-Discovery-Search-LLD.md)). The story stays at 5 points although the estimate was about 8 working
+days (gap G2, accepted). The Windows SonarQube scan, the Android build and the real-iPhone check are pending. Hindi texts
+need native-speaker review before release. See the
+[US-066 testing guide](Manual%20Testing%20Guides/US-066-Testing-Guide.md).
 
 ---
 

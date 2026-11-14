@@ -329,6 +329,15 @@ PATCH  /api/v1/search/saved/{id}
 DELETE /api/v1/search/saved/{id}
 ```
 
+For US-066: `POST` takes `{ name?, criteria }` (`query`, `category`, `transactionIntent`, `facet[]`, `priceMin`, `priceMax`,
+`condition[]`, `city`, `state`; the sort, `nearCity`/`nearState` and `source` are never stored) and answers 201, or 200
+with the existing search when the same criteria were already saved. `ERROR_MAX_SAVED_SEARCHES` is HTTP 409 and
+`ERROR_INVALID_CRITERIA` is 400. `GET` returns each search with `valid` and `invalidMessage` (worked out when read), and
+the category `categoryName`, `categoryLevel` and `realEstate` so the app can rebuild the results page. `PATCH` changes
+`alertsEnabled` and/or `name`; `DELETE` answers 204; another user's id is a 404. Writes share `RATE_LIMIT_SAVE_PER_MIN`.
+The daily digest is an in-app notification `SAVED_SEARCH_MATCHES` with the deep link `/search/saved?id={uuid}` (the Sprint 3
+LLD, F.11).
+
 ## Listing Details, Saved Items and Home
 
 ```http

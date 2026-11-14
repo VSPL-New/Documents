@@ -326,6 +326,13 @@ and uses the existing results flow with its selected category, filters and Real 
 record or upload audio; the operating-system speech service may use its own network service depending on device
 capability and settings. The voice entry point is in Search, not the Home search field.
 
+For US-066 the Search screen shows a "Save search" button and a "Saved searches" link under the search field for signed-in
+users. The button saves the text, category, facets, filters and Real Estate intent on screen (never the sort or the Home
+place) and says "Already saved" or the Admin-set limit when that applies. The Saved Searches screen (also a Profile row)
+lists each search with a readable summary, an alerts switch and delete with a five second undo; a search whose category
+or filters no longer exist shows "Search criteria no longer valid" and can only be deleted. A tap on a card, or on the
+daily alert in Notifications, opens `/search/saved?id=...`, which rebuilds the results page from the saved criteria.
+
 ---
 
 ### Sell
