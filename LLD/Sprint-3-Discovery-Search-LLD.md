@@ -184,7 +184,7 @@ These are technical values, set per environment and reviewed with a deployment. 
 | Saved items and searches | `SAVED_LISTING_MAX` | 200 | 10 to 1000 | Part D |
 | Saved items and searches | `SAVED_LISTING_RETENTION_DAYS` | 90 | 7 to 365 | Part D |
 | Saved items and searches | `SAVED_SEARCH_MAX` | 10 | 1 to 50 | Part F |
-| Saved items and searches | `SAVED_SEARCH_ALERT_TIME` | 09:00 (Asia/Kolkata) | HH:mm | Daily digest time (Part F) |
+| Saved items and searches | `SAVED_SEARCH_ALERT_MINUTE_OF_DAY` | 540 (09:00 Asia/Kolkata) | 0 to 1439 | Daily digest time as whole minutes after midnight (renamed from `SAVED_SEARCH_ALERT_TIME`: the settings engine holds numbers only; an Admin screen can show it as HH:mm) (Part F) |
 | Saved items and searches | `SAVED_SEARCH_ALERT_SAMPLE_TITLES` / `SAVED_SEARCH_ALERT_MIN_HOURS` | 3 / 20 | 0 to 5 / 1 to 24 | Digest content and the repeat guard |
 | Home | `HOME_FEATURED_MAX` / `HOME_PROMO_MAX` | 20 / 5 | 4 to 40 / 1 to 10 | Part G |
 | Home | `CATEGORY_POPULAR_L1_MAX` / `CATEGORY_POPULAR_L2_MAX` | 15 / 10 | 1 to 30 / 1 to 20 | Popular categories (replaces the constants in `CategoryService`; the same limits US-121 validates) |
@@ -1167,7 +1167,7 @@ The business errors of this API answer 400 (the shared handler), so the 409 firs
 
 ## F.3 Data Model
 
-Migration `V28__saved_searches.sql` (provisional number):
+Migration `V29__saved_searches.sql` (V27 was taken by US-111 and V28 by US-118):
 
 ```sql
 CREATE TABLE saved_searches (
@@ -1187,7 +1187,7 @@ CREATE TABLE saved_searches (
 CREATE INDEX idx_saved_searches_alerts ON saved_searches (id) WHERE alerts_enabled AND invalid_reason IS NULL;
 ```
 
-`criteria` holds `query`, `category`, `transactionIntent`, `facet[]`, `priceMin`, `priceMax`, `condition[]`, `city`, `state`. It never holds `nearCity`/`nearState` (a Home ranking hint) or the sort. Facets, conditions and keys are sorted before hashing so the same search always has the same hash. The V28 migration also seeds `SAVED_SEARCH_MAX`, `SAVED_SEARCH_ALERT_TIME`, `SAVED_SEARCH_ALERT_SAMPLE_TITLES` and `SAVED_SEARCH_ALERT_MIN_HOURS`.
+`criteria` holds `query`, `category`, `transactionIntent`, `facet[]`, `priceMin`, `priceMax`, `condition[]`, `city`, `state`. It never holds `nearCity`/`nearState` (a Home ranking hint) or the sort. Facets, conditions and keys are sorted before hashing so the same search always has the same hash. The V28 migration also seeds `SAVED_SEARCH_MAX`, `SAVED_SEARCH_ALERT_MINUTE_OF_DAY` (the design's `SAVED_SEARCH_ALERT_TIME`, renamed: see F.11), `SAVED_SEARCH_ALERT_SAMPLE_TITLES` and `SAVED_SEARCH_ALERT_MIN_HOURS`.
 
 ## F.4 API Contract
 
@@ -1204,7 +1204,7 @@ DELETE /api/v1/search/saved/{id}                                                
 
 - **Save:** `SavedSearchService.create` validates the criteria with the same `SearchRequestValidator` as Part B (`ERROR_INVALID_CRITERIA` wraps any validation failure), computes the hash, returns the existing row on a hash match, else enforces the limit `SAVED_SEARCH_MAX` (default 10) under a per-user advisory lock (`ERROR_MAX_SAVED_SEARCHES`) and inserts.
 - **List:** re-validates each criteria cheaply against the cached category and profile data and fills `valid` and `invalid_reason` (a category disabled by the Admin later flips the card without a job).
-- **Daily alert job (`SavedSearchAlertJob`)**, ticking every 15 minutes: it runs once a day, at the first tick at or after the time in the setting `SAVED_SEARCH_ALERT_TIME` (default 09:00 Asia/Kolkata), guarded by a Redis marker `saved-search-alert:{yyyy-MM-dd}` set with `SET NX` (so two instances or a restart cannot run it twice, and an Admin time change applies to the next tick):
+- **Daily alert job (`SavedSearchAlertJob`)**, ticking every 15 minutes: it runs once a day, at the first tick at or after the time in the setting `SAVED_SEARCH_ALERT_MINUTE_OF_DAY` (default 540 = 09:00 Asia/Kolkata), guarded by a Redis marker `saved-search-alert:{yyyy-MM-dd}` set with `SET NX` (so two instances or a restart cannot run it twice, and an Admin time change applies to the next tick):
   1. `runStart = now()`.
   2. Page through alert-enabled, valid searches of `ACTIVE` users (id order, 100 per batch, `FOR UPDATE SKIP LOCKED` on the page so two instances never share a batch).
   3. For each batch build one `_msearch`: the search criteria as in Part B (own listings excluded, disabled categories excluded) plus `publishedAt > last_checked_at AND publishedAt <= runStart`, `size = SAVED_SEARCH_ALERT_SAMPLE_TITLES`, `track_total_hits`.
@@ -1261,6 +1261,32 @@ Alerts go out at most once per day per search (digest). A user can delete a save
 **Unit:** criteria canonicalisation and hash (order independent); limit and duplicate handling; validity re-check; job batching, watermark advance only on success, the repeat guard, skip of inactive users and invalid searches; a changed alert time applies at the next tick and the Redis marker stops a second run.
 **Integration (Testcontainers):** create, list, toggle, delete; limit under two concurrent creates; listings published before and after the watermark; digest sent once per day; a disabled category flips the search to invalid; another user cannot read or change a search; Real Estate saved search keeps its intent.
 **Mobile:** save button states; list, toggle and delete with undo; invalid state; deep link; Hindi at 200% text; accessibility guidelines.
+
+## F.11 As built (US-066 implementation, 2026-11-14)
+
+**Backend** (`valuex-backend`): migration `V29__saved_searches.sql` (table `saved_searches` with `UNIQUE (user_id, criteria_hash)`, a check on `invalid_reason`, an index on `user_id`, the partial alerts index, and the four settings seeded without overwriting an Admin value). `DiscoverySetting` gained `SAVED_SEARCH_MAX`, `SAVED_SEARCH_ALERT_MINUTE_OF_DAY`, `SAVED_SEARCH_ALERT_SAMPLE_TITLES` and `SAVED_SEARCH_ALERT_MIN_HOURS`. New `ConflictException` (HTTP 409) with a `GlobalExceptionHandler` mapping. In `com.valuex.search`: `SavedSearchController` (`/api/v1/search/saved`, four endpoints), `SavedSearchService`, `SavedSearchCriteriaMapper` (canonical form and SHA-256), `SavedSearchCriteriaChecker`, `SavedSearchAlertJob`, `SavedSearchNotificationCopy`, the entity `SavedSearch`, `SavedSearchCriteria`, `InvalidReason`, `SavedSearchRepository`, and the port `SavedSearchOwnerPort` (implemented by `auth/infrastructure/search/SavedSearchOwnerAdapter`, which reads `users.status = ACTIVE`). `ListingSearchQuery` gained `publishedAfter` (exclusive) and `publishedAtOrBefore` (inclusive) and `forDigest(...)`; `ListingSearchPort.searchBatch(...)` is implemented with one `_msearch` through the existing generic client (spike result: it works cleanly against OpenSearch 2.17.1, so the one-search-per-saved-search fallback was not needed). Deployment values: `valuex.search.saved-alerts.cron` (every 15 minutes) and `valuex.search.saved-alerts.batch-size` (100).
+
+**Mobile** (`valuex-mobile`, `lib/features/saved_searches`): `SavedSearch`, `SavedSearchesRepository`, `SavedSearchesController` (optimistic alerts switch with rollback; delete with a 5 second undo window whose request is sent from the controller, and flushed if the page is left), `SaveSearchController`, `SavedSearchesScreen`, `SavedSearchResultsScreen` (the `/search/saved?id=` link), `SaveSearchButton` (on the Search screen, signed-in users, with a "Saved searches" link), a Profile row, `RouteNames.savedSearches` / `savedSearch(id)`, `ApiClient.postWithStatus` (to tell 201 from 200), the alert text in English and Hindi and the deep link in `notification_text.dart` and `notification_deep_links.dart`. Hindi strings are drafts for native-speaker review.
+
+Differences from the design above:
+
+| Design | As built | Why |
+|---|---|---|
+| Setting `SAVED_SEARCH_ALERT_TIME` (HH:mm) | `SAVED_SEARCH_ALERT_MINUTE_OF_DAY`, whole minutes after midnight (0 to 1439, default 540) | The settings engine holds numbers only (decision G3); an Admin screen (US-121) can show it as HH:mm |
+| `FOR UPDATE SKIP LOCKED` on each page | Keyset paging in id order and a compare-and-set update of `last_checked_at` (`... WHERE last_checked_at = :expected`); no transaction stays open across an OpenSearch or notification call | Decision G8. A second instance can at worst send the same digest, which the dedupe key `saved-search:{id}:{date}` and the repeat guard stop |
+| Partial index `WHERE alerts_enabled AND invalid_reason IS NULL` | `WHERE alerts_enabled`, plus an index on `user_id` | The job re-validates every alert-enabled search each run so an invalid search can recover (decision G6); every foreign key is indexed (standard 2.7) |
+| `ERROR_MAX_SAVED_SEARCHES` is 409 | A new `ConflictException` mapped to 409 | `BusinessException` always answers 400 (decision G5) |
+| One `_msearch` per batch | Same: `ListingSearchPort.searchBatch`, one `_msearch` per batch of at most 100; a search the index could not answer is skipped and keeps its watermark | Spike confirmed it works through the generic client (NDJSON body, content type `application/x-ndjson`) |
+| Tap on a card or an alert opens the results; no endpoint for one search | Deep link `/search/saved?id={uuid}`, resolved from the list response; the list response also carries `categoryName`, `categoryLevel` and `realEstate` | Decision G7: the stored criteria have no UI fields, and a search needs them to be rebuilt without a new endpoint |
+| Writes limited by the search limit | `RATE_LIMIT_SAVE_PER_MIN` on `POST` and `PATCH` (Redis failure does not block) | Decision G11 |
+| Redis down | The tick is skipped with a warning and the next tick retries; if the search index is unavailable the run stops and the Redis marker is released so the next tick retries | Decision G12, and the same reasoning for an index outage: the watermark only moves after a successful batch, so a retry loses nothing |
+| Empty criteria | Refused with `ERROR_INVALID_CRITERIA` (the app disables the button too) | A saved search with nothing set would match every listing |
+| Re-enabling alerts | Switching alerts from off to on sets `last_checked_at` to now | Listings published while alerts were off must not be announced as "new" later |
+| Inactive-owner and invalid searches | Skipped without moving their watermark | The first digest after the owner returns or the category is enabled again covers the gap; "N new items match" |
+| Digest count | The index total minus any sample that the database says is no longer live; nothing is sent when that leaves zero | The sample ids are re-checked through `ListingEligibilityFilter` (G16: the count can still include a listing that expired a moment ago) |
+| Alert tab in the app | `SAVED_SEARCH_MATCHES` shows under "Others" | The event type has no `LISTING_` prefix; no tab change was designed |
+
+Not done here: Android build, physical-device checks and the Windows SonarQube scan (see the testing guide).
 
 ---
 
