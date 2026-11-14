@@ -114,7 +114,7 @@ Recorded after implementation; the LLD Part C.11 has the same table.
 - `GET /sellers/{id}/reviews` takes no `page`/`size` (always empty until Sprint 8).
 - The seller profile lists all of the seller's live listings, including the one being viewed; `otherListingsCount` counts only the others.
 - Seller profile title is generic; the seller name is not passed in the navigation payload.
-- Home cards still show "Coming soon"; only Search result cards and seller-profile cards open the listing page.
+- Home cards and listing promos open the listing page too (added in a follow-up: US-111 deferred this to US-012 and this plan missed it).
 - Backend scope check: the changes to `ListingCondition` (label), `ListingSearchQuery`/`SearchRequestValidator`/`ListingSearchService`/`OpenSearchQueryBuilder` (seller filter) and `ListingPricing` support the public response and the seller-listings step of this plan.
 
 **Status:** Approved

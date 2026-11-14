@@ -5060,7 +5060,7 @@
 **Backend Notes:**
 - Endpoints (built 2026-11-13): `GET /api/v1/home/featured?city&state` (the home feed: featured listings ranked by plan, then the buyer's city, then state, then recency; no coordinates) and `GET /api/v1/home/promos` (active promos, text chosen by `Accept-Language`). The category lists use the existing `GET /api/v1/categories/children`.
 - Promo content is managed by the product team and loaded by a SQL seed (table `home_promos`) until an admin story exists; with no active promo the promo section is not shown
-- Scheduling: delivered in Sprint 3 (Discovery & Search) after US-011; the app now reads these endpoints instead of the mock repository. Tapping a listing card or a promo for a listing says "Coming soon" until the buyer listing details screen (US-012 on mobile) is merged
+- Scheduling: delivered in Sprint 3 (Discovery & Search) after US-011; the app now reads these endpoints instead of the mock repository. Tapping a listing card or a promo for a listing opens the listing details (US-012); it said "Coming soon" only until that screen was merged
 
 ---
 
