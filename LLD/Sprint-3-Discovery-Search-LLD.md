@@ -894,6 +894,24 @@ All photos of the listing are returned; price is INR; rating is 0 to 5 stars; ag
 
 ## C.11 As built (2026-11-12)
 
+### Listing details redesign (2026-11-14)
+
+- The mobile category breadcrumb (L1/L2/L3) is hidden; category data remains in the API.
+- Description, Item Details and Seller use rounded white cards with brand borders, subtle
+  shadows and uppercase section labels. Seller shows an initial avatar, actual rating or
+  "No ratings yet", and View Profile. Joined date and other-listing count no longer appear
+  in the compact card; no completed-sales count is invented.
+- The signed-photo refresh action is now an accessible icon over the main photo, not a
+  separate text prompt. Existing gallery, error/retry and seller navigation behavior remains.
+- User-approved additive area support: migration `V30__listing_area.sql` adds nullable
+  `listings.seller_area VARCHAR(255)`. Save/edit accepts `locationArea` (max 255 characters,
+  cleaned with `PlainText`); the owner response returns `locationArea` and the public seller
+  block returns `area`. Existing city contracts and search ranking are unchanged.
+- Mobile saves Home's area, city and state, never pincode or coordinates. Unknown Home
+  location preserves the existing area/city; selecting a location with no area sends an empty
+  area to clear it. Older clients omitting area preserve it only when the city is unchanged.
+  Buyer display is Area, City with a City-only fallback for older listings.
+
 **Backend** (`valuex-backend`): `PublicListingController`, `PublicListingService`, `PublicListingFieldProjector`, `PublicListingResponse`, `PublicListingAttribute`, `SellerReviewsResponse` and `ForbiddenException` (403 `ERROR_SELLER_SUSPENDED`, handled in `GlobalExceptionHandler`). Seller listings reuse the Part B search through `ListingSearchService.sellerListings`, `SearchRequestValidator.validateSellerListings` and a new `sellerId` term filter in `OpenSearchQueryBuilder` (`ListingSearchQuery` gained a `sellerId` component with a convenience constructor that leaves it null). `ListingCondition` gained a display `label()`. All three endpoints send `Cache-Control: no-store`.
 
 Differences from the design above:
