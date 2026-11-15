@@ -998,7 +998,7 @@ Preferred delivery negotiation is AVIF, then WebP, then JPEG. Public derivatives
 | Buyer Proof Images  | 2 years                           |
 | Dispute Evidence    | 7 years                           |
 | Photo Search Inputs | short configurable retention with automatic cleanup |
-| Video Recordings    | 30 days after transaction closure |
+| Call Transcripts (no audio or video is recorded) | configurable, proposed 180 days after the conversation closes (Sprint 4 LLD, D5) |
 | Chat Messages       | 6 months                          |
 | Call Logs           | 6 months                          |
 
@@ -1145,7 +1145,7 @@ ab***@gmail.com
 | Disputes      | 7 Years   |
 | Orders        | 7 Years   |
 | Messages      | 6 Months  |
-| Video Calls   | 30 Days   |
+| Call Transcripts | 180 Days (proposed; nothing is recorded) |
 | Notifications | 90 Days   |
 
 ---

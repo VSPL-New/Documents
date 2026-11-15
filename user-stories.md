@@ -770,12 +770,15 @@
 **Error Scenarios:**
 - `ERROR_MESSAGE_TOO_LONG`: "Message exceeds 2000 characters"
 - `ERROR_SELLER_UNAVAILABLE`: "Seller is currently unavailable"
-- `WARNING_CONTENT_FLAGGED`: "Message contains inappropriate content"
+- `WARNING_CONTENT_FLAGGED`: "We detected restricted terms in your message and blocked it. If you believe we've made a wrong call, please click 'Deliver message', else remove restricted terms and resubmit."
+
+> **Update (2026-11-15, Sprint 4 LLD, decision D13):** A message with restricted terms is not delivered. The sender sees the `WARNING_CONTENT_FLAGGED` alert with two choices: edit and resubmit, or **Deliver message**. Deliver message opens an agreement dialog: "I am confident that I'm not violating JustQlic policies. If any violation found, I understand my account may be blocked permanently." Only after the sender agrees is the message delivered; it is flagged and reported to Trust & Safety at once, and the number of overrides per day is limited. See `Documents/LLD/Sprint-4-Communication-Negotiation-LLD.md` Part E.
 
 ---
 
-### US-014: Masked Voice Call
+### US-014: In-App Voice Call (on hold; was "Masked Voice Call")
 > **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
+> **Update (2026-11-15, Sprint 4 LLD, decisions D4 and D5):** **On hold.** Calls are app-to-app only: no VoIP to phone numbers, no phone network, no SIP or PSTN, no masked numbers, no Exotel or Twilio, and no phone number is used at all. The call media provider is not chosen yet, so this story waits for that decision. A call is never recorded; a text transcript is saved after both people consent (US-015, Sprint 4 LLD Part G). The design is ready and provider-neutral: `Documents/LLD/Sprint-4-Communication-Negotiation-LLD.md` Part F.
 **As a** buyer  
 **I want to** call the seller without revealing my number  
 **So that** I can discuss details while maintaining privacy
@@ -783,8 +786,8 @@
 **Acceptance Criteria:**
 - Given I am viewing a listing or in chat
 - When I tap "Call"
-- Then system initiates masked voice call
-- And both parties' numbers remain hidden
+- Then system initiates an in-app voice call (app to app, over the internet)
+- And no phone number of either party is used or shown
 - When call connects
 - Then voice quality is clear
 - And call duration is tracked
@@ -799,10 +802,10 @@
 - Call service unavailable
 
 **Validation Rules:**
-- Both parties must consent to call recording (if applicable)
+- The call is not recorded; both parties must consent to a saved text transcript before the call starts
 - Call logs retained for 6 months
 - Max call duration: 30 minutes per session
-- Caller ID shows platform number, not actual user number
+- No phone number is ever shown; the call is between the two app accounts
 
 **Error Scenarios:**
 - `ERROR_MICROPHONE_PERMISSION`: "Microphone access required for calls"
@@ -810,15 +813,16 @@
 - `ERROR_NO_ANSWER`: "Seller didn't answer. Try again later"
 
 **Flutter Implementation Notes:**
-- Requires VoIP SDK integration (Agora / WebRTC via flutter_webrtc)
+- In-app call SDK (provider not chosen yet; app to app only, no telephony) behind a provider-neutral interface
 - `permission_handler` for microphone permission request
 - In-call UI overlay with mute, speaker, end-call controls
 - Call state managed via Riverpod CallNotifier
 
 ---
 
-### US-015: Video Call with Recording
+### US-015: In-App Video Call with Transcript (on hold; was "Video Call with Recording")
 > **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
+> **Update (2026-11-15, Sprint 4 LLD, decisions D4, D5 and D23):** **On hold** until the call provider is chosen. Calls are app-to-app only. **No voice or video is recorded.** Instead a text transcript is saved after both people consent (the notice reads "This call is not recorded. A text transcript is saved for safety"), kept for a configurable period after the conversation closes (default 180 days, editable by an Admin in the settings screen) and readable only by authorised Admins. Transcripts are made on each person's own phone (on-device speech-to-text; only text is uploaded, no audio leaves the phone), as decided on 2026-11-15 (Sprint 4 LLD G.11); the text is device-reported, so it is supporting evidence. The consent wording is pending legal review. Wherever this story says "recording", read "transcript"; the criteria below show the new wording.
 **As a** buyer  
 **I want to** video call the seller to see the item  
 **So that** I can verify condition before purchasing
@@ -826,39 +830,41 @@
 **Acceptance Criteria:**
 - Given I am viewing a listing or in chat
 - When I tap "Video Call"
-- Then I see consent notice: "This call will be recorded for safety"
+- Then I see consent notice: "This call is not recorded. A text transcript is saved for safety"
 - When I accept
 - Then system prompts seller to join
-- When seller accepts
+- When seller accepts (and agrees to the same notice)
 - Then video call connects
-- And recording starts
+- And the transcript starts
 - When call ends
-- Then video is stored securely
-- And recording is deleted after 1 month of transaction closure
+- Then the transcript is stored securely
+- And the transcript is deleted after the retention period following transaction closure
 
 **Edge Cases:**
 - User denies camera/microphone permission
 - Seller rejects video call
 - Poor network causes video lag
-- Recording fails but call proceeds
-- User wants to download recording
+- Transcript fails but call proceeds
+- User wants a copy of the transcript
 
 **Validation Rules:**
-- Both parties must consent before recording
+- Both parties must consent before the transcript starts
 - Consent captured at call start
-- Video stored encrypted
-- Auto-delete 30 days after transaction closure
+- Transcript stored encrypted at rest
+- Auto-delete after the transcript retention period (proposed 180 days) following transaction closure
 - User can report inappropriate behavior during call
 - Max video call duration: 30 minutes
+- No audio or video is stored in any form
 
 **Error Scenarios:**
 - `ERROR_CAMERA_PERMISSION`: "Camera and microphone access required"
 - `ERROR_SELLER_DECLINED`: "Seller declined video call"
-- `ERROR_RECORDING_FAILED`: "Recording unavailable but call can proceed"
+- `ERROR_TRANSCRIPT_FAILED`: "Transcript unavailable but call can proceed"
 - `WARNING_LOW_BANDWIDTH`: "Poor connection. Video quality may be affected"
 
 **Flutter Implementation Notes:**
-- Same VoIP SDK as US-014 (Agora preferred for recording support)
+- Same in-app call SDK as US-014 (provider not chosen yet; no server-side audio access is needed)
+- On-device speech recognition on each phone for the user's own speech (on-device mode only, no cloud fallback); upload text segments to the server
 - Consent dialog mandatory before initiating; cannot skip
 - Camera preview + remote video in PiP layout
 - Network quality indicator widget during call
@@ -866,6 +872,7 @@
 ---
 
 ### US-016: Communication History Storage
+> **Update (2026-11-15, Sprint 4 LLD, decisions D4 and D5):** Nothing is recorded. Chat and chat-image storage, retention, legal hold and Admin evidence access are active. The call-log and call-transcript parts are **on hold** with US-014 and US-015. Call transcripts replace video recordings; they are kept for a configurable period after the conversation closes (proposed 180 days) and are read through the audited Admin endpoint.
 **As a** platform  
 **I want to** store all communication history  
 **So that** disputes can be resolved with evidence
@@ -878,7 +885,7 @@
 - When a dispute is raised
 - Then admins can access relevant communication logs
 - When transaction closes
-- Then video recordings are auto-deleted after 30 days
+- Then call transcripts are auto-deleted after the transcript retention period (proposed 180 days)
 - And chat/call logs retained for 6 months
 
 **Edge Cases:**
@@ -890,12 +897,12 @@
 **Validation Rules:**
 - Chat messages: 6 months retention
 - Call logs: 6 months retention
-- Video recordings: Auto-delete 30 days post-transaction
+- Call transcripts: auto-delete after the retention period following the conversation closing (no audio or video is recorded)
 - All communication encrypted at rest
 - Access logs maintained for audit
 
 **Error Scenarios:**
-- `ERROR_STORAGE_FULL`: "Unable to store recording"
+- `ERROR_STORAGE_FULL`: "Unable to store communication data"
 - `ERROR_RETRIEVAL_FAILED`: "Unable to load conversation history"
 
 ---
@@ -2972,10 +2979,12 @@
 - When I tap "Chat"
 - Then chat window opens with listing context pre-loaded
 - When I tap "Call"
-- Then masked voice call initiates
+- Then an in-app voice call initiates (app to app, no phone number used)
 - When I tap "Video Call"
-- Then video call request is sent to seller
+- Then an in-app video call request is sent to seller
 - And I see "Waiting for seller to accept" message
+
+> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Chat and Make an Offer are active. The **Call** and **Video Call** options stay shown as "Coming soon" (disabled) until a call provider is chosen and `valuex.calls.enabled` is turned on; they never use the phone network.
 
 **Edge Cases:**
 - Seller is offline/unavailable
@@ -6046,7 +6055,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Premium plan pricing: Basic (Free), Smart (₹49/mo), Vision (₹149/mo) - discounted rates
 - Listing plan pricing: Basic (₹49), Boosted (₹149), Priority (₹249) - discounted rates
 - Third-party service integrations (Aadhaar, payment gateway, logistics) are provider-agnostic
-- Auto-release timeouts: 7 days for payment, 30 days for video deletion, 48 hours for negotiations
+- Auto-release timeouts: 7 days for payment, transcript retention period for call transcripts, 48 hours for negotiations
 - All monetary values aligned with PRD v1.3
 - State machine transitions require careful implementation to maintain data consistency
 - Lifecycle states should be implemented with audit logging for compliance

@@ -210,8 +210,8 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Communication
 - Chat (stored)
-- Masked voice calls
-- Video calls (stored)
+- In-app voice calls (app to app; no phone network; on hold until a call provider is chosen)
+- In-app video calls (app to app; on hold; nothing is recorded, a consented text transcript is saved)
 
 ### Transactions
 - Price negotiation system
@@ -280,9 +280,9 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Communication
 - **FR-7:** Platform must support chat between buyer and seller
-- **FR-8:** Platform must provide masked voice calling
-- **FR-9:** Platform must support video calling
-- **FR-10:** Chat and video history must be stored
+- **FR-8:** Platform must provide in-app voice calling between buyer and seller (app to app only; no phone network, no phone numbers; on hold until a call provider is chosen; updated 2026-11-15)
+- **FR-9:** Platform must support in-app video calling (app to app; on hold; calls are not recorded; updated 2026-11-15)
+- **FR-10:** Chat history and call transcripts must be stored; no audio or video is recorded (updated 2026-11-15)
 
 ### Negotiation & Orders
 - **FR-11:** Buyers must negotiate price via system
@@ -473,8 +473,8 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 - **Shipment**
 - **ReturnRequest**
 - **ChatMessage**
-- **CallLog**
-- **VideoSession**
+- **CallSession** (replaces CallLog and VideoSession)
+- **CallTranscriptSegment**
 - **Rating**
 - **FraudFlag**
 - **ImageEmbedding**
