@@ -3122,6 +3122,7 @@
 
 ### US-073: Save and Bookmark Listings
 > **Update (2026-11-09, Sprint 3 LLD):** The limit (default 200) and the retention period (default 90 days) are Admin-managed settings. Retention counts from the day a saved listing became unavailable (sold, expired, removed, deleted or seller suspended); entries of listings that are still available are never removed. A listing that is only hidden for review is shown as temporarily unavailable, with no notification. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part D.
+> **Implementation (2026-11-14, US-073):** The limit is an Admin setting from 10 to 500 (default 200) and the retention period from 7 to 365 days (default 90). A listing sold (including a property the owner marked Sold, Rented or Leased in US-118), expired, removed, deleted, deactivated or whose seller is no longer active is marked "No longer available" and the buyer gets one in-app notification; a listing hidden for review shows "Under review" with no notification. The heart is on search results, Home and the listing page; Saved Items is opened from Profile. See Part D.11 of the Sprint 3 LLD and `Documents/Manual Testing Guides/US-073-Testing-Guide.md`. Not built: the Saved Items count badge on the Profile hub, Add to cart from Saved Items (Sprint 5) and price-drop alerts.
 **As a** buyer  
 **I want to** save listings I'm interested in  
 **So that** I can review them later

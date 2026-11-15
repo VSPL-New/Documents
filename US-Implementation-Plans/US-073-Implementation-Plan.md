@@ -66,10 +66,11 @@ LLD Part D: D.3 data model, D.4 API, D.5 backend, D.6 sequence, D.7 mobile, D.8 
 - [ ] `SavedListingNotificationCopy` (English and Hindi, Hindi marked for native review).
 - [ ] `SavedListingRetentionJob` (daily): delete rows with `unavailable_at` older than the setting; invalid value falls back to 90 with a warning.
 - [ ] Set `saved` on `ListingCard` (batch) and `PublicListingResponse` (single) from `saved_listings`, for the caller only (anonymous callers get `false`).
+- [ ] Add `saved` to the Home feed response (featured listings) with the same batch lookup (decided G3).
 
 ### Mobile (`valuex-mobile`)
 - [ ] `api_constants.dart`, `saved_listings_repository.dart`, domain model and Riverpod controller.
-- [ ] Shared `SaveHeart` widget: optimistic toggle, rollback and snackbar on failure, 48 dp target, semantic label; use it on search cards, Home cards and the details action bar.
+- [ ] Shared `SaveHeart` widget: optimistic toggle, rollback and snackbar on failure, 48 dp target, semantic label; use it on search cards, Home cards and the details action bar. Add a `saved` field to the Home `Listing` model and parse it from the feed.
 - [ ] `SavedItemsScreen` and route: paged list, unavailable cards greyed with "No longer available" and Remove only, "Under review" label, empty, error with Retry, pull to refresh, disabled "Add to cart".
 - [ ] Wire the existing Profile "Saved Items" entry; add the `notification_deep_links.dart` entry.
 - [ ] English and Hindi strings (`app_en.arb`, `app_hi.arb`, regenerate l10n).
@@ -105,13 +106,33 @@ Target above 90% line coverage on new and changed code.
 
 | ID | Gap | Proposal |
 |---|---|---|
-| G1 | The LLD's migration number (V26) is stale; `main` is at V30. | Use the next free number at branch time and update the LLD. |
-| G2 | The LLD gives no allowed range for `SAVED_LISTING_MAX`. | 10 to 500, default 200. Needs your confirmation. |
-| G3 | LLD D.7 puts the heart on Home cards, but the Home feed model has no `saved` field. | Add `saved` to the Home feed response, or start with search and details only. Needs a decision. |
-| G4 | The LLD does not say which package owns the code. | A new `savedlisting` module package, like `search` for saved searches. |
-| G5 | The LLD names no rate limit for save and remove, but `RATE_LIMIT_SAVE_PER_MIN` exists. | Reuse it, with a separate counter from saved searches. |
+| G1 | The LLD's migration number (V26) is stale; `main` is at V30. | **Decided (2026-11-14):** use the next free number at branch time and update the LLD. |
+| G2 | The LLD gives no allowed range for `SAVED_LISTING_MAX`. | **Decided:** 10 to 500, default 200. |
+| G3 | LLD D.7 puts the heart on Home cards, but the Home feed model has no `saved` field. | **Decided:** heart on Home cards, search results and details; add `saved` to the Home feed response and mobile model. |
+| G4 | The LLD does not say which package owns the code. | A new `savedlisting` module package, like `search` for saved searches (not raised with you; tell me if you prefer another). |
+| G5 | The LLD names no rate limit for save and remove, but `RATE_LIMIT_SAVE_PER_MIN` exists. | **Decided:** reuse it, with a separate counter from saved searches. |
 | G6 | The story says "purchase saved items" but cart is Sprint 5. | Disabled "Add to cart" until Sprint 5, as in LLD D.7. |
 | G7 | A reinstated seller or a republished listing needs `unavailable_at` cleared, and the only trigger is the same events. | The listener clears it, as D.5 step 4 says; the integration test covers it. |
 | G8 | The Hindi notification texts need native-speaker review before release. | Mark in code and in the testing guide. |
 
-**Status: Draft**
+**Status: Approved** (user, 2026-11-14)
+
+---
+
+## 8. As built: deviations (2026-11-14)
+
+The full account is in LLD Part D.11. Where the built story differs from this plan:
+
+| # | Plan | As built | Why |
+|---|---|---|---|
+| D1 | The migration number is chosen at branch time (G1). | `V31__saved_listings.sql` (V28 is US-118, V29 US-066, V30 listing area). | Next free number. |
+| D2 | List item is "the card plus `available`, `unavailableReason`, `savedAt`" (LLD D.4). | A lean item: `listingId`, `title`, `price`, `condition` (code), `photo`, `available`, `unavailableReason`, `savedAt`. | The page needs only these; full cards would load every listing from the index. |
+| D3 | "Add `saved` to the Home feed response" (G3). | No backend change: the Home feed already returns search cards, so the flag arrives with the search-card change. The mobile Home `Listing` gained `saved`. | Home is built from `ListingSearchService.browseNear`. |
+| D4 | Dedupe key `saved:{listingId}:{reason}` (LLD D.5). | `saved:{listingId}:{reason}:{userId}`. | The unique index on `notifications.dedupe_key` is global; a shared key would notify only the first buyer. |
+| D5 | The listener is `AFTER_COMMIT` and asynchronous; notifications go in chunks of 200. | `AFTER_COMMIT`, synchronous, every write in its own transaction (`RequiresNewTransaction`); one message per transaction. | The existing notification listener works this way; the committed transaction is still bound to the thread, so a plain transactional call would never commit. A message that fails or repeats affects only that buyer. |
+| D6 | Seller-suspended message text not specified. | "... is no longer available." | The buyer is not told another user's account status. |
+| D7 | Reasons are the five stored ones plus `UNDER_REVIEW` for the review hold. | `UNDER_REVIEW` is also reported for any other non-live, non-permanent state (a stage with a buyer in Sprint 4, a disabled category). | These are temporary, and no other reason fits. |
+| D8 | The seller state event marks entries for a "suspended" seller. | Any move of a seller from `ACTIVE` to another state marks the seller's published listings; a move back to `ACTIVE` clears only the `SELLER_SUSPENDED` marks. | The listing is live only while the seller is `ACTIVE` (the live check), so the entries follow the same rule. |
+| D9 | Out of scope: the Profile hub badge. | Unchanged: the Profile "Saved Items" row now opens the page, but its count badge (`SAVED_ITEMS`) is not built. | As planned. |
+
+**Hand-offs closed (step 7):** the `saved` flag (US-011, US-012, US-111), the heart (US-012, US-111), `SOLD` as unavailable and savers' notification (US-118). **Still open:** the Profile count badge; Hindi native-speaker review of the new texts; Add to Cart from Saved Items (Sprint 5); price-drop alerts (a future enhancement in the story).

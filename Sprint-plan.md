@@ -162,6 +162,13 @@ days (gap G2, accepted). The Windows SonarQube scan, the Android build and the r
 need native-speaker review before release. See the
 [US-066 testing guide](Manual%20Testing%20Guides/US-066-Testing-Guide.md).
 
+**US-073 implementation status (2026-11-14):** Code and automated validation are complete on story branches
+(`feature/US-073-save-bookmark-listings` in `valuex-backend` and `valuex-mobile`; the plan is
+[US-073-Implementation-Plan.md](US-Implementation-Plans/US-073-Implementation-Plan.md), the as-built notes are in
+[LLD D.11](LLD/Sprint-3-Discovery-Search-LLD.md)). The Saved Items count badge on the Profile hub is not built. Hindi
+texts need native-speaker review before release. See the
+[US-073 testing guide](Manual%20Testing%20Guides/US-073-Testing-Guide.md).
+
 ---
 
 # Sprint 4 - Communication & Negotiation
