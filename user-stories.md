@@ -770,12 +770,15 @@
 **Error Scenarios:**
 - `ERROR_MESSAGE_TOO_LONG`: "Message exceeds 2000 characters"
 - `ERROR_SELLER_UNAVAILABLE`: "Seller is currently unavailable"
-- `WARNING_CONTENT_FLAGGED`: "Message contains inappropriate content"
+- `WARNING_CONTENT_FLAGGED`: "We detected restricted terms in your message and blocked it. If you believe we've made a wrong call, please click 'Deliver message', else remove restricted terms and resubmit."
+
+> **Update (2026-11-15, Sprint 4 LLD, decision D13):** A message with restricted terms is not delivered. The sender sees the `WARNING_CONTENT_FLAGGED` alert with two choices: edit and resubmit, or **Deliver message**. Deliver message opens an agreement dialog: "I am confident that I'm not violating JustQlic policies. If any violation found, I understand my account may be blocked permanently." Only after the sender agrees is the message delivered; it is flagged and reported to Trust & Safety at once, and the number of overrides per day is limited. See `Documents/LLD/Sprint-4-Communication-Negotiation-LLD.md` Part E.
 
 ---
 
-### US-014: Masked Voice Call
+### US-014: In-App Voice Call (on hold; was "Masked Voice Call")
 > **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
+> **Update (2026-11-15, Sprint 4 LLD, decisions D4 and D5):** **On hold.** Calls are app-to-app only: no VoIP to phone numbers, no phone network, no SIP or PSTN, no masked numbers, no Exotel or Twilio, and no phone number is used at all. The call media provider is not chosen yet, so this story waits for that decision. A call is never recorded; a text transcript is saved after both people consent (US-015, Sprint 4 LLD Part G). The design is ready and provider-neutral: `Documents/LLD/Sprint-4-Communication-Negotiation-LLD.md` Part F.
 **As a** buyer  
 **I want to** call the seller without revealing my number  
 **So that** I can discuss details while maintaining privacy
@@ -783,8 +786,8 @@
 **Acceptance Criteria:**
 - Given I am viewing a listing or in chat
 - When I tap "Call"
-- Then system initiates masked voice call
-- And both parties' numbers remain hidden
+- Then system initiates an in-app voice call (app to app, over the internet)
+- And no phone number of either party is used or shown
 - When call connects
 - Then voice quality is clear
 - And call duration is tracked
@@ -799,10 +802,10 @@
 - Call service unavailable
 
 **Validation Rules:**
-- Both parties must consent to call recording (if applicable)
+- The call is not recorded; both parties must consent to a saved text transcript before the call starts
 - Call logs retained for 6 months
 - Max call duration: 30 minutes per session
-- Caller ID shows platform number, not actual user number
+- No phone number is ever shown; the call is between the two app accounts
 
 **Error Scenarios:**
 - `ERROR_MICROPHONE_PERMISSION`: "Microphone access required for calls"
@@ -810,15 +813,16 @@
 - `ERROR_NO_ANSWER`: "Seller didn't answer. Try again later"
 
 **Flutter Implementation Notes:**
-- Requires VoIP SDK integration (Agora / WebRTC via flutter_webrtc)
+- In-app call SDK (provider not chosen yet; app to app only, no telephony) behind a provider-neutral interface
 - `permission_handler` for microphone permission request
 - In-call UI overlay with mute, speaker, end-call controls
 - Call state managed via Riverpod CallNotifier
 
 ---
 
-### US-015: Video Call with Recording
+### US-015: In-App Video Call with Transcript (on hold; was "Video Call with Recording")
 > **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
+> **Update (2026-11-15, Sprint 4 LLD, decisions D4, D5 and D23):** **On hold** until the call provider is chosen. Calls are app-to-app only. **No voice or video is recorded.** Instead a text transcript is saved after both people consent (the notice reads "This call is not recorded. A text transcript is saved for safety"), kept for a configurable period after the conversation closes (default 180 days, editable by an Admin in the settings screen) and readable only by authorised Admins. Transcripts are made on each person's own phone (on-device speech-to-text; only text is uploaded, no audio leaves the phone), as decided on 2026-11-15 (Sprint 4 LLD G.11); the text is device-reported, so it is supporting evidence. The consent wording is pending legal review. Wherever this story says "recording", read "transcript"; the criteria below show the new wording.
 **As a** buyer  
 **I want to** video call the seller to see the item  
 **So that** I can verify condition before purchasing
@@ -826,39 +830,41 @@
 **Acceptance Criteria:**
 - Given I am viewing a listing or in chat
 - When I tap "Video Call"
-- Then I see consent notice: "This call will be recorded for safety"
+- Then I see consent notice: "This call is not recorded. A text transcript is saved for safety"
 - When I accept
 - Then system prompts seller to join
-- When seller accepts
+- When seller accepts (and agrees to the same notice)
 - Then video call connects
-- And recording starts
+- And the transcript starts
 - When call ends
-- Then video is stored securely
-- And recording is deleted after 1 month of transaction closure
+- Then the transcript is stored securely
+- And the transcript is deleted after the retention period following transaction closure
 
 **Edge Cases:**
 - User denies camera/microphone permission
 - Seller rejects video call
 - Poor network causes video lag
-- Recording fails but call proceeds
-- User wants to download recording
+- Transcript fails but call proceeds
+- User wants a copy of the transcript
 
 **Validation Rules:**
-- Both parties must consent before recording
+- Both parties must consent before the transcript starts
 - Consent captured at call start
-- Video stored encrypted
-- Auto-delete 30 days after transaction closure
+- Transcript stored encrypted at rest
+- Auto-delete after the transcript retention period (proposed 180 days) following transaction closure
 - User can report inappropriate behavior during call
 - Max video call duration: 30 minutes
+- No audio or video is stored in any form
 
 **Error Scenarios:**
 - `ERROR_CAMERA_PERMISSION`: "Camera and microphone access required"
 - `ERROR_SELLER_DECLINED`: "Seller declined video call"
-- `ERROR_RECORDING_FAILED`: "Recording unavailable but call can proceed"
+- `ERROR_TRANSCRIPT_FAILED`: "Transcript unavailable but call can proceed"
 - `WARNING_LOW_BANDWIDTH`: "Poor connection. Video quality may be affected"
 
 **Flutter Implementation Notes:**
-- Same VoIP SDK as US-014 (Agora preferred for recording support)
+- Same in-app call SDK as US-014 (provider not chosen yet; no server-side audio access is needed)
+- On-device speech recognition on each phone for the user's own speech (on-device mode only, no cloud fallback); upload text segments to the server
 - Consent dialog mandatory before initiating; cannot skip
 - Camera preview + remote video in PiP layout
 - Network quality indicator widget during call
@@ -866,6 +872,7 @@
 ---
 
 ### US-016: Communication History Storage
+> **Update (2026-11-15, Sprint 4 LLD, decisions D4 and D5):** Nothing is recorded. Chat and chat-image storage, retention, legal hold and Admin evidence access are active. The call-log and call-transcript parts are **on hold** with US-014 and US-015. Call transcripts replace video recordings; they are kept for a configurable period after the conversation closes (proposed 180 days) and are read through the audited Admin endpoint.
 **As a** platform  
 **I want to** store all communication history  
 **So that** disputes can be resolved with evidence
@@ -878,7 +885,7 @@
 - When a dispute is raised
 - Then admins can access relevant communication logs
 - When transaction closes
-- Then video recordings are auto-deleted after 30 days
+- Then call transcripts are auto-deleted after the transcript retention period (proposed 180 days)
 - And chat/call logs retained for 6 months
 
 **Edge Cases:**
@@ -890,12 +897,12 @@
 **Validation Rules:**
 - Chat messages: 6 months retention
 - Call logs: 6 months retention
-- Video recordings: Auto-delete 30 days post-transaction
+- Call transcripts: auto-delete after the retention period following the conversation closing (no audio or video is recorded)
 - All communication encrypted at rest
 - Access logs maintained for audit
 
 **Error Scenarios:**
-- `ERROR_STORAGE_FULL`: "Unable to store recording"
+- `ERROR_STORAGE_FULL`: "Unable to store communication data"
 - `ERROR_RETRIEVAL_FAILED`: "Unable to load conversation history"
 
 ---
@@ -2972,10 +2979,12 @@
 - When I tap "Chat"
 - Then chat window opens with listing context pre-loaded
 - When I tap "Call"
-- Then masked voice call initiates
+- Then an in-app voice call initiates (app to app, no phone number used)
 - When I tap "Video Call"
-- Then video call request is sent to seller
+- Then an in-app video call request is sent to seller
 - And I see "Waiting for seller to accept" message
+
+> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Chat and Make an Offer are active. The **Call** and **Video Call** options stay shown as "Coming soon" (disabled) until a call provider is chosen and `valuex.calls.enabled` is turned on; they never use the phone network.
 
 **Edge Cases:**
 - Seller is offline/unavailable
@@ -5991,9 +6000,55 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-132: Block and Report User
+> **Added (2026-11-15, Sprint 4 LLD Part C):** a prerequisite for chat, calls and offers. Proposed 3 SP, Sprint 4, backend and mobile. Acceptance criteria approved by the product owner on 2026-11-15.
+**As a** user  
+**I want** to block someone who bothers me and report abusive behaviour  
+**So that** I feel safe using chat, calls and offers
+
+**Related User Stories:**
+- US-013, US-069, US-014, US-015, US-017: every contact path asks the either-way block check before it lets contact through
+- US-003: the profile that supplies the display name shown in the blocked list
+- US-016: holds the evidence of a reported conversation or call
+- US-057, US-055: Admin review of reports (later sprints); US-051: penalties
+
+**Acceptance Criteria:**
+- Given I am viewing another user
+- When I block them
+- Then they can no longer contact me, and I can no longer contact them, and they are never told
+- And blocking or unblocking twice is harmless
+- Given either of us has blocked the other
+- When anyone tries to contact (chat, call, video, offer)
+- Then the request is refused with `ERROR_BLOCKED` ("You cannot contact this seller"), which never says who blocked whom
+- When I open Profile > Blocked users
+- Then I see the people I blocked and can unblock each one
+- When I report a user, thread, message or call with a reason and optional details
+- Then one open report is kept for that reporter and target; reporting the same thing again returns the same report
+- And the evidence (the containing thread and, for a call, that call) is put on hold so it is not deleted before an Admin reviews it
+- Given I block someone while a chat is open
+- Then the thread becomes read-only for both of us, its history stays visible, and unblocking restores it
+- And an accepted price agreement or an order is not cancelled; blocking only stops new contact
+
+**Edge Cases:** blocking yourself; blocking or unblocking twice; a report of something the reporter was not part of (answers as not found, so ids cannot be probed); false or abusive reporting (daily limit now, Admin review in Sprint 10); a report during a call (calls are on hold, so this arrives with them); a blocked account that is later closed.
+
+**Validation Rules:**
+- Report details are optional, plain text, at most 500 characters
+- Reasons: spam, harassment, scam or fraud, inappropriate content, offensive behaviour, sharing contact details, other
+- At most `REPORTS_PER_DAY` reports per user per day (Admin-managed, default 10, range 1 to 50)
+- Reports cannot be read back by users; the block list is visible only to the person who blocked
+
+**Error Scenarios:**
+- `ERROR_BLOCKED`: "You cannot contact this seller"
+- `ERROR_INVALID_BLOCK`: blocking yourself
+- `ERROR_INVALID_REPORT_REASON`: an unknown reason
+- `RATE_LIMIT_EXCEEDED`: past the daily report limit
+- Not found: an unknown user, or a report target the reporter was not part of
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 129  
+**Total User Stories:** 130  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
 **Version:** 3.19 (Updated 2026-11-02) — US-010 is now View/Edit/Delete My Listings: the My Listings screen (Figma Make design) is part of the story, views and chats show 0 until US-067, and sold listings are never deleted; added US-124 (Pause and Resume Listing), US-125 (Relist Listing) and US-126 (Sold Listing Details), placeholders; sold listings are read-only with no Edit or Delete, and tapping a sold listing opens its sale details (US-126); US-123 also covers paused, sold and expired listings; live listings: the L3 category is locked and photos can be added (10 in total) or deleted except the main one; added US-127 (Listing Archival and Retention), placeholder. Version 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
@@ -6046,7 +6101,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Premium plan pricing: Basic (Free), Smart (₹49/mo), Vision (₹149/mo) - discounted rates
 - Listing plan pricing: Basic (₹49), Boosted (₹149), Priority (₹249) - discounted rates
 - Third-party service integrations (Aadhaar, payment gateway, logistics) are provider-agnostic
-- Auto-release timeouts: 7 days for payment, 30 days for video deletion, 48 hours for negotiations
+- Auto-release timeouts: 7 days for payment, transcript retention period for call transcripts, 48 hours for negotiations
 - All monetary values aligned with PRD v1.3
 - State machine transitions require careful implementation to maintain data consistency
 - Lifecycle states should be implemented with audit logging for compliance

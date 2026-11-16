@@ -795,6 +795,8 @@ NotificationRead
 
 ## Video Call Signaling
 
+> **Update (2026-11-15, Sprint 4 LLD, decision D1):** `/ws/video` is not a separate endpoint. Call signalling is a logical channel of the single `/ws/v1` connection (typed events, single-use ticket). Calls are on hold until a call provider is chosen.
+
 ```text
 /ws/video
 ```
@@ -976,9 +978,10 @@ POST /api/v1/webhooks/logistics
 
 ## Voice
 
+> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Voice and video are **in-app (app-to-app) calls only**. There is no VoIP to phone numbers, no phone network, no SIP or PSTN bridging, no masked numbers and no Exotel or Twilio. The call media provider is **not chosen yet**; the design is provider-neutral and call stories (US-014, US-015) are on hold until it is. Agora and Twilio Video are candidates only, not decisions. Nothing is recorded (decision D5): call transcripts are saved instead, with consent from both people.
+
 ```text
-Exotel
-Twilio
+Not chosen (in-app calls only; no telephony)
 ```
 
 ---
@@ -986,17 +989,16 @@ Twilio
 ## Video
 
 ```text
-Agora
-Twilio Video
+Not chosen (in-app calls only)
 ```
 
 ---
 
 ## Features
 
-* Masked Calls
 * Call Logs
-* Video Recording
+* Call Transcripts (no audio or video recording)
+* On-device speech-to-text in the mobile app for transcripts (decision D23; no server-side speech service; see Sprint 4 LLD G.11)
 
 ---
 

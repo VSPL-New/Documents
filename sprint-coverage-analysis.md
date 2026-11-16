@@ -48,8 +48,8 @@
 
 ### Sprint 4 - Communication & Negotiation (9 stories)
 - US-013: Chat with Seller
-- US-014: Masked Voice Call
-- US-015: Video Call with Recording
+- US-014: In-App Voice Call (on hold; was Masked Voice Call)
+- US-015: In-App Video Call with Transcript (on hold; was Video Call with Recording)
 - US-016: Communication History Storage
 - US-017: Price Negotiation
 - US-018: Prevent Checkout Without Price Acceptance

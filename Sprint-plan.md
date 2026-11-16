@@ -183,21 +183,24 @@ Enable buyer-seller interaction and price negotiation.
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
 | US-069 | Buyer Initiates Contact from Listing      | mobile, backend | 3  | US-012     |
 | US-013 | Chat with Seller                          | backend, mobile | 8  | US-069     |
-| US-014 | Masked Voice Call                         | backend, mobile | 8  | US-013     |
-| US-015 | Video Call with Recording                 | backend, mobile | 8  | US-014     |
-| US-016 | Communication History Storage             | backend         | 5  | US-015     |
+| US-014 | In-App Voice Call (on hold)              | backend, mobile | 8  | US-013     |
+| US-015 | In-App Video Call with Transcript (on hold) | backend, mobile | 8  | US-014     |
+| US-016 | Communication History Storage (call logs and transcripts on hold) | backend         | 5  | US-015     |
 | US-017 | Price Negotiation                         | backend, mobile | 8  | US-013     |
 | US-076 | Seller Negotiation Management             | backend, mobile | 5  | US-017     |
 | US-018 | Prevent Checkout Without Price Acceptance | backend         | 3  | US-017     |
 | US-080 | Auto-Expire Inactive Negotiations         | backend         | 3  | US-017     |
 | US-068 | Direct Buy Now Flow                       | backend, mobile | 5  | US-012     |
+| US-132 | Block and Report User (proposed prerequisite; [plan](US-Implementation-Plans/US-132-Implementation-Plan.md), 2026-11-15) | backend, mobile | 3  | US-003     |
 
 ## Exit Criteria
 
-* Chat, voice, and video communication working
+* Chat and communication history working; voice and video calls are app-to-app only and **on hold** until a call provider is chosen (no recording, transcripts only)
 * Price negotiation flow complete
 * Direct buy now option available
 * Auto-expiry mechanism functional
+
+> **Update (2026-11-15, Sprint 4 LLD):** Calls are in-app only (no phone network, no VoIP to phone numbers). Nothing is recorded; transcripts are saved with consent. US-014, US-015 and the call part of US-016 are on hold until the call provider (and speech-to-text option) is chosen. The Sprint 4 LLD proposes three prerequisite stories, US-130 Realtime Gateway (5 SP), US-131 Push Notification Channel (5 SP) and US-132 Block and Report User (3 SP): 69 SP in total, 53 SP active now and 16 SP on hold. See `LLD/Sprint-4-Communication-Negotiation-LLD.md`.
 
 ---
 
@@ -646,7 +649,7 @@ All 109 user stories from the user-stories.md file are now covered in the sprint
 **High Complexity:**
 - Escrow payment system (US-021, US-091) - 13 SP
 - AI photo search (US-039) - 13 SP
-- Video calls with recording (US-015) - 8 SP
+- In-app video calls with transcripts (US-015, on hold until a provider is chosen) - 8 SP
 - Fraud detection (US-048, US-052) - 8 SP each
 
 **External Dependencies:**
