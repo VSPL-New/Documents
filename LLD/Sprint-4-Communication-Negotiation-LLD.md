@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 4: Communication & Negotiation
 
-**Document Version:** 0.2 (2026-11-15). The product owner answered section 9.1 on 2026-11-15: D1 to D3 and D6 to D22 are confirmed as written; D4, D5 and D13 are changed as recorded in the change log and in section 9.1. Voice and video calls are **on hold** until a call provider is chosen. Nothing is implemented.
+**Document Version:** 0.3 (2026-11-16). The product owner answered section 9.1 on 2026-11-15: D1 to D3 and D6 to D22 are confirmed as written; D4, D5 and D13 are changed as recorded in the change log and in section 9.1. Voice and video calls are **on hold** until a call provider is chosen. US-132 is built (as-built notes in C.10); the other stories are not yet implemented.
 **Product:** ValueX (the app and business name shown to users is JustQlic)
 **Sprint:** Sprint 4 - Communication & Negotiation
 **Stories Covered:** US-069, US-013, US-014 (on hold), US-015 (on hold), US-016 (chat part active, call part on hold), US-017, US-076, US-018, US-080, US-068, and three proposed prerequisite stories found missing while designing: US-130 Realtime Gateway (Part A), US-131 Push Notification Channel (Part B) and US-132 Block and Report User (Part C)
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| 0.3 | 2026-11-16 | US-132 (Block and Report User) built: as-built notes in C.10 (migration V32, validation errors answer 400 not 422, report resolvers and the hold port prepared for chat and calls, `CommunicationSetting` registry started with `REPORTS_PER_DAY`). |
 | 0.2 | 2026-11-15 | Product owner decisions applied. **D4:** voice and video are app-to-app calls only; no phone network, no telephony or SIP bridging, no phone numbers; the call provider is not chosen, so US-014 and US-015 (and the call part of US-016) are on hold, and the design is provider-neutral (no vendor is named as the plan). **D5:** no call is recorded, audio or video; the plan saves text transcripts only; the transcription options and the chosen one (on-device speech-to-text, new decision D23) are in G.11. **D13:** a message with restricted terms is not delivered; the sender is alerted and may choose Deliver message after a policy agreement (E.4, E.5, E.7). Recording-related tables, settings, buckets, jobs and errors are replaced by transcript equivalents. All other decisions are confirmed. |
 | 0.1 | Nov 2026 | First draft of all ten stories and three proposed prerequisite stories. Resolves the question Sprint 3 left open (section 8, item 3, and conflict C9 there): listings stay `PUBLISHED` and visible while chats and negotiations run (decision D6). Proposed decisions D1 to D22, conflicts C1 to C20 and open items O1 to O14 are in section 9. The draft was reviewed adversarially before release; the concurrency, retention, privacy and endpoint findings were applied (atomic checkout consumption, synchronous Buy Now price-change cancellation, expiry-aware reservations, hold-aware retention deletion, either-side heartbeat rule, server-side chat image sanitisation, evidence holds from reports, role-split evidence access, the real listing edit endpoint). |
 
@@ -725,7 +726,7 @@ sequenceDiagram
 | Blocking while a chat is open | The thread becomes read-only for both people (`ERROR_BLOCKED` on send); history stays visible to both until retention ends. |
 | Blocked user tries to contact again | Chat, call, video and offer all refuse with `ERROR_BLOCKED` ("You cannot contact this seller"); the message does not say who blocked whom. |
 | Blocking someone with an accepted price or an order | Blocking does not cancel an active price agreement or an order; it only stops new contact. Support or the dispute process handles those. |
-| Blocking oneself | `ERROR_INVALID_BLOCK` (422). |
+| Blocking oneself | `ERROR_INVALID_BLOCK` (400 as built; see C.10). |
 | Blocking twice, unblocking twice | Idempotent. |
 | Report of a message, call, thread or user | One open report per reporter and target; a second report is accepted without creating a duplicate row. The containing thread (and, for a call report, that call) is put on hold so the evidence is not deleted before an Admin reviews it. |
 | Report during a call (on hold with calls) | The report marks the call as flagged and puts it and its transcript on hold, so retention does not delete evidence before review (G.8). |
@@ -803,9 +804,9 @@ POST   /api/v1/reports                    -- 201 {reportId}
 | Rule | Code | HTTP |
 |---|---|---|
 | Contact attempt where either side blocked the other | `ERROR_BLOCKED`: "You cannot contact this seller" | 403 |
-| Block yourself | `ERROR_INVALID_BLOCK` | 422 |
+| Block yourself | `ERROR_INVALID_BLOCK` | 400 (built; the design said 422, see C.10) |
 | Unknown or inaccessible report target | the not-found error | 404 |
-| Unknown reason | `ERROR_INVALID_REPORT_REASON` | 422 |
+| Unknown reason | `ERROR_INVALID_REPORT_REASON` | 400 (built; the design said 422, see C.10) |
 | More than the daily report limit | `RATE_LIMIT_EXCEEDED` (existing code) | 429 |
 
 ## C.8 Security & NFR Notes
@@ -819,6 +820,25 @@ POST   /api/v1/reports                    -- 201 {reportId}
 - **Unit:** block and unblock idempotency, either-way check, self-block, report target resolution for each type, uniqueness of an open report, rate limit.
 - **Integration (PostgreSQL):** blocked pair cannot create a thread, send, call or offer (once those parts exist, a shared contract test is run against each); block makes an existing thread read-only; unblock restores it.
 - **Mobile:** menu actions, confirmation and error states, Blocked Users screen, read-only composer, Hindi and 200 percent text.
+
+## C.10 As built (2026-11-16)
+
+Built in `valuex-backend` and `valuex-mobile` on branch `feature/US-132-block-and-report-user`; the plan with its deviations is [US-132-Implementation-Plan.md](../US-Implementation-Plans/US-132-Implementation-Plan.md). Where the build differs from C.1 to C.9:
+
+| # | Design | As built | Why |
+|---|---|---|---|
+| 1 | Migration `V33` (provisional). | `V32__user_blocks_and_reports.sql`, which also seeds `REPORTS_PER_DAY` = 10 and adds CHECKs on `source` and `status`. | Next free number on `main`. |
+| 2 | Errors `ERROR_INVALID_BLOCK` and `ERROR_INVALID_REPORT_REASON` answer 422 (C.7). | They answer 400 through `ValidationException`. | The backend has no 422 handler; every validation error in the codebase is 400. |
+| 3 | `isBlockedEitherWay` is "cached per request" (C.5). | One indexed query each call, no cache. | No caller exists yet; add a request-scoped cache when US-013 makes the guard hot. The shared guard is `BlockService.requireNotBlocked` (403 `ERROR_BLOCKED`). |
+| 4 | `ParticipantDirectoryPort` "implemented in auth" (1.3). | `auth/infrastructure/communication/ParticipantDirectoryAdapter`: a user exists unless the account is `CLOSED`; names come back only for users who have one, and the list shows "ValueX user" for the rest. | Follows the adapter pattern of the other modules. |
+| 5 | Report resolution and evidence hold are part of `ReportService` (C.5). | `ReportTargetResolver` (one per target type; only `USER` is built, a person who is not the reporter and not `CLOSED`) and `CommunicationHoldPort` (a no-op bean until US-016). A report on a thread, message or call answers `404 REPORT_TARGET_NOT_FOUND` until US-013 and US-014 add their resolvers. | Those tables do not exist yet (plan gap G2). A hold that fails is logged; the report is kept. The hold is requested only for a newly stored report. |
+| 6 | `CommunicationSetting` registry (1.6). | `CommunicationSetting` and `CommunicationSettings` in `plans.domain` with `REPORTS_PER_DAY` only; `PlatformSettingsService.communication()` has its own cache and `evict()` clears both. `SettingValue` holds the shared parsing used by both registries. | First story that needs it; later stories add their keys. |
+| 7 | Rate limit 10 reports per day. | A fixed 24 hour window from the first report (Redis counter), read from the Admin setting on every request; if Redis fails the request is allowed and a warning is logged. | Same behaviour as the other limits. |
+| 8 | Block and unblock publish `ThreadReadOnlyChangedEvent`. | They publish `UserBlockedEvent` and `UserUnblockedEvent` only when the block actually changed; the chat story turns them into `chat.thread.updated`. | The threads do not exist yet. |
+| 9 | A report on yourself is not described. | A report whose target is the reporter answers 404. | A person is not a party to themselves; avoids probing. |
+| 10 | Menu entry points: chat overflow and call screens. | Block and Report are on the seller profile screen (hidden on your own profile), plus Profile > Account > Blocked users (`/profile/blocked-users`). The chat and call entries ship with US-013 and US-014. | No chat yet (plan gap G6). |
+
+The shared widgets (`confirmBlockUser`, `showReportSheet`, `UserSafetyMenu`) in `features/communication_safety/` are what US-013 and US-014 reuse. Hindi texts are marked for native-speaker review (O5).
 
 ---
 
@@ -2669,8 +2689,8 @@ Codes follow `SCREAMING_SNAKE_CASE` and the standard error envelope. Codes that 
 | `ERROR_ACCOUNT_NOT_ACTIVE` | 403 | A, D | Account is not active |
 | `ERROR_INVALID_PUSH_TOKEN` | 422 | B | Bad push token request |
 | `ERROR_BLOCKED` | 403 | C, D, E, F, I | "You cannot contact this seller" |
-| `ERROR_INVALID_BLOCK` | 422 | C | Blocking oneself |
-| `ERROR_INVALID_REPORT_REASON` | 422 | C | Unknown report reason |
+| `ERROR_INVALID_BLOCK` | 400 (as built, C.10) | C | Blocking oneself |
+| `ERROR_INVALID_REPORT_REASON` | 400 (as built, C.10) | C | Unknown report reason |
 | `ERROR_SELLER_UNAVAILABLE` | 409 | D, E, F | Seller or callee not active or not reachable |
 | `WARNING_RATE_LIMIT` | 429 | D | Too many contact attempts |
 | `ERROR_OWN_LISTING` | 409 | D, I | Action on the caller's own listing |

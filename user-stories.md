@@ -6000,9 +6000,55 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-132: Block and Report User
+> **Added (2026-11-15, Sprint 4 LLD Part C):** a prerequisite for chat, calls and offers. Proposed 3 SP, Sprint 4, backend and mobile. Acceptance criteria approved by the product owner on 2026-11-15.
+**As a** user  
+**I want** to block someone who bothers me and report abusive behaviour  
+**So that** I feel safe using chat, calls and offers
+
+**Related User Stories:**
+- US-013, US-069, US-014, US-015, US-017: every contact path asks the either-way block check before it lets contact through
+- US-003: the profile that supplies the display name shown in the blocked list
+- US-016: holds the evidence of a reported conversation or call
+- US-057, US-055: Admin review of reports (later sprints); US-051: penalties
+
+**Acceptance Criteria:**
+- Given I am viewing another user
+- When I block them
+- Then they can no longer contact me, and I can no longer contact them, and they are never told
+- And blocking or unblocking twice is harmless
+- Given either of us has blocked the other
+- When anyone tries to contact (chat, call, video, offer)
+- Then the request is refused with `ERROR_BLOCKED` ("You cannot contact this seller"), which never says who blocked whom
+- When I open Profile > Blocked users
+- Then I see the people I blocked and can unblock each one
+- When I report a user, thread, message or call with a reason and optional details
+- Then one open report is kept for that reporter and target; reporting the same thing again returns the same report
+- And the evidence (the containing thread and, for a call, that call) is put on hold so it is not deleted before an Admin reviews it
+- Given I block someone while a chat is open
+- Then the thread becomes read-only for both of us, its history stays visible, and unblocking restores it
+- And an accepted price agreement or an order is not cancelled; blocking only stops new contact
+
+**Edge Cases:** blocking yourself; blocking or unblocking twice; a report of something the reporter was not part of (answers as not found, so ids cannot be probed); false or abusive reporting (daily limit now, Admin review in Sprint 10); a report during a call (calls are on hold, so this arrives with them); a blocked account that is later closed.
+
+**Validation Rules:**
+- Report details are optional, plain text, at most 500 characters
+- Reasons: spam, harassment, scam or fraud, inappropriate content, offensive behaviour, sharing contact details, other
+- At most `REPORTS_PER_DAY` reports per user per day (Admin-managed, default 10, range 1 to 50)
+- Reports cannot be read back by users; the block list is visible only to the person who blocked
+
+**Error Scenarios:**
+- `ERROR_BLOCKED`: "You cannot contact this seller"
+- `ERROR_INVALID_BLOCK`: blocking yourself
+- `ERROR_INVALID_REPORT_REASON`: an unknown reason
+- `RATE_LIMIT_EXCEEDED`: past the daily report limit
+- Not found: an unknown user, or a report target the reporter was not part of
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 129  
+**Total User Stories:** 130  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
 **Version:** 3.19 (Updated 2026-11-02) — US-010 is now View/Edit/Delete My Listings: the My Listings screen (Figma Make design) is part of the story, views and chats show 0 until US-067, and sold listings are never deleted; added US-124 (Pause and Resume Listing), US-125 (Relist Listing) and US-126 (Sold Listing Details), placeholders; sold listings are read-only with no Edit or Delete, and tapping a sold listing opens its sale details (US-126); US-123 also covers paused, sold and expired listings; live listings: the L3 category is locked and photos can be added (10 in total) or deleted except the main one; added US-127 (Listing Archival and Retention), placeholder. Version 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
