@@ -191,6 +191,7 @@ Enable buyer-seller interaction and price negotiation.
 | US-018 | Prevent Checkout Without Price Acceptance | backend         | 3  | US-017     |
 | US-080 | Auto-Expire Inactive Negotiations         | backend         | 3  | US-017     |
 | US-068 | Direct Buy Now Flow                       | backend, mobile | 5  | US-012     |
+| US-132 | Block and Report User (proposed prerequisite; [plan](US-Implementation-Plans/US-132-Implementation-Plan.md), 2026-11-15) | backend, mobile | 3  | US-003     |
 
 ## Exit Criteria
 
