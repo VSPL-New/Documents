@@ -182,7 +182,7 @@ Enable buyer-seller interaction and price negotiation.
 | ID     | Story                                     | Repo            | SP | Dependency |
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
 | US-069 | Buyer Initiates Contact from Listing ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17 with US-013) | mobile, backend | 3  | US-012     |
-| US-013 | Chat with Seller ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17: REST and polling, in-app notification; realtime and push with US-130, US-131) | backend, mobile | 8  | US-069     |
+| US-013 | Chat with Seller ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17: REST and polling, in-app notification; live with US-130, push with US-131) | backend, mobile | 8  | US-069     |
 | US-014 | In-App Voice Call (on hold)              | backend, mobile | 8  | US-013     |
 | US-015 | In-App Video Call with Transcript (on hold) | backend, mobile | 8  | US-014     |
 | US-016 | Communication History Storage (call logs and transcripts on hold) | backend         | 5  | US-015     |
@@ -192,6 +192,7 @@ Enable buyer-seller interaction and price negotiation.
 | US-080 | Auto-Expire Inactive Negotiations         | backend         | 3  | US-017     |
 | US-068 | Direct Buy Now Flow                       | backend, mobile | 5  | US-012     |
 | US-132 | Block and Report User (proposed prerequisite; [plan](US-Implementation-Plans/US-132-Implementation-Plan.md), 2026-11-15) | backend, mobile | 3  | US-003     |
+| US-130 | Realtime Gateway (proposed prerequisite; [plan](US-Implementation-Plans/US-130-Implementation-Plan.md), built 2026-11-17 with the chat wiring: 5 SP gateway plus about 2 SP chat) | backend, mobile | 7  | US-107     |
 
 ## Exit Criteria
 
@@ -200,7 +201,7 @@ Enable buyer-seller interaction and price negotiation.
 * Direct buy now option available
 * Auto-expiry mechanism functional
 
-> **Update (2026-11-15, Sprint 4 LLD):** Calls are in-app only (no phone network, no VoIP to phone numbers). Nothing is recorded; transcripts are saved with consent. US-014, US-015 and the call part of US-016 are on hold until the call provider (and speech-to-text option) is chosen. The Sprint 4 LLD proposes three prerequisite stories, US-130 Realtime Gateway (5 SP), US-131 Push Notification Channel (5 SP) and US-132 Block and Report User (3 SP): 69 SP in total, 53 SP active now and 16 SP on hold. See `LLD/Sprint-4-Communication-Negotiation-LLD.md`.
+> **Update (2026-11-15, Sprint 4 LLD):** Calls are in-app only (no phone network, no VoIP to phone numbers). Nothing is recorded; transcripts are saved with consent. US-014, US-015 and the call part of US-016 are on hold until the call provider (and speech-to-text option) is chosen. The Sprint 4 LLD proposes three prerequisite stories, US-130 Realtime Gateway (5 SP), US-131 Push Notification Channel (5 SP) and US-132 Block and Report User (3 SP): 69 SP in total, 53 SP active now and 16 SP on hold. **Update (2026-11-17):** US-130 was built with its chat wiring (7 SP instead of 5), so the active total is about 55 SP. See `LLD/Sprint-4-Communication-Negotiation-LLD.md`.
 
 ---
 
