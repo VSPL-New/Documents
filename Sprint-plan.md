@@ -181,8 +181,8 @@ Enable buyer-seller interaction and price negotiation.
 
 | ID     | Story                                     | Repo            | SP | Dependency |
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
-| US-069 | Buyer Initiates Contact from Listing      | mobile, backend | 3  | US-012     |
-| US-013 | Chat with Seller                          | backend, mobile | 8  | US-069     |
+| US-069 | Buyer Initiates Contact from Listing ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17 with US-013) | mobile, backend | 3  | US-012     |
+| US-013 | Chat with Seller ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17: REST and polling, in-app notification; realtime and push with US-130, US-131) | backend, mobile | 8  | US-069     |
 | US-014 | In-App Voice Call (on hold)              | backend, mobile | 8  | US-013     |
 | US-015 | In-App Video Call with Transcript (on hold) | backend, mobile | 8  | US-014     |
 | US-016 | Communication History Storage (call logs and transcripts on hold) | backend         | 5  | US-015     |
