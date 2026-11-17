@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 4: Communication & Negotiation
 
-**Document Version:** 0.4 (2026-11-17). The product owner answered section 9.1 on 2026-11-15: D1 to D3 and D6 to D22 are confirmed as written; D4, D5 and D13 are changed as recorded in the change log and in section 9.1. Voice and video calls are **on hold** until a call provider is chosen. US-132 (as-built notes in C.10) and US-069 with US-013, built together (D.11 and E.11), are done; the other stories are not yet implemented.
+**Document Version:** 0.5 (2026-11-17). The product owner answered section 9.1 on 2026-11-15: D1 to D3 and D6 to D22 are confirmed as written; D4, D5 and D13 are changed as recorded in the change log and in section 9.1. Voice and video calls are **on hold** until a call provider is chosen. US-132 (as-built notes in C.10), US-069 with US-013, built together (D.11 and E.11), and US-130 with the chat wiring (A.11) are done; the other stories are not yet implemented.
 **Product:** ValueX (the app and business name shown to users is JustQlic)
 **Sprint:** Sprint 4 - Communication & Negotiation
 **Stories Covered:** US-069, US-013, US-014 (on hold), US-015 (on hold), US-016 (chat part active, call part on hold), US-017, US-076, US-018, US-080, US-068, and three proposed prerequisite stories found missing while designing: US-130 Realtime Gateway (Part A), US-131 Push Notification Channel (Part B) and US-132 Block and Report User (Part C)
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| 0.5 | 2026-11-17 | US-130 (Realtime Gateway) built with the chat wiring: as-built notes in A.11 (the tunable limits are Admin-managed `CommunicationSetting` keys, migration `V35__realtime_settings.sql`, no PostgreSQL table; `session.close` control message; chat events `chat.message.created`, `chat.message.delivered`, `chat.read`, `chat.typing` and `chat.thread.updated` and the three inbound chat frames; mobile `RealtimeClient`, re-sync, polling only while the socket is down, reconnecting strip and typing line). E.11 rows 3 and 13 updated. Later migrations renumbered (calls `V36`, negotiation `V37`, Buy Now `V38`). |
 | 0.4 | 2026-11-17 | US-069 and US-013 built as one story: as-built notes in D.11 and E.11 (migrations `V33` and `V34` split, chat on REST and 15 second polling with in-app notification while realtime and push (US-130, US-131) are not built, `422` through a new exception, image cleaning through a media port, Make an Offer and Call and Video shown as coming soon, new settings keys, mobile screens). |
 | 0.3 | 2026-11-16 | US-132 (Block and Report User) built: as-built notes in C.10 (migration V32, validation errors answer 400 not 422, report resolvers and the hold port prepared for chat and calls, `CommunicationSetting` registry started with `REPORTS_PER_DAY`). |
 | 0.2 | 2026-11-15 | Product owner decisions applied. **D4:** voice and video are app-to-app calls only; no phone network, no telephony or SIP bridging, no phone numbers; the call provider is not chosen, so US-014 and US-015 (and the call part of US-016) are on hold, and the design is provider-neutral (no vendor is named as the plan). **D5:** no call is recorded, audio or video; the plan saves text transcripts only; the transcription options and the chosen one (on-device speech-to-text, new decision D23) are in G.11. **D13:** a message with restricted terms is not delivered; the sender is alerted and may choose Deliver message after a policy agreement (E.4, E.5, E.7). Recording-related tables, settings, buckets, jobs and errors are replaced by transcript equivalents. All other decisions are confirmed. |
@@ -225,13 +226,9 @@ Technical values, set per environment. Product numbers are Admin-managed setting
 
 | Property | Default | Purpose |
 |---|---|---|
-| `valuex.realtime.enabled` | `true` | Master switch. When false the app falls back to polling (A.7). |
-| `valuex.realtime.allowed-origins` | empty | Browser origins allowed on the WebSocket (mobile sends none). |
-| `valuex.realtime.ticket-ttl` | 30s | Lifetime of a single-use WebSocket ticket. |
-| `valuex.realtime.max-sessions-per-user` | 3 | Oldest session is closed with 4409 when exceeded. |
-| `valuex.realtime.ping-interval` / `idle-timeout` | 25s / 75s | Heartbeat and idle close. |
-| `valuex.realtime.send-buffer-bytes` / `send-time-limit` | 524288 / 5s | Slow consumers are closed (4408). |
-| `valuex.realtime.max-inbound-message-bytes` | 8192 | Larger frames close the session (4413). |
+| `valuex.realtime.enabled` | `true` | Master switch. When false the ticket endpoint answers 503 and the app falls back to polling (A.7). |
+| `valuex.realtime.allowed-origins` | empty | Browser origins allowed on the WebSocket (mobile sends none). A browser origin must also be in `valuex.cors.allowed-origins`, because the CORS filter sees the handshake first. |
+| ~~`valuex.realtime.ticket-ttl`, `max-sessions-per-user`, `ping-interval`, `idle-timeout`, `send-buffer-bytes`, `send-time-limit`, `max-inbound-message-bytes`~~ | | **Moved to Admin-managed settings (A.11, decision G3 of the US-130 plan):** `REALTIME_TICKET_TTL_SECONDS` 30, `REALTIME_MAX_SESSIONS_PER_USER` 3, `REALTIME_PING_INTERVAL_SECONDS` 25, `REALTIME_IDLE_TIMEOUT_SECONDS` 75, `REALTIME_SEND_BUFFER_BYTES` 524288, `REALTIME_SEND_TIME_LIMIT_SECONDS` 5, `REALTIME_MAX_INBOUND_BYTES` 8192, `REALTIME_INBOUND_FRAMES_PER_SECOND` 20, `REALTIME_TICKET_REQUESTS_PER_MINUTE` 30. |
 | `valuex.push.provider` | `noop` | `fcm` in staging and production, `noop` in dev and CI. |
 | `valuex.push.fcm.credentials-secret` | empty | Name of the secret holding the service account JSON. Never in the repository. |
 | `valuex.calls.enabled` | `false` | Master switch for in-app voice and video calls (on hold, D4). While false the `call` and `video` capabilities report `COMING_SOON` and call endpoints answer `ERROR_CALLS_UNAVAILABLE`. |
@@ -345,9 +342,10 @@ erDiagram
 | `V33__user_blocks_and_reports.sql` | C | `user_blocks`, `communication_reports` |
 | `V33__contact_attempts.sql` (built, US-069) | D | `contact_attempts` and the four contact `CommunicationSetting` seeds |
 | `V34__chat.sql` (built, US-013) | E | `chat_threads`, `chat_messages` and the seven chat `CommunicationSetting` seeds; `MediaPurpose.CHAT_IMAGE` is a code change, the column has no CHECK. `communication_access_log` stays with Part H. |
-| `V35__call_sessions.sql` (on hold) | F, G | `call_sessions`, `call_events`, `call_transcript_segments`, the `CALL_*` setting seeds |
-| `V36__negotiation_and_price_agreements.sql` | I, J, K, L | `negotiations`, `offers`, `negotiation_status_history`, `price_agreements`, `NegotiationSetting` seeds |
-| `V37__buy_now.sql` | M | `listings.buy_now_enabled`, `BUY_NOW_RESERVATION_MINUTES` seed |
+| `V35__realtime_settings.sql` (built, US-130) | A | The nine `REALTIME_*` `CommunicationSetting` seeds; no table (state is in Redis) |
+| `V36__call_sessions.sql` (on hold) | F, G | `call_sessions`, `call_events`, `call_transcript_segments`, the `CALL_*` setting seeds |
+| `V37__negotiation_and_price_agreements.sql` | I, J, K, L | `negotiations`, `offers`, `negotiation_status_history`, `price_agreements`, `NegotiationSetting` seeds |
+| `V38__buy_now.sql` | M | `listings.buy_now_enabled`, `BUY_NOW_RESERVATION_MINUTES` seed |
 
 ## 1.8 External Integrations and Integration Patterns
 
@@ -558,6 +556,29 @@ sequenceDiagram
 - **Integration (Testcontainers Redis, embedded server):** connect with a ticket, receive a published event, ticket reuse is refused, token expiry closes with 4401, suspension closes with 4403, a fourth session closes the first with 4409, a slow consumer closes with 4408, an event published on one "instance" (a second `RedisRealtimeBus`) reaches a session on the other.
 - **Mobile:** `RealtimeClient` against a fake socket: backoff sequence, resume re-sync, idempotent event application, polling fallback, 4403 stops reconnecting.
 - **Load:** a script opens 10,000 sessions and measures publish-to-receive latency (run once per release, not in CI).
+
+## A.11 As built (2026-11-17)
+
+Built with the chat wiring (US-130 plan, AC10). Where the build differs from A.1 to A.10:
+
+| # | Design | As built | Why |
+|---|---|---|---|
+| 1 | Numbers in `ValuexProperties` (1.5). | Only `valuex.realtime.enabled` and `allowed-origins` are properties. The nine tunable numbers are `CommunicationSetting` keys seeded by `V35__realtime_settings.sql` (`REALTIME_MAX_SESSIONS_PER_USER`, `REALTIME_PING_INTERVAL_SECONDS`, `REALTIME_IDLE_TIMEOUT_SECONDS`, `REALTIME_TICKET_TTL_SECONDS`, `REALTIME_MAX_INBOUND_BYTES`, `REALTIME_SEND_BUFFER_BYTES`, `REALTIME_SEND_TIME_LIMIT_SECONDS`, `REALTIME_INBOUND_FRAMES_PER_SECOND`, `REALTIME_TICKET_REQUESTS_PER_MINUTE`), each with a range. `RealtimeLimits` reads them at every use, so a change applies to new sessions without a restart; if the idle timeout is not longer than the ping interval both fall back to their defaults and a warning is logged. The Admin screen is US-116: until then values change in `platform_settings`. | Decision G3, G12 of the plan. |
+| 2 | Close all sessions of a user "through the bus". | The control message `session.close` with `data.code` on the user's own channel `rt:u:{userId}`; `RedisRealtimeBus` turns it into `closeAll` on every instance. An app cannot send it (inbound frames go only to registered handlers). No fourth Redis key. | A.3 lists three keys. |
+| 3 | `GETDEL`, presence, pub/sub in `RedisCacheService`. | `StringRedisTemplate` and `RedisMessageListenerContainer` inside `com.valuex.realtime`; `RedisCacheService` unchanged except for its rate limit, reused by the ticket endpoint. | G4. |
+| 4 | Inbound frames go to `ChatService`, `CallService`, `PresenceService`. | `InboundFrameHandler` registry (one bean per frame type). Registered now: `chat.delivered`, `chat.read` (the same `ChatMessageService` calls as REST) and `chat.typing`. `call.heartbeat` stays unregistered (counted as unknown) until US-014. A failing handler answers `error {code: ERROR_FRAME_FAILED}`; a frame that is not a JSON object with a type answers `ERROR_INVALID_FRAME`. | G2, G11. |
+| 5 | `chat.message.created` carries the message exactly as REST. | `data = {threadId, message}` (the REST message shape needs the thread to be routed), built per viewer, so the sender's other devices get `fromMe = true`. A message over about 3 KB is not pushed; a `chat.thread.updated` hint is sent and the app re-reads with `afterSeq`. | The REST message has no thread id; LLD A.4.3 size limit. |
+| 6 | `chat.message.delivered` and `chat.read` after `markDelivered` and `markRead`. | `ChatMessageService` publishes `ChatCursorMovedEvent` only when a cursor moved (a read that also moved the delivered cursor sends only `chat.read`); `ChatRealtimeListener` sends it to the other person after commit. | A.4.3. |
+| 7 | `chat.thread.updated` after a block (E.11 row 5 said nothing listens to the block events). | The same listener turns `UserBlockedEvent`, `UserUnblockedEvent` and an Admin removal or rejection of the listing (`ListingStatusChangedEvent`) into `chat.thread.updated {threadId, canSend, readOnlyReason, lastSeq}` for both people, with the reason from `ChatAccessPolicy`. A change of account state does not send it (the next read shows it). `canSend` is still computed live; the event is only a hint. | AC10. |
+| 8 | Test: slow consumer closed with 4408 in the integration test. | Unit-tested in `LocalSessionRegistryTest` (a `SessionLimitExceededException` closes with 4408). The other close codes (4401, 4403, 4409, 4413, 4429) and every handshake refusal are in `RealtimeIntegrationTest` with real PostgreSQL and Redis. | A real slow consumer cannot be produced reliably in a test. |
+| 9 | Tomcat default frame limit. | `org.apache.tomcat.websocket.textBufferSize` is raised to 65536 so the Admin limit (up to 65536) decides with 4413; a frame above 65536 is closed by Tomcat with 1009 and the app reconnects. | The Admin limit must be able to exceed 8192. |
+| 10 | `Origin` check by `allowed-origins`. | Checked by the handshake interceptor; a browser origin must also be in `valuex.cors.allowed-origins`, because the Spring Security CORS filter sees the upgrade request first and answers 403 for an origin it does not know. The mobile app sends no Origin. | Observed in the integration test. |
+| 11 | Mobile: typed providers, polling helper. | `core/realtime/`: `RealtimeClient`, `WebSocketRealtimeClient` over `web_socket_channel`, a ticket repository, `realtimeClientProvider`, `realtimeConnectionProvider` (watched by `ValueXApp`; opens while the account is active, mirrors status and re-sync moments, forwards app lifecycle), `chatEventsProvider`, `negotiationEventsProvider`, `callEventsProvider`, `realtimeResyncProvider`. `chatPollIntervalProvider` is 15 seconds while the socket is not connected and null while it is; the chat list, thread and unread count re-read after every reconnect and when the app returns. No separate polling helper was needed. | A.7, G2. |
+| 12 | "Reconnecting..." banner shown while a chat thread is open. | `RealtimeReconnectingBanner` in `ChatThreadScreen`, shown for `reconnecting` and `degraded`, with a static icon (no spinner) and a live-region label; English and Hindi. | A.7. |
+| 13 | 4403 shows the account state screen. | The client stops, and the app reads the account state again (`SessionController.refreshStatus`), so the router shows the account screen. 4409 stops until the user returns to the app. | A.4.5. |
+| 14 | Typing. | Sent at most once a second while the composer has text, stopped after 3 seconds of no typing, when the field empties and when the screen closes; shown for 4 seconds as "{name} is typing…" and hidden when the person's message arrives or the thread becomes read-only. Never stored or logged. | E.7. |
+
+Load test (A.10): not run in this build; the script and the target stay as designed.
 
 ---
 
@@ -1287,7 +1308,7 @@ Built with US-069 (see D.11). Where the build differs from E.1 to E.10:
 |---|---|---|---|
 | 1 | Tables in `V34__chat_and_contact.sql`. | `V34__chat.sql`, exactly E.3 plus `chat_threads.last_message_sender_id` (so the list can say "You:") and a unique index `uq_chat_messages_media` (a picture can be in one message only). Seeds: `CHAT_MESSAGE_MAX_CHARS`, `CHAT_IMAGE_MAX_MB`, `CHAT_MESSAGES_PER_MIN`, `CHAT_POLICY_OVERRIDES_PER_DAY`, `CHAT_NOTIFY_COALESCE_MINUTES`, `CHAT_AUTO_REPORT_FLAGS`, `CHAT_PAGE_SIZE`. The retention columns exist; nothing sets them until US-016. | Next free number. |
 | 2 | `422` for `ERROR_MESSAGE_TOO_LONG`, `ERROR_EMPTY_MESSAGE`, `WARNING_CONTENT_FLAGGED`, `ERROR_IMAGE_TOO_LARGE`, `ERROR_IMAGE_INVALID`. | New `UnprocessableException` and a 422 handler. `ErrorResponse.details` is a string map, so `details.terms` is `"4-8,12-17"` (start-end character ranges, comma separated) and `details.agreementVersion` is `policy-override-v1`. Other codes as E.8: 400 invalid message type (`ERROR_INVALID_MESSAGE_TYPE`), 409 `ERROR_POLICY_AGREEMENT_OUTDATED`, `ERROR_SELLER_UNAVAILABLE`, `ERROR_THREAD_READ_ONLY`, 403 `ERROR_BLOCKED`, 429 `RATE_LIMIT_EXCEEDED`. | The backend had no 422; decision G11. |
-| 3 | Realtime events, typing, push. | Not built (US-130, US-131). The app polls every 15 seconds while the list or a conversation is open (`afterSeq` on the open thread) and posts delivered and read through REST. `ChatMessageCreatedEvent` (ids only) is published after commit; `ChatMessageListener` makes the in-app `CHAT_MESSAGE` notification (dedupe key `chat:{thread}:{recipient}:{window}`, window `CHAT_NOTIFY_COALESCE_MINUTES`) in its own transaction and synchronously, and never fails the send. US-130 and US-131 listen to the same event. | Decision G10. |
+| 3 | Realtime events, typing, push. | **Realtime and typing built in US-130 (see A.11); push is not (US-131).** At the time of US-013 the app polled; since US-130 it polls only while the socket is not connected and reads again after every reconnect. `ChatMessageCreatedEvent` (ids only) is published after commit; `ChatMessageListener` makes the in-app `CHAT_MESSAGE` notification (dedupe key `chat:{thread}:{recipient}:{window}`, window `CHAT_NOTIFY_COALESCE_MINUTES`) in its own transaction and synchronously, and never fails the send; `ChatRealtimeListener` (US-130) listens to the same event. | Decision G10; US-130. |
 | 4 | Send order of E.5 under one lock. | `ChatMessageService.send` rate limits, checks participant and `canSend`, validates, checks a repeated client id, screens and cleans pictures **before** `ChatMessageStore.storeUserMessage` takes the row lock for the short database write (it checks the client id and `canSend` again under the lock). Overrides and flag counters are counted before the write. | Picture work must not hold the thread lock. |
 | 5 | `UserBlockedEvent` and `UserUnblockedEvent` update threads. | No listener: `canSend` is computed live from blocks, account state and the listing (`ChatAccessPolicy`), so a block or an unblock applies at once. | Nothing to keep in step. |
 | 6 | Thread list for both sides. | A seller sees a thread only once something beyond the listing card was said in it (`last_seq > 1`); a buyer sees every thread they opened. | A buyer who opens a chat and leaves must not appear in the seller's list. |
@@ -1297,7 +1318,7 @@ Built with US-069 (see D.11). Where the build differs from E.1 to E.10:
 | 10 | System reports. | `ReportService.reportBySystem` (no reporter, target `MESSAGE`) for an accepted override (`INAPPROPRIATE_CONTENT`) and for the flag limit (`SHARING_CONTACT_DETAILS` or `SPAM`); the override report is written in the same transaction as the message. Thread and message report resolvers (`THREAD`, `MESSAGE`) answer 404 for strangers, the reporter's own message and system cards. | E.5, C.5. |
 | 11 | `LISTING_CONTEXT` holds the photo id. | The payload is `{listingId, title, price}`; the thread response carries the current thumbnail. | The design shows initials, not photos. |
 | 12 | Mobile screens (E.7). | Built from the supplied designs (see the plan, "Design source"): `Messages` list with client-side search on names and listing titles (never message text), Buying and Selling chips, initial avatars, no online dot; thread with the listing title as tappable subtitle, Call and Video disabled with "Calls are coming soon", a dismissible safety banner remembered per install, gradient own bubbles, status under own messages, retry and delete for failed sends, picture send (1600 px from the phone), "New messages" chip, load earlier, read-only banner, the blocked-message sheet and the agreement dialog of D13, and a menu to block, report the person or report the conversation. Offer and call cards show "Conversation update" until Parts I, F and G. The Chats tab and its unread dot are live. | G14. |
-| 13 | A typing indicator, push, an online dot. | Not built. | US-130, US-131. |
+| 13 | A typing indicator, push, an online dot. | Typing indicator built in US-130 (A.11 row 14). Push (US-131) and an online dot are not built. | US-131. |
 
 ---
 
@@ -1338,7 +1359,7 @@ Built with US-069 (see D.11). Where the build differs from E.1 to E.10:
 
 ## F.3 Data Model
 
-Part of migration `V35__call_sessions.sql` (provisional, on hold). HLD 02 names `call_logs` and `video_sessions`; one table serves both because they share over 90 percent of their columns (conflict C15). The consent and transcript columns apply to both call types (Part G); no column holds audio or video.
+Part of migration `V36__call_sessions.sql` (provisional, on hold; V35 went to the realtime settings). HLD 02 names `call_logs` and `video_sessions`; one table serves both because they share over 90 percent of their columns (conflict C15). The consent and transcript columns apply to both call types (Part G); no column holds audio or video.
 
 ```sql
 CREATE TABLE call_sessions (
@@ -1943,7 +1964,7 @@ None: this is a backend story. The user-facing disclosures it depends on are par
 
 ## I.3 Data Model
 
-Migration `V36__negotiation_and_price_agreements.sql` (provisional); also seeds `NegotiationSetting` defaults.
+Migration `V37__negotiation_and_price_agreements.sql` (provisional); also seeds `NegotiationSetting` defaults.
 
 ```sql
 CREATE TABLE negotiations (
@@ -2593,7 +2614,7 @@ sequenceDiagram
 
 ## M.3 Data Model
 
-Migration `V37__buy_now.sql` (provisional):
+Migration `V38__buy_now.sql` (provisional):
 
 ```sql
 ALTER TABLE listings ADD COLUMN buy_now_enabled BOOLEAN NOT NULL DEFAULT TRUE;
@@ -2899,7 +2920,7 @@ Items that must be updated when the stories are built (documentation work, track
 1. **Spikes first (half a day each, results recorded in the pull request):** FCM and APNs set-up and a killed-app push on a real device; WebSocket upgrade and idle timeout through the real ingress. (The on-device transcription spike of G.5 and the call provider spike wait for the provider decision, O1.)
 2. **Order of work:** Wave 1: US-130, US-131, US-132, US-069, US-013 (24 SP). Wave 2: US-017, then US-076, US-018 and US-080 in parallel (19 SP). Wave 3: the chat part of US-016, and US-068 (10 SP). US-014 and US-015 (16 SP) and the call part of US-016 wait for the provider decision.
 3. **Safe defaults:** `valuex.realtime.enabled=true`, `valuex.push.provider=noop`, `valuex.calls.enabled=false`, `valuex.rtc.provider=mock`, `valuex.transcription.enabled=false`, `valuex.checkout.enabled=false`. A developer can run the whole sprint without any provider account.
-4. **Migrations:** provisional V32 to V37 (1.7); take the next free numbers when each branch is cut.
+4. **Migrations:** provisional V32 to V38 (1.7; V32 to V35 are built); take the next free numbers when each branch is cut.
 5. **Pull requests:** one per story, each with its manual testing guide, tests, and "As built" notes appended to this LLD in the style of Sprint 3 (deviations are documented, not hidden).
 6. **Shared test fixtures:** a `CommunicationFixtures` helper (two active users, a published listing, a thread) and a `NegotiationFixtures` helper are built in US-013 and US-017 and reused by the later stories; the block and rate-limit contract tests of Part C run against every contact entry point.
 7. **Hindi:** all new copy is drafted in both languages in the same pull request; native review is tracked as O5.

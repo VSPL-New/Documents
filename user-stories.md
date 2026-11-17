@@ -6048,6 +6048,50 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-130: Realtime Gateway (WebSocket)
+> **Added (2026-11-17, Sprint 4 LLD Part A):** a prerequisite for live chat, offers and calls. Proposed 5 SP, about 7 SP with the chat wiring (decision G11 of the plan), Sprint 4, backend and mobile. The acceptance criteria below are derived from LLD Part A and were approved by the product owner on 2026-11-17.
+**As a** signed-in user  
+**I want** new messages, offers and incoming calls to reach me immediately  
+**So that** a conversation feels live
+
+**Related User Stories:**
+- US-013: chat is the first user of the gateway (messages, delivered and read marks, typing, read-only changes)
+- US-017, US-076, US-080: negotiation events (later); US-014, US-015: call events (on hold)
+- US-131: push for the person whose app is closed (the gateway only reaches an open app)
+- US-107: the access token refresh the gateway relies on
+- US-132: a block turns a thread read-only for both people at once
+
+**Acceptance Criteria:**
+- Given I am signed in
+- When the app asks for a live connection
+- Then it gets a single-use ticket (30 seconds, tied to me) and opens the socket with the ticket only; my access token never appears in a web address
+- And a missing, unknown, reused or expired ticket is refused (401), and an account that is not active or an origin that is not allowed is refused (403)
+- When another part of the platform publishes an event for me, after its change is saved
+- Then every open session of mine, on any server, receives it, and nobody else does
+- And I can have up to three sessions; a further one closes my oldest
+- And the server closes a session before my access token ends, when my account stops being active, when it cannot keep up, when a frame is too large, or when too many frames arrive
+- When the app is in the foreground and was heard from in the last 90 seconds
+- Then I count as online (a backgrounded app does not)
+- When the live connection drops or realtime is off
+- Then the app reconnects with a growing pause, reads again what it may have missed, and polls every 15 seconds meanwhile; saving data never depends on the connection
+- Given I am in a conversation
+- Then a message, a delivered or read mark, the other person typing, and the thread becoming read-only arrive without polling, and my own typing, delivered and read marks go back over the same connection
+
+**Edge Cases:** network switch, app backgrounded or killed, token expiry while connected, the same account on two phones, a suspended or banned account, the server restarting during a deploy, a slow or stalled client, Redis down (same-server delivery continues and the failure is counted), a replayed or stolen ticket, a message too large to push (the app is told to re-read).
+
+**Validation Rules:**
+- A ticket is 43 characters of 32 random bytes; only its hash is stored, with the ticket lifetime, and it is used up atomically
+- At most 30 ticket requests per minute per user; at most 20 frames per second per session; frames at most 8192 bytes
+- Every number above is an Admin-managed setting with a range (`REALTIME_*`); a change applies to new sessions without a restart
+- No event text, message text or typed text is logged
+
+**Error Scenarios:**
+- `ERROR_REALTIME_UNAVAILABLE` (503): realtime is switched off
+- `ERROR_ACCOUNT_NOT_ACTIVE` (403), the standard 401, `RATE_LIMIT_EXCEEDED` (429)
+- Close codes 1001, 4401, 4403, 4408, 4409, 4413, 4429
+
+---
+
 ## End of User Stories Document
 
 **Total User Stories:** 130  
