@@ -911,6 +911,7 @@
 ## Negotiation & Cart
 
 ### US-017: Price Negotiation
+> **Built (2026-11-17, Sprint 4 LLD Part I, I.11):** buyer and seller can offer, counter, accept, decline and withdraw; an accepted price is locked for 24 hours (not for a property); both are told in the app and over the live connection. The seller reaches the same negotiation screen from the offer notification or the chat card; the seller offers inbox, auto-reject of other offers and the checkout control are US-076, US-018 and Sprint 5. Plan: `Documents/US-Implementation-Plans/US-017-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-017-Testing-Guide.md`.
 > **Update (2026-10-25, category taxonomy):** Applies to Real Estate listings against the normalized listing price (sale price, monthly rent or "starting from" price); the property flow ends after negotiation, with no checkout (US-118).
 **As a** buyer  
 **I want to** negotiate the price with the seller  
@@ -2968,7 +2969,7 @@
 ---
 
 ### US-069: Buyer Initiates Contact from Listing
-> **Built (2026-11-17, Sprint 4 LLD Part D, D.11):** with US-013. The listing page shows Chat (live), Call and Video (disabled, "Coming soon", decision D4) and Make an Offer ("Coming soon" until US-017); every attempt is logged and limited. Plan: `Documents/US-Implementation-Plans/US-069-US-013-Implementation-Plan.md`.
+> **Built (2026-11-17, Sprint 4 LLD Part D, D.11):** with US-013. The listing page shows Chat (live), Call and Video (disabled, "Coming soon", decision D4) and Make an Offer ("Coming soon" until US-017, which built it on 2026-11-17); every attempt is logged and limited. Plan: `Documents/US-Implementation-Plans/US-069-US-013-Implementation-Plan.md`.
 > **Update (2026-10-25, category taxonomy):** For Real Estate listings contact leads to chat, calls, video calls and price negotiation only (US-118).
 **As a** buyer  
 **I want to** easily contact seller from listing page  
