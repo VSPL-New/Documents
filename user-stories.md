@@ -736,6 +736,7 @@
 ## Communication
 
 ### US-013: Chat with Seller
+> **Built (2026-11-17, Sprint 4 LLD Part E, E.11):** with US-069. Messages are stored and ordered, text and pictures, delivered and read state, restricted terms blocked with Deliver message, in-app notification for the seller. Until US-130 and US-131 the app refreshes every 15 seconds and there is no push or typing indicator. Plan: `Documents/US-Implementation-Plans/US-069-US-013-Implementation-Plan.md`.
 > **Update (2026-10-25, category taxonomy):** For Real Estate listings the flow covers chat, calls, video calls and price negotiation only; there is no cart, checkout, payment or delivery. It ends when the seller marks the property Sold or Rented (US-118).
 **As a** buyer  
 **I want to** chat with the seller  
@@ -2967,6 +2968,7 @@
 ---
 
 ### US-069: Buyer Initiates Contact from Listing
+> **Built (2026-11-17, Sprint 4 LLD Part D, D.11):** with US-013. The listing page shows Chat (live), Call and Video (disabled, "Coming soon", decision D4) and Make an Offer ("Coming soon" until US-017); every attempt is logged and limited. Plan: `Documents/US-Implementation-Plans/US-069-US-013-Implementation-Plan.md`.
 > **Update (2026-10-25, category taxonomy):** For Real Estate listings contact leads to chat, calls, video calls and price negotiation only (US-118).
 **As a** buyer  
 **I want to** easily contact seller from listing page  
