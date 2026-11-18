@@ -3465,6 +3465,7 @@
 ---
 
 ### US-080: Auto-Expire Inactive Negotiations
+> **Built (2026-11-18, Sprint 4 LLD Part L, L.11):** backend only. A job every minute warns the person whose answer is awaited (24 hours before the end, once) and expires negotiations that nobody answered in 48 hours (or after the 14 day lifetime); both people are told in the app, the thread gets a neutral card and the seller's Offers badge updates. A chat message in the thread counts as activity but never revives a negotiation already past its end. A second job ends accepted prices nobody used, so the item is free for another accept; a new offer is allowed at once after any expiry. The app shows the new notifications in English until the mobile follow-up adds Hindi and English texts and the "Make a new offer" button. Plan: `Documents/US-Implementation-Plans/US-080-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-080-Testing-Guide.md`.
 > **Update (2026-10-25, category taxonomy):** Applies to Real Estate negotiations as well (US-118).
 **As a** platform  
 **I want to** auto-expire inactive negotiations  
