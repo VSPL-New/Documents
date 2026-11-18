@@ -14,7 +14,7 @@ by the automated tests (section G); the manual cases below check the same rules 
 > `agreement.updated`; the reusable `CheckoutPriceGuardContractTest`. No migration.
 > **Not in this story (Sprint 5, US-019 to US-021):** the cart, the "Proceed to checkout" button and its text
 > "Waiting for seller to accept your offer", the badge on each cart item, the order itself, and the English and Hindi
-> texts of the error codes in the app. Buy Now agreements (US-068) are tested here only with rows inserted by hand.
+> texts of the error codes in the app. Buy Now agreements (US-068, built since) are tested here with rows inserted by hand; US-068's own guide tests the real ones.
 
 | Setting | Value |
 |---|---|
@@ -133,7 +133,7 @@ The rules of K.5, checked by the automated tests; run them as in the last sectio
 | G11 | Calling the guard outside a transaction. | `IllegalTransactionStateException` (it must run in the order transaction). |
 | G12 | A second checkout after the first used the price. | 409 `ERROR_ITEM_RESERVED`. |
 
-To try Buy Now rows by hand (US-068 does not exist yet):
+To try Buy Now rows by hand (US-068 now makes them through `POST /listings/{id}/buy-now`, see its guide):
 
 ```sql
 INSERT INTO price_agreements (listing_id, buyer_id, seller_id, source, agreed_price, status, valid_until)

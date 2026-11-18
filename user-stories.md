@@ -2930,6 +2930,7 @@
 ## New Features - PRD v1.3 Alignment
 
 ### US-068: Direct Buy Now Flow
+> **Built (2026-11-18, Sprint 4 LLD Part M, M.11):** backend and mobile. The seller can switch **Allow Buy Now** off per listing (a goods listing must keep Buy Now or offers on); a buyer who taps Buy Now holds the item at its asking price for 15 minutes (`POST /listings/{id}/buy-now`, repeat by the same buyer returns the same reservation, `DELETE /price-agreements/{id}` lets go); the first of two buyers wins; the buyer's own open offer is withdrawn; a changed price ends the reservation and tells the buyer; a held listing is hidden from search result pages until the hold ends. **Ships dark:** `valuex.checkout.enabled` is off until the Sprint 5 cart and checkout exist, so buyers still see Buy Now as "Coming soon" and the endpoint answers 503; the cart step, the checkout header with the reservation timer (the `ReservationTimer` widget is built) and quantity above 1 are Sprint 5. Plan: `Documents/US-Implementation-Plans/US-068-Implementation-Plan.md`; testing guide: `Documents/Manual Testing Guides/US-068-Testing-Guide.md`.
 > **Update (2026-10-25, category taxonomy):** Not available for Real Estate listings (no purchase flow, US-118). Delivery follows category eligibility (US-122).
 **As a** buyer  
 **I want to** purchase an item immediately at listed price  
