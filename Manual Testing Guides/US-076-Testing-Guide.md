@@ -12,8 +12,8 @@ checked on three phones (or fewer phones and `curl`): one signed in as the **sel
 > `badge.updated` live event; `ERROR_OFFER_EXPIRED` for a seller. In the app: Profile > Selling > Offers (Received and
 > Sent tabs), the accept confirmation, the counter slider and the last-round note.
 > **Not in this story:** an Offers tab inside the chat list; buyer ratings (the card shows "No ratings yet" until the
-> rating module exists); the 48 hour expiry job and the expiry warning notification (US-080: until then an offer past
-> its time stays listed and shows as expired); push notifications (US-131); the checkout button (US-018, Sprint 5).
+> rating module exists); the 48 hour expiry job and the expiry warning notification (US-080, built: an offer past its time is
+> closed by the job within a minute); push notifications (US-131); the checkout button (US-018, Sprint 5).
 
 | Setting | Value |
 |---|---|
@@ -95,7 +95,7 @@ curl -s -X POST $B/listings/$LISTING/offers -H "$H2" -H "$J" -d '{"amount":"1000
 | # | Steps | Expected |
 |---|---|---|
 | D1 | Open an offer. `UPDATE negotiations SET expires_at = now() - interval '1 minute' WHERE id = '<id>';` Tap Accept and confirm. | 409 `ERROR_OFFER_EXPIRED`: the app says "This offer has expired" and re-reads the negotiation, which shows "Expired". Nothing is accepted. |
-| D2 | Seller, Offers > Pending. | The expired offer is still listed (until the US-080 job closes it) with "Expired" instead of a countdown and no "Needs your answer". |
+| D2 | Seller, Offers > Pending. | Until the US-080 job runs (within a minute) the expired offer is still listed with "Expired" instead of a countdown and no "Needs your answer"; after the run it moves to Closed. |
 | D3 | The same on the buyer side (a seller counter past its time, the buyer taps Accept). | 409 `ERROR_NEGOTIATION_EXPIRED` ("This negotiation has expired"). |
 
 ## E. Sent tab and buyer cancel (edge case 4)

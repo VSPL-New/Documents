@@ -12,8 +12,8 @@ and in-app updates. The backend is checked with `curl` and SQL; the app is check
 > rules. In the app: the Make an Offer sheet on the listing page, the negotiation screen (buyer and seller view), offer
 > cards in the chat thread, in-app notifications with a link to the negotiation.
 > **Not in this story:** the seller's offers inbox, badges and the automatic rejection of other buyers' offers when one
-> is accepted (US-076); the 48 hour expiry job, the expiry warning and the end of the price lock by a job (US-080; a
-> lock that ends is still handled when the next offer or accept is made); the checkout button and the checkout guard
+> is accepted (US-076); the 48 hour expiry job, the expiry warning and the end of the price lock by a job (US-080, built:
+> see its testing guide); the checkout button and the checkout guard
 > (US-018, Sprint 5); push notifications (US-131); an Admin screen for the numbers (US-116, until then change them in
 > `platform_settings`); Make an Offer on the chat header (use the listing page).
 
