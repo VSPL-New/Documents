@@ -954,6 +954,7 @@
 ---
 
 ### US-018: Prevent Checkout Without Price Acceptance
+> **Built (2026-11-18, Sprint 4 LLD Part K, K.11):** backend only. The server refuses an order unless the seller accepted the buyer's price, still valid and at the same amount (`CheckoutPriceGuard`, called by checkout in Sprint 5); two status endpoints and the listing page tell the buyer where the price stands (none, waiting for the seller, accepted until a time, expired, taken by someone else), and the buyer's app is told live when a price is locked, withdrawn or used. The checkout button, the cart badge and the app screens are Sprint 5 (US-019). Plan: `Documents/US-Implementation-Plans/US-018-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-018-Testing-Guide.md`.
 **As a** platform  
 **I want to** prevent buyers from checking out unless seller accepts price  
 **So that** transactions are based on mutual agreement
