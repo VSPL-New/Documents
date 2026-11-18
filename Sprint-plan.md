@@ -190,7 +190,7 @@ Enable buyer-seller interaction and price negotiation.
 | US-076 | Seller Negotiation Management ([plan](US-Implementation-Plans/US-076-Implementation-Plan.md), built 2026-11-18: offers received list, auto-decline of other offers, Offers screen and badge) | backend, mobile | 5  | US-017     |
 | US-018 | Prevent Checkout Without Price Acceptance ([plan](US-Implementation-Plans/US-018-Implementation-Plan.md), built 2026-11-18, backend only: checkout guard and price status endpoints; cart and checkout controls are Sprint 5) | backend         | 3  | US-017     |
 | US-080 | Auto-Expire Inactive Negotiations ([plan](US-Implementation-Plans/US-080-Implementation-Plan.md), built 2026-11-18: warning and expiry jobs, unused price lock job, chat counts as activity; app texts are a mobile follow-up) | backend         | 3  | US-017     |
-| US-068 | Direct Buy Now Flow                       | backend, mobile | 5  | US-012     |
+| US-068 | Direct Buy Now Flow ([plan](US-Implementation-Plans/US-068-Implementation-Plan.md), built 2026-11-18: seller switch, 15-minute reservation, search hiding, price change ends it; ships dark until the Sprint 5 checkout) | backend, mobile | 5  | US-012     |
 | US-132 | Block and Report User (proposed prerequisite; [plan](US-Implementation-Plans/US-132-Implementation-Plan.md), 2026-11-15) | backend, mobile | 3  | US-003     |
 | US-130 | Realtime Gateway (proposed prerequisite; [plan](US-Implementation-Plans/US-130-Implementation-Plan.md), built 2026-11-17 with the chat wiring: 5 SP gateway plus about 2 SP chat) | backend, mobile | 7  | US-107     |
 
