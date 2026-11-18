@@ -3255,6 +3255,7 @@
 ---
 
 ### US-076: Seller Negotiation Management
+> **Built (2026-11-18, Sprint 4 LLD Part J, J.11):** the seller has an Offers screen (Profile > Selling > Offers) with Received and Sent tabs, Pending, Accepted and Closed lists sorted by soonest expiry with countdowns, and a badge that follows live updates; accepting an offer for goods declines the other open offers on the item in the same step, and those buyers are told neutrally (no winner, no price); the seller confirms an accept, and the counter sheet has a slider. Buyer ratings show "No ratings yet" until the rating module exists. The chat-list Offers tab is not built. Plan: `Documents/US-Implementation-Plans/US-076-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-076-Testing-Guide.md`.
 > **Update (2026-10-25, category taxonomy):** For Real Estate listings the seller can mark the property Sold or Rented after an agreed price (US-118).
 **As a** seller  
 **I want to** manage buyer offers efficiently  

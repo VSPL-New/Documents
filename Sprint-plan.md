@@ -187,7 +187,7 @@ Enable buyer-seller interaction and price negotiation.
 | US-015 | In-App Video Call with Transcript (on hold) | backend, mobile | 8  | US-014     |
 | US-016 | Communication History Storage (call logs and transcripts on hold) | backend         | 5  | US-015     |
 | US-017 | Price Negotiation ([plan](US-Implementation-Plans/US-017-Implementation-Plan.md), built 2026-11-17: offers, counters, accepted price lock, in-app and live updates; seller inbox is US-076) | backend, mobile | 8  | US-013     |
-| US-076 | Seller Negotiation Management             | backend, mobile | 5  | US-017     |
+| US-076 | Seller Negotiation Management ([plan](US-Implementation-Plans/US-076-Implementation-Plan.md), built 2026-11-18: offers received list, auto-decline of other offers, Offers screen and badge) | backend, mobile | 5  | US-017     |
 | US-018 | Prevent Checkout Without Price Acceptance | backend         | 3  | US-017     |
 | US-080 | Auto-Expire Inactive Negotiations         | backend         | 3  | US-017     |
 | US-068 | Direct Buy Now Flow                       | backend, mobile | 5  | US-012     |
