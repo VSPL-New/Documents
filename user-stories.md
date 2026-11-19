@@ -1033,6 +1033,7 @@
 - `ERROR_MAX_CART_ITEMS`: "Cart limit reached (20 items)"
 - `ERROR_CART_EXPIRED`: "Cart items expired. Please add again"
 
+> **Built (2026-11-19, Sprint 5 LLD Part A, A.8):** backend and mobile. A buyer adds an item while holding an accepted price (an accepted offer or a Buy Now reservation); the cart groups items by seller, shows image, title, seller name, the agreed price, a status (Accepted, Pending, Expired, Unavailable) and the time left, and removes an item with an Undo. At most 20 items, each lasts 24 hours (both Admin settings); an item whose price ended stays visible as Expired until its 24 hours pass. Buy Now adds its reservation to the cart and opens it; the Saved items "Add to Cart" button and the Home cart icon and badge work. **Not built here:** "Proceed to checkout" is disabled (the one payment and one order per item are US-021 and US-023), choosing delivery per item (US-020), a local copy of the cart (the server is the truth). The cart ships dark: `valuex.checkout.enabled` stays off until US-021, so a released build shows "Coming soon" on Add to Cart. Plan: `Documents/US-Implementation-Plans/US-019-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-019-Testing-Guide.md`.
 **Flutter Implementation Notes:**
 - CartScreen groups items by seller using ListView with section headers
 - 24hr expiry countdown shown per item as a subtle timer chip

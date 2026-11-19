@@ -77,7 +77,7 @@ L1=<listing id of L1>; SELLER=<seller id>
 | TC-031 | App: open L4 | "For sale" label, category path, attributes, price; **no** Add to Cart and **no** Buy Now |
 | TC-032 | A new-development listing with `priceQualifier = STARTING_FROM` | The price reads "Starting from ₹…" |
 | TC-033 | App: open a goods listing | Add to Cart and Buy Now are shown, disabled, with "Coming soon" |
-| TC-033a | Since US-068, with the default `CHECKOUT_ENABLED=false` | Buy Now is still disabled with "Coming soon" for a verified buyer; for a buyer who is not Aadhaar verified a screen reader says "Identity verification needed", and when the seller switched Buy Now off it says "Seller requires price negotiation for this item". Add to Cart stays "Coming soon". |
+| TC-033a | Since US-068, with the default `CHECKOUT_ENABLED=false` | Buy Now is still disabled with "Coming soon" for a verified buyer; for a buyer who is not Aadhaar verified a screen reader says "Identity verification needed", and when the seller switched Buy Now off it says "Seller requires price negotiation for this item". Add to Cart stays "Coming soon" while the flag is off; since US-019 it follows the cart rules (see US-019-Testing-Guide.md). |
 
 ## D. Actions that are not built yet
 

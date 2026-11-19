@@ -216,7 +216,7 @@ Enable secure transactions and escrow.
 
 | ID     | Story                              | Repo            | SP | Dependency |
 | ------ | ---------------------------------- | --------------- | -- | ---------- |
-| US-019 | Add to Cart (Multi-Item)           | backend, mobile | 5  | US-018     |
+| US-019 | Add to Cart (Multi-Item) ([plan](US-Implementation-Plans/US-019-Implementation-Plan.md), built 2026-11-19: cart grouped by seller, 24-hour lines on an active price agreement, Buy Now hand-off; ships dark until the Sprint 5 checkout) | backend, mobile | 5  | US-018     |
 | US-020 | Choose Delivery or Self-Pickup     | backend, mobile | 5  | US-019     |
 | US-090 | Lifecycle State - Order            | backend         | 5  | US-020     |
 | US-091 | Lifecycle State - Payment & Escrow | backend         | 5  | US-090     |
