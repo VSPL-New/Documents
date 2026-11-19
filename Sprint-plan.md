@@ -193,6 +193,7 @@ Enable buyer-seller interaction and price negotiation.
 | US-068 | Direct Buy Now Flow ([plan](US-Implementation-Plans/US-068-Implementation-Plan.md), built 2026-11-18: seller switch, 15-minute reservation, search hiding, price change ends it; ships dark until the Sprint 5 checkout) | backend, mobile | 5  | US-012     |
 | US-132 | Block and Report User (proposed prerequisite; [plan](US-Implementation-Plans/US-132-Implementation-Plan.md), 2026-11-15) | backend, mobile | 3  | US-003     |
 | US-130 | Realtime Gateway (proposed prerequisite; [plan](US-Implementation-Plans/US-130-Implementation-Plan.md), built 2026-11-17 with the chat wiring: 5 SP gateway plus about 2 SP chat) | backend, mobile | 7  | US-107     |
+| US-131 | Push Notification Channel (proposed prerequisite; [plan](US-Implementation-Plans/US-131-Implementation-Plan.md), built 2026-11-19: device tokens, FCM, chat and offer pushes; Android verified, iOS ready and on hold for the Apple account) | backend, mobile, infra | 5  | US-077     |
 
 ## Exit Criteria
 

@@ -6097,9 +6097,58 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-131: Push Notification Channel (FCM)
+> **Added (2026-11-19, Sprint 4 LLD Part B):** a prerequisite for chat and offers reaching a person whose app is closed. 5 SP, Sprint 4, backend, mobile and infra. The acceptance criteria below are derived from LLD Part B and were approved by the product owner on 2026-11-19. Android is built and verified; iOS is built and ready, and is verified when the Apple Developer account and the push key exist.
+**As a** signed-in user  
+**I want** a notification on my phone when someone messages me or answers my offer  
+**So that** I can respond without keeping the app open
+
+**Related User Stories:**
+- US-013: every chat message is pushed, with one notification per conversation on the phone
+- US-017, US-076, US-080: offer and negotiation events are pushed with generic text
+- US-014, US-015: call pushes are designed in the policy table and sent when calls are built (on hold)
+- US-077: the in-app notification stays the record; push never replaces it
+- US-130: a person with the app open in the foreground is not pushed to
+
+**Acceptance Criteria:**
+- Given I am signed in with an active account
+- When the app starts, my token changes, or I change the app language
+- Then the app registers my phone (an install id, the platform, the token, my language, the app version and whether I allowed notifications); a token belongs to one account at a time, and an older token of the same install is revoked
+- When I sign out
+- Then the app removes my phone's tokens before the session is cleared, and forgets the token on the phone; a signed-out phone gets nothing for me, and an account that is closed or stops being active loses all its tokens
+- When someone messages me and I do not have the app open
+- Then every active token of mine that has the permission gets a push, in my app language, with a title such as "New message from Asha" and the body "Open JustQlic to read it"; a newer push of the same conversation replaces the older one on the phone
+- And the push never holds message text, an amount, an item title or a phone number
+- And the same applies to offer and negotiation events
+- When I refused the notification permission
+- Then my phone is registered as not allowed and nothing is pushed to it
+- When I first open a conversation
+- Then the app explains notifications and asks once; any answer is remembered, and the Notifications page offers a shortcut to the system settings while they are off
+- When I tap a notification
+- Then the app opens its target (a conversation or a negotiation), also from a closed app; a second tap on the same event is ignored; a push that arrives while the app is open is not shown
+- When Firebase says a token is no longer valid
+- Then the token is revoked and skipped from then on; a temporary failure is tried three times and then counted, and the in-app notification and live connection are not affected
+- And Android has the channels Messages, Offers, Calls and General, named in English or Hindi; iOS is set up for remote notifications
+
+**Edge Cases:** the app open in the foreground, an uninstalled app or stale token, sign-out, the same person on two phones, a second person signing in on one phone, permission denied, Firebase down, the lock screen, the Hindi language, a phone without the Firebase files (push is off, the app works), a full send queue (the push is dropped and counted).
+
+**Validation Rules:**
+- An unknown platform, an empty or too long token, or a missing install id is refused
+- At most 30 token calls per hour per user (an Admin-managed setting, `DEVICE_TOKEN_CALLS_PER_HOUR`)
+- Revoked tokens are deleted after 30 days and tokens not seen for 60 days are deleted, daily (`PUSH_TOKEN_REVOKED_RETENTION_DAYS`, `PUSH_TOKEN_STALE_DAYS`)
+- A token is never logged and never returned by any API; the Firebase key lives only in the secret manager
+
+**Error Scenarios:**
+- `ERROR_INVALID_PUSH_TOKEN` (422), `RATE_LIMIT_EXCEEDED` (429), the standard 401
+- With `PUSH_PROVIDER=fcm` and no valid key the backend refuses to start
+
+**Out of scope:** per-category preferences (US-087), WhatsApp (US-086), marketing push, a native incoming-call screen, web push.
+
+---
+
 ## End of User Stories Document
 
-**Total User Stories:** 130  
+**Total User Stories:** 131  
 **Coverage:** Full PRD_ValueX_v1.4 alignment + Flutter Implementation Notes  
 **Version:** 3.19 (Updated 2026-11-02) — US-010 is now View/Edit/Delete My Listings: the My Listings screen (Figma Make design) is part of the story, views and chats show 0 until US-067, and sold listings are never deleted; added US-124 (Pause and Resume Listing), US-125 (Relist Listing) and US-126 (Sold Listing Details), placeholders; sold listings are read-only with no Edit or Delete, and tapping a sold listing opens its sale details (US-126); US-123 also covers paused, sold and expired listings; live listings: the L3 category is locked and photos can be added (10 in total) or deleted except the main one; added US-127 (Listing Archival and Retention), placeholder. Version 3.18 (Updated 2026-10-31) — Added US-123 (Preview Listing, placeholder); US-009 gains the "listing under review" confirmation page with a Preview button. Version 3.17 (Updated 2026-10-25) — Category taxonomy: rewrote US-006 (one L3 category from the marketplace taxonomy and a category-driven Item Details form; multi-category tagging dropped); added US-118 (Real Estate Listing Specifics), US-119 (Category-wise Listing Plans), US-120 (OpenSearch Setup and Listing Indexing), US-121 (Admin - Categories, Attributes, Options and AI Settings) and US-122 (Shiprocket Delivery Integration); update notes added to the affected stories; price maximum raised to ₹10,00,00,000. Version 3.16 (Updated 2026-10-16) — Added US-116 (Admin - Manage Seller Listing Plans and Tax Settings) and US-117 (Payment Gateway Integration); listing plans, features and prices are dynamic (US-008, US-078, US-009): Basic is paid at ₹49 with no free plan, prices include GST, and a plan set to zero is free. Version 3.15 (Updated 2026-10-16) — Added US-115 (Listing Lifecycle Notifications); plan validity starts at publication and a seller gets 3 review attempts, then a refund (US-008, US-009, US-078, US-084). Version 3.14 (Updated 2026-10-16) — Added US-114 (Listing Item Details Entry) from the Figma Make Item Details and Set Your Price screens; US-004 minimum raised to 2 photos; the Trust and Safety review (US-084) runs after plan payment and before publication. Version 3.13 (Updated 2026-10-15) — Design change: Sign Up no longer asks for an address or date of birth and gender is optional (US-001, US-003, US-088); an address is first saved when the user buys with home delivery (US-020) or posts an item to sell (US-004), with an optional name (Home, Office, custom); Home offers only "Use my current location" and "Use my saved location" and never enters or verifies an address (US-111, US-011, US-108); added the My Addresses placeholder (US-113) and the Account row in the Profile hub (US-103); US-012 and US-027 cross-reference the pickup address. Version 3.12 (Updated 2026-10-12) — Added US-112 (Seller Incoming Orders) from the Figma Make Profile > Incoming Orders screen; US-103, US-026, US-027, US-059 and US-090 cross-reference it. Product owner decisions on urgent, reject penalty, self-pickup and order reference recorded in US-112; US-111 scheduled in Sprint 3. Version 3.11 (2026-10-11) — US-101 Flutter Implementation Notes updated to the delivered Google sign-in, and the returning-user flow now applies the account-standing check. Version 3.10 (2026-10-10): US-107 Flutter Implementation Notes updated to the delivered mobile refresh behaviour. Version 3.9 (2026-10-09): US-106 Flutter Implementation Notes updated to the delivered mobile Sign In. Version 3.8 (2026-10-08): Added US-111 (Home Page). Version 3.7 (2026-10-07): Added US-110 (Registration UI Accessibility and Readability Review). Version 3.6 (2026-10-05): Added US-109 (Mobile App Security Hardening); US-001 amended (terms and consent at Sign Up, `SIGNUP_PENDING` state, Sign Up step with profile and address). Version 3.5 (2026-10-05): Added US-108 (Address Entry with Google Places Autocomplete and Address Verification). Version 3.4 (2026-08-12): Added US-106 (Mobile OTP Login for Returning Users) and US-107 (Access Token Refresh), gaps identified when tracing the backend's actual returning-user API flow
 
