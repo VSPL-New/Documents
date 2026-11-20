@@ -6147,6 +6147,60 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 ---
 
+### US-133: Seller Payout Account Verification
+> **Added (2026-11-20, Sprint 5 LLD Part K, gap G16):** US-072 builds payout method management with a mock verifier until a verification provider is chosen. This story is the real verification. **Proposed:** 5 SP, Sprint 5 (after US-072), backend and mobile; the acceptance criteria below are a first draft for the product owner to confirm, and the provider is not chosen yet.
+**As a** seller  
+**I want** my bank account or UPI ID checked before it is used for a payout  
+**So that** my money goes to my own account and a wrong or someone else's account is caught early
+
+**Related User Stories:**
+- US-072: the screens and the rules of adding, activating and choosing a payout method; this story replaces its mock verifier with the real one
+- US-001, US-003: the registered (Aadhaar) name the account holder name is compared with
+- US-024: releases money only to an active, verified method (Sprint 6)
+
+**Acceptance Criteria:**
+- Given I add a bank account (account number, IFSC, holder name)
+- When I save it
+- Then the system asks the verification provider to confirm the account exists and returns the holder name registered with the bank
+- And the returned name is compared with my registered name; a clear mismatch rejects the account
+- And a small test deposit is sent when the provider requires it, and the account becomes active only after I enter the amount (up to 3 tries)
+- Given I add a UPI ID
+- When I save it
+- Then the provider confirms the ID exists and returns the holder name, which is compared with my registered name
+- When verification cannot be completed because the provider is down
+- Then the method stays "Pending verification", I am told to try again later, and nothing is activated
+- When I change the account number, IFSC or UPI ID of a method
+- Then it is verified again before it can be used
+- When a verified account later fails a payout because it is closed or invalid
+- Then the method is marked failed, I am notified, and I must add or fix a method (payout itself is US-024)
+
+**Edge Cases:** joint accounts (holder name has two people), a name with initials or a different order or spelling, a name change after marriage, an account in a business name, the provider returns no name, a test deposit that is returned by the bank, the same account added by two sellers, the provider times out after the deposit was sent, a seller with a pending payout changing the method.
+
+**Validation Rules:**
+- The name match rule and its threshold are an Admin-managed setting; the exact and near-match behaviour is confirmed by the product owner before building
+- At most 3 verification tries per method and 5 add or verify calls per hour per seller
+- Account numbers are encrypted at rest and masked in every response and log; the provider receives them only over the secured channel
+- The same account number may be active for only one seller
+- Each verification attempt and its result are recorded (without the full account number) for audit
+
+**Error Scenarios:**
+- `ERROR_INVALID_ACCOUNT`: "Bank account details are invalid"
+- `ERROR_NAME_MISMATCH`: "Account name must match your registered name"
+- `ERROR_INVALID_UPI`: "UPI ID not found or invalid"
+- `ERROR_VERIFICATION_UNAVAILABLE`: "We could not verify this account right now. Please try again later"
+- `ERROR_VERIFICATION_ATTEMPTS_EXCEEDED`: "Too many wrong attempts. Please add the account again later"
+- `ERROR_ACCOUNT_ALREADY_USED`: "This account is already linked to another seller"
+
+**Open:**
+- Provider (bank account verification, penny drop and UPI validation) is not chosen; the integration sits behind `PayoutVerificationPort` (Sprint 5 LLD Part K)
+- Name match rule for joint and business accounts
+- Cost per verification and who pays it
+
+**Flutter Implementation Notes:**
+- The screens are those of US-072; this story adds the "Pending verification" and "Failed" states, the retry message and the re-verification prompt
+
+---
+
 ## End of User Stories Document
 
 **Total User Stories:** 131  
