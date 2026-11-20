@@ -14,7 +14,9 @@ by the automated tests (section G); the manual cases below check the same rules 
 > `agreement.updated`; the reusable `CheckoutPriceGuardContractTest`. No migration.
 > **Not in this story (Sprint 5, US-019 to US-021):** the cart, the "Proceed to checkout" button and its text
 > "Waiting for seller to accept your offer", the badge on each cart item, the order itself, and the English and Hindi
-> texts of the error codes in the app. Buy Now agreements (US-068, built since) are tested here with rows inserted by hand; US-068's own guide tests the real ones.
+> texts of the error codes in the app. **Update (2026-11-19):** US-019 built the cart, the status badge on each line
+> (Accepted, Pending, Expired, Unavailable) and the texts; see US-019-Testing-Guide.md. The checkout button and the order
+> are still US-021. Buy Now agreements (US-068, built since) are tested here with rows inserted by hand; US-068's own guide tests the real ones.
 
 | Setting | Value |
 |---|---|

@@ -13,9 +13,11 @@ that hides a held listing. Backend and mobile.
 > result pages; a changed asking price cancels Buy Now reservations in the same transaction and tells the buyer
 > (`BUY_NOW_PRICE_CHANGED`); the app has the switch, the Buy Now button with its messages, the shared
 > `ReservationTimer` widget and the notification texts (English and Hindi).
-> **Not in this story (Sprint 5):** the cart and the checkout screens. With `CHECKOUT_ENABLED` off, buyers see
-> "Coming soon" on Buy Now and the endpoint answers 503; with it on, a successful tap only shows "Reserved for you.
-> Checkout is coming soon" because the checkout route does not exist yet. The `ReservationTimer` is built and tested
+> **Not in this story (Sprint 5):** the checkout screens. With `CHECKOUT_ENABLED` off, buyers see
+> "Coming soon" on Buy Now and the endpoint answers 503; with it on, a successful tap reserves the listing. **Since
+> US-019** the app then adds the reservation to the cart and opens the Cart ("Reserved for you and added to your
+> cart"); the old text "Reserved for you. Checkout is coming soon" is gone and "Proceed to checkout" is disabled until
+> US-021. The `ReservationTimer` is built and tested
 > but is shown on no screen until the Sprint 5 checkout. Quantity above 1 is not handled (the whole listing is held).
 
 | Setting | Value |
@@ -145,7 +147,7 @@ buynow() { curl -s -i -X POST $B/listings/$1/buy-now -H "$2" -H "$J" -d '{"expec
 
 | # | Steps | Expected |
 |---|---|---|
-| J1 | Buyer opens the listing with `CHECKOUT_ENABLED=true`, taps Buy Now. | One request; the message "Reserved for you. Checkout is coming soon" shows; the page is read again and, for you, Buy Now remains usable (the repeat returns the same reservation). |
+| J1 | Buyer opens the listing with `CHECKOUT_ENABLED=true`, taps Buy Now. | One request; the message "Reserved for you and added to your cart" shows and the Cart opens with the item (US-019; before it showed "Reserved for you. Checkout is coming soon"); going back, the page is read again and, for you, Buy Now remains usable (the repeat returns the same reservation). |
 | J2 | Tap twice quickly. | One request reaches the server. |
 | J3 | Another buyer's hold, sold item, switched-off, price changed. | The messages of D3, D8, D7 and D4 in English and Hindi; the page is read again. |
 | J4 | 320 px wide, 200 percent text, TalkBack/VoiceOver on the switch and the button. | No overflow; the switch is announced with its label and state; the caption of a disabled Buy Now is spoken. |
