@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 5: Cart, Checkout & Payments
 
-**Document Version:** 0.2 (2026-11-19). **US-019 is built** (as-built notes in A.8); all other stories are design only. Decisions marked "Proposed" still need product-owner confirmation unless A.8 or the US-019 plan records them as agreed.
+**Document Version:** 0.3 (2026-11-20). **US-019 is built** (as-built notes in A.8); all other stories are design only. Decisions marked "Proposed" still need product-owner confirmation unless A.8 or the US-019 plan records them as agreed.
 **Product:** ValueX
 **Sprint:** Sprint 5 - Cart, Checkout & Payments
 **Stories Covered:** US-019, US-020, US-090, US-091, US-021, US-022, US-075, US-023, US-070, US-025, US-072, US-071, US-113 (placeholder only)
@@ -13,6 +13,7 @@
 |---|---|---|
 | 0.1 | 2026-11-19 | First version: all Sprint 5 stories designed in one document, written after Sprint 4 (negotiation, price agreements, Buy Now) and US-117 (payment integration) were built. US-113 is a placeholder and is designed only as far as Sprint 5 needs it. |
 | 0.2 | 2026-11-19 | US-019 (Add to Cart) built, backend and mobile: as-built notes in A.8 (`V41__cart.sql`, `cart` package, `CartListingPort`, no ShedLock so the expiry job is safe through `SKIP LOCKED`, amounts as JSON numbers, the `cart` capability and `NEGOTIATION_REQUIRED`, Buy Now hand-off, no `cartSummaryProvider`). G1 to G12 of the US-019 plan were confirmed by the product owner. |
+| 0.3 | 2026-11-20 | Product-owner answers to the Sprint 5 gaps G1 to G19 recorded in N.4: no distance rule for pickup or delivery (G6), address provider moves to MapmyIndia later (G7), escrow at a third-party provider behind `EscrowProviderPort` (G9, new D.2a), payout verification becomes story US-133 (G16). G17 decided: OpenPDF on the server, PDF and CSV both built in US-071. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 section
@@ -340,8 +341,8 @@ For each cart line the buyer chooses home delivery (address, estimate, shipping 
 ## B.2 Design
 
 - **Options endpoint:** `GET /cart/items/{itemId}/delivery-options?addressId=...` returns what the line allows. Options are computed by `DeliveryOptionsService`:
-  - `selfPickup`: available when the listing has a pickup location (G2: listing pickup address column, see Part N) and the category allows it. Returns `{ pickupAddress (line 1, city, pincode only until the order exists), pickupHours (G6), sellerDisplayName }`. The full address and phone are revealed only after the order is paid or confirmed (Part H).
-  - `delivery`: available when the category is delivery-eligible (taxonomy, US-122) and `ShippingQuotePort.quote` returns a courier. Returns `{ quoteId, cost, etaDate, courierName? }`. Whole vehicles and Real Estate are never eligible.
+  - `selfPickup`: available when the listing has a pickup location (G2: listing pickup address column, see Part N) and the category allows it. Distance never limits it: a buyer may pick up from any city or state (G6, decided by the product owner). Returns `{ pickupAddress (line 1, city, pincode only until the order exists), sellerDisplayName }`; no pickup hours are shown (no data exists). The full address and phone are revealed only after the order is paid or confirmed (Part H).
+  - `delivery`: available when the category is delivery-eligible (taxonomy, US-122) and `ShippingQuotePort.quote` returns a courier, at any distance, near or far (the buyer decides, G6). Returns `{ quoteId, cost, etaDate, courierName? }`. Whole vehicles and Real Estate are never eligible.
   - If neither is available the line cannot be bought: `ERROR_NO_DELIVERY_AVAILABLE` and `ERROR_NO_SELF_PICKUP` are returned as the reasons in the options (HTTP 200) and the checkout refuses the line.
 - **Choice endpoint:** `PUT /cart/items/{itemId}/delivery` with `{ "mode": "DELIVERY", "addressId": "...", "quoteId": "..." }` or `{ "mode": "SELF_PICKUP", "paymentOption": "PAY_NOW" | "PAY_AT_PICKUP" }`. The server re-quotes (the quote id must be unexpired, 10 minutes, and match listing, pickup pin, buyer pin and weight) and stores `delivery_mode`, `delivery_address_id`, `shipping_cost`, `payment_option`. Shipping cost above the item price is allowed but returned with `warning: SHIPPING_EXCEEDS_PRICE` for the app to show (edge case).
 - **Address rules:** `addressId` must belong to the buyer and have all of line 1, city, state, valid pincode (`ERROR_INVALID_ADDRESS`). A new address is created through the existing `AddressController` (US-108 verification) and becomes the default when it is the buyer's first; the app then calls the choice endpoint. Naming (Home, Office, custom) uses `addresses.label`.
@@ -362,11 +363,11 @@ public interface DeliveryEligibilityPort { boolean deliveryEligible(UUID listing
 
 ## B.4 Mobile
 
-Checkout step 1 ("How do you want to receive this?") per line: two option cards, the reusable address component (US-108), saved addresses with the default preselected, a map for the pickup location (the story names an embedded map; uses the map widget already used by US-108 if present, otherwise a static text address until chosen, G7), the "Pay Now / Pay at Pickup" choice for self-pickup, and the "Pay at Pickup is not protected by escrow" banner (Part F).
+Checkout step 1 ("How do you want to receive this?") per line: two option cards, the reusable address component (US-108), saved addresses with the default preselected, the pickup location (the story names an embedded map). Address search and validation use the US-108 component as it is today; they move to the MapmyIndia APIs when that integration is built, as a new adapter behind the existing address provider (`AddressProviderConfig`, next to the Google and sandbox adapters), so Sprint 5 needs no change then (G7). Until a map is available the pickup location is shown as address text, the "Pay Now / Pay at Pickup" choice for self-pickup, and the "Pay at Pickup is not protected by escrow" banner (Part F).
 
 ## B.5 Validation and Errors
 
-At least one option must exist; address complete with pincode; quote calculated before checkout (`PUT .../delivery` is required for every line, else the checkout answers `ERROR_DELIVERY_NOT_CHOSEN` 409, "Choose how to receive each item"); self-pickup address valid; too far for self-pickup is **not enforced** (no distance rule exists, G6).
+At least one option must exist; address complete with pincode; quote calculated before checkout (`PUT .../delivery` is required for every line, else the checkout answers `ERROR_DELIVERY_NOT_CHOSEN` 409, "Choose how to receive each item"); self-pickup address valid. **No distance rule:** the story edge case "seller location too far for self-pickup" is not enforced; the buyer alone decides, so self-pickup is offered from any distance and delivery for any serviceable distance, however near (G6). The app may show the seller's city as information only.
 
 ---
 
@@ -499,6 +500,23 @@ CREATE TRIGGER trg_osh_immutable BEFORE UPDATE OR DELETE ON order_status_history
 ```
 
 (The `payout` table is created with US-024 in Sprint 6; Sprint 5 only writes the seller payout **method**, Part K.)
+
+## D.2a Third-party escrow (G9, decided 2026-11-20)
+
+Funds will be held in an account of a **third-party escrow provider, not chosen yet**. So `escrow_accounts` is the platform's own record of the funds held for each order, and the provider is hidden behind a port:
+
+```java
+public interface EscrowProviderPort {
+    String providerName();                                   // 'internal' until a provider is chosen
+    EscrowHold hold(HoldRequest request);                    // funds for one order are held
+    EscrowRelease release(ReleaseRequest request);           // Sprint 6, US-024
+    EscrowRefund refund(RefundRequest request);              // Sprint 7, US-035
+}
+```
+
+- Sprint 5 ships only an `InternalEscrowAdapter` that records the hold in the ledger (no money moves outside the existing payment gateway), selected by `valuex.escrow.provider=internal`. A real adapter is added when a provider is chosen, by configuration, with no change to checkout or order code.
+- Two columns are added now so a provider can be added without a migration of live rows: `escrow_accounts.provider VARCHAR(30) NOT NULL DEFAULT 'internal'` and `escrow_accounts.provider_reference VARCHAR(100)`.
+- **Open risk (G9a):** if the escrow provider also collects the buyer's money, the buyer payment flow of US-117 (gateway order, callback) could change for `CHECKOUT` payments. The design assumes the existing gateway collects the payment and the provider only holds it. This must be re-checked when the provider is chosen. There is no story yet for the provider integration; it should be added once the provider is known.
 
 ## D.3 State Mapping
 
@@ -783,7 +801,7 @@ CREATE UNIQUE INDEX uq_payout_primary ON payout_methods (user_id) WHERE is_prima
 - **Changes** take effect 24 hours after activation (`PAYOUT_ACTIVATION_HOURS`): `effective_from`; payouts use the primary method whose `effective_from <= now`. Changing or removing the primary while a payout is pending is refused with `ERROR_PENDING_PAYOUT` through `PendingPayoutPort` (always false until US-024 creates payouts, G14).
 - **At least one method before the first sale:** `OrderCreationService` does not block (the buyer must not be affected); instead the seller gets a `PAYOUT_METHOD_REQUIRED` notification on `NEW_ORDER` and a banner in Incoming Orders, and US-024 refuses to release without a method (the funds wait in escrow). Whether to block the seller earlier (for example at publish) is a product decision (G15).
 - Security: account numbers encrypted at rest, masked in every response and log, never returned in full; add and verify are rate-limited (5 per hour); screenshot protection (US-109) on the screens.
-- `PayoutVerificationPort` has a `mock` adapter (like the payment gateway) until a payout provider is chosen (G16).
+- `PayoutVerificationPort` has a `mock` adapter (like the payment gateway) until a payout provider is chosen (G16); the real verification (provider, test deposit, UPI check, name match, re-verification) is the new story US-133.
 
 ## K.4 Mobile
 
@@ -826,7 +844,7 @@ Writers: a successful or failed payment (buyer `PAYMENT` per order for `SUCCESS`
 
 Running balance: computed in SQL with a window over the user's full ordered set, then filtered, so a filter does not change the balance column: `SUM(CASE direction WHEN 'CREDIT' THEN amount ELSE -amount END) OVER (ORDER BY occurred_at, id)`. All amounts are rupees with 2 decimals.
 
-Export: the CSV is streamed; the PDF uses a library chosen in the plan (**G17**); `from` older than 2 years answers 422 and the list (not the export) still reaches 7 years. `ERROR_EXPORT_FAILED` on any error.
+Export: the CSV is streamed; the PDF is built on the server with OpenPDF and an embedded Noto Sans font, in English (**G17**); `from` older than 2 years answers 422 and the list (not the export) still reaches 7 years. `ERROR_EXPORT_FAILED` on any error.
 
 ## L.3 Mobile
 
@@ -897,25 +915,25 @@ Coverage target above 90% for new and changed code in each story (CLAUDE.md rule
 
 | # | Gap or decision | Proposal |
 |---|---|---|
-| G1 | The cart line rests on an agreement (D1) and Buy Now flows through the cart (D3). | Confirm. |
-| G2 | The listing has no pickup address column (US-004's design says the seller picks one; the code has only `seller_location` and `area`). Self-pickup needs the address. | Add `listings.pickup_address_id` (nullable) in the US-020 migration, fall back to the seller's default address for old listings. Confirm. |
-| G3 | US-122 (Shiprocket, delivery eligibility, packed weight) is Sprint 6 but Sprint 5 offers delivery. | Ship a stub quote adapter (D6), eligibility by category type; or move the US-122 schema slice earlier. Confirm. |
-| G4 | US-021 lists "platform fees" in the buyer summary but US-025 charges the seller. | Buyer fee 0 (D7), field reserved. Confirm. |
-| G5 | The story keeps the cart locally (`isar` or `drift`). | Server is the source of truth; no local database. Confirm. |
-| G6 | Pickup hours and "too far for self-pickup" have no data or rule. | No hours shown, no distance rule, until the product owner defines them. |
-| G7 | Map widget for the pickup location. | Use the widget that US-108 already uses if one exists; otherwise show the address text. |
-| G8 | "Pending Pickup Payment" is not an `OrderState`. | Presentation of `PAY_AT_PICKUP` (Part C). Confirm. |
-| G9 | One payment covers many escrows, so the payment never moves to `ESCROW_HELD`. | Keep `PAYMENT_SUCCESS` on the payment; escrow states live on the escrow account. Confirm. |
-| G10 | HLD endpoint names `/payments/initiate` and `/payments/{id}/retry`. | Replace with `POST /checkouts/{id}/payment`; update the HLD. Confirm. |
-| G11 | No-show on pay-at-pickup. | Auto-cancel after 48 hours (setting). Confirm. |
-| G12 | US-070 says "seller/buyer name"; the seller list is US-112 (Sprint 6). | Buyer list now. Confirm. |
-| G13 | GST on the platform fee. | Use `TaxSettingsService`; the tax rule is a finance decision. |
-| G14 | Payout table does not exist before US-024. | `PendingPayoutPort` returns false until then. |
-| G15 | Should a seller without a payout method be blocked earlier than release? | Do not block; warn and wait in escrow. Confirm. |
-| G16 | Payout verification provider (test deposit, UPI check) is not chosen. | `mock` adapter behind `PayoutVerificationPort`. |
-| G17 | PDF library for the statement. | Choose in the US-071 plan; CSV first. |
-| G18 | Address delete while in use (US-113). | Guard now, full rules with US-113. |
-| G19 | New columns on listings: `pay_at_pickup_enabled`, `pickup_address_id`; new `categories` data for delivery eligibility (US-122). | As above, each in its story's migration. |
+| G1 (Confirmed 2026-11-20) | The cart line rests on an agreement (D1) and Buy Now flows through the cart (D3). | Confirm. |
+| G2 (Agreed 2026-11-20) | The listing has no pickup address column (US-004's design says the seller picks one; the code has only `seller_location` and `area`). Self-pickup needs the address. | Add `listings.pickup_address_id` (nullable) in the US-020 migration, fall back to the seller's default address for old listings. Confirm. |
+| G3 (Confirmed 2026-11-20) | US-122 (Shiprocket, delivery eligibility, packed weight) is Sprint 6 but Sprint 5 offers delivery. | Ship a stub quote adapter (D6), eligibility by category type; or move the US-122 schema slice earlier. Confirm. |
+| G4 (Confirmed 2026-11-20) | US-021 lists "platform fees" in the buyer summary but US-025 charges the seller. | Buyer fee 0 (D7), field reserved. Confirm. |
+| G5 (Confirmed 2026-11-20) | The story keeps the cart locally (`isar` or `drift`). | Server is the source of truth; no local database. Confirm. |
+| G6 (Decided 2026-11-20) | Pickup hours and "too far for self-pickup". | No distance rule: the buyer alone decides; self-pickup from any city or state and delivery at any distance. No pickup hours shown (no data). |
+| G7 (Decided 2026-11-20) | Address search and validation provider. | MapmyIndia APIs later, as a new adapter behind the address provider; until then the US-108 component. |
+| G8 (Confirmed 2026-11-20) | "Pending Pickup Payment" is not an `OrderState`. | Presentation of `PAY_AT_PICKUP` (Part C). Confirm. |
+| G9 (Decided 2026-11-20) | Where escrow money is held. | A third-party escrow provider, not chosen yet: `EscrowProviderPort` with an `internal` adapter now (D.2a). Payment keeps `PAYMENT_SUCCESS`; escrow states live on the escrow account. Open risk G9a: the provider may also change how the buyer pays. |
+| G10 (Confirmed 2026-11-20) | HLD endpoint names `/payments/initiate` and `/payments/{id}/retry`. | Replace with `POST /checkouts/{id}/payment`; update the HLD. Confirm. |
+| G11 (Confirmed 2026-11-20) | No-show on pay-at-pickup. | Auto-cancel after 48 hours (setting). Confirm. |
+| G12 (Confirmed 2026-11-20) | US-070 says "seller/buyer name"; the seller list is US-112 (Sprint 6). | Buyer list now. Confirm. |
+| G13 (Agreed 2026-11-20) | GST on the platform fee. | Use `TaxSettingsService`; the tax rule is a finance decision. |
+| G14 (Agreed 2026-11-20) | Payout table does not exist before US-024. | `PendingPayoutPort` returns false until then. |
+| G15 (Confirmed 2026-11-20) | Should a seller without a payout method be blocked earlier than release? | Do not block; warn and wait in escrow. Confirm. |
+| G16 (Agreed 2026-11-20) | Payout verification provider (test deposit, UPI check) is not chosen. | `mock` adapter behind `PayoutVerificationPort` for now; the real verification is the new story **US-133** (user-stories.md, Sprint 5). |
+| G17 (Decided) | PDF library for the statement. | OpenPDF on the server (free licence) with an embedded Noto Sans font so the rupee sign prints; English statement; generated on request and streamed, not stored. CSV (UTF-8 with BOM) and PDF are both built in US-071. |
+| G18 (Agreed 2026-11-20) | Address delete while in use (US-113). | Guard now, full rules with US-113. |
+| G19 (Agreed 2026-11-20) | New columns on listings: `pay_at_pickup_enabled`, `pickup_address_id`; new `categories` data for delivery eligibility (US-122). | As above, each in its story's migration. |
 
 ## N.5 Documents to update when each story is built
 

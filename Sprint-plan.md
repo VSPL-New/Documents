@@ -227,6 +227,7 @@ Enable secure transactions and escrow.
 | US-070 | View Order History                 | backend, mobile | 3  | US-023     |
 | US-025 | Platform Fee Deduction             | backend         | 3  | US-021     |
 | US-072 | Seller Payout Bank/UPI Management  | backend, mobile | 5  | US-025     |
+| US-133 | Seller Payout Account Verification (proposed 2026-11-20, 5 SP not yet agreed; real provider behind the US-072 mock verifier) | backend, mobile | 5  | US-072     |
 | US-071 | View Payment and Transaction       | backend, mobile | 5  | US-021     |
 | US-113 | My Addresses (placeholder, to be detailed; points not estimated yet) | backend, mobile | TBD | US-020, US-108 |
 
