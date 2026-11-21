@@ -12,7 +12,7 @@ the cart (Home, Saved items). Backend and mobile.
 > expiry job (every 5 minutes, `valuex.cart.expiry-interval-ms`); the app's Cart screen (`/cart`), the Add to Cart
 > button on the listing page and in Saved items, the Home cart icon and badge, and the Buy Now hand-off.
 > **Not in this story:** "Proceed to checkout" (it is shown **disabled**, with "Checkout is coming soon"; US-021), choosing
-> delivery per item (US-020: each line says "Choose at checkout"), paying, orders. The cart **ships dark**: with
+> delivery per item (built later by US-020, see US-020-Testing-Guide.md; until a choice is made each line still says "Choose at checkout"), paying, orders. The cart **ships dark**: with
 > `CHECKOUT_ENABLED=false` (default) Add to Cart shows "Coming soon" and `POST /cart/items` answers 503; sections D
 > onwards need `CHECKOUT_ENABLED=true`.
 
@@ -22,7 +22,7 @@ the cart (Home, Saved items). Backend and mobile.
 | Admin settings | `CART_MAX_ITEMS` 20 (1 to 50), `CART_ITEM_TTL_HOURS` 24 (1 to 168) |
 | Flag | `CHECKOUT_ENABLED=false` (default) or `true` |
 | Error codes | 409 `ERROR_ITEM_UNAVAILABLE`, `ERROR_ITEM_RESERVED`, `ERROR_PRICE_NOT_ACCEPTED`, `ERROR_MAX_CART_ITEMS` (details `limit`), `ERROR_CHECKOUT_NOT_APPLICABLE`; 403 `ERROR_UNAUTHORIZED_CHECKOUT`, `AADHAAR_VERIFICATION_REQUIRED`; 404 `ERROR_CART_ITEM_NOT_FOUND`; 503 `ERROR_CHECKOUT_UNAVAILABLE`. In a line: `problem` `ERROR_ITEM_UNAVAILABLE`, `ERROR_PRICE_CHANGED`, `ERROR_CART_EXPIRED`, `ERROR_ACCEPTANCE_EXPIRED` |
-| Known gaps | No checkout (US-021) and no delivery choice (US-020); Hindi texts need native review |
+| Known gaps | No checkout (US-021); the delivery choice came with US-020; Hindi texts need native review |
 
 ---
 

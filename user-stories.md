@@ -1088,6 +1088,8 @@
 - Shipping cost calculated via backend API on address selection
 - Self-pickup shows seller location on embedded map widget
 
+> **Built (2026-11-21, Sprint 5 LLD Part B, B.6):** backend and mobile. In the cart, each item that can be bought has a "Choose delivery" button. **Delivery:** the buyer picks one of their saved addresses (the default is preselected) or adds and names a new one (the first address saved becomes the default), and sees the shipping cost and the date the server worked out; a cost above the item's price shows a notice. **Self-pickup:** the buyer sees where to collect (street and area, city, state, pincode when known; the full address and the seller's contact come after the order) and chooses Pay Now (escrow) or Pay at Pickup (direct to the seller, with the warning that it is not protected by escrow). The buyer agrees to the terms of what they chose and the choice is saved with the item; switching replaces it completely. Delivery is offered for goods only (not whole vehicles or Real Estate), at any distance, and self-pickup from any city (no distance rule, no pickup hours). **Not built here:** the real courier quote (a flat stand-in until US-122), the seller's Pay at Pickup switch (US-022), the map (address text only; MapmyIndia later), My Addresses (US-113), checkout (US-021). Until a seller can choose a pickup address, the place falls back to the seller's default address and then to the place typed on the listing. Plan: `Documents/US-Implementation-Plans/US-020-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-020-Testing-Guide.md`.
+
 ---
 
 ## Orders & Payments
