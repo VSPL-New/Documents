@@ -375,7 +375,7 @@ Profile
 
 Incoming Orders is a pushed screen with a back button, opened from the Profile hub (US-103, US-112). It is not a bottom-navigation tab.
 
-The profile details screen edits only name and avatar and shows no city, date of birth or address. The Profile tab > Account has a "My Addresses" row that currently shows the passing "coming soon" message (US-113).
+The profile details screen edits only name and avatar and shows no city, date of birth or address. The Profile tab > Account has a "My Addresses" row that opens the My Addresses list (US-113): add, edit, rename, set as default and delete.
 
 ### Home Location (US-111)
 

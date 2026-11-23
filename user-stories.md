@@ -4523,7 +4523,7 @@
 - Payments: US-071 (transaction history), US-072 (payout settings)
 - Preferences: US-087 (notifications), US-044 (language)
 - Support: US-043, US-045, US-046 (help & support), US-047 (raise dispute), US-074 (ticket status)
-- Account: US-105 (account security), US-113 (my addresses; the row shows the coming soon message until US-113 is built), US-063 / US-098 (delete account), US-104 (logout)
+- Account: US-105 (account security), US-113 (my addresses; the row opens the My Addresses list), US-063 / US-098 (delete account), US-104 (logout)
 
 **Flutter Implementation Notes:**
 - ProfileScreen acts as the navigation shell; each menu row uses `ListTile` with leading icon, trailing badge/chevron
@@ -4738,6 +4738,7 @@
 ## Address Management
 
 ### US-108: Address Entry with Google Places Autocomplete and Address Verification
+> **Update (2026-11-23, US-113):** The address verification API is not used. Google Places search stays. The backend now checks an address with its own rules (line length, supported state, a pincode that fits the state) and saves it as not verified; the "Verified" mark is shown only for an address a provider confirmed, which happens only when the optional place check (`ADDRESS_PLACE_CHECK_ENABLED`, off by default) matches the place the user picked. Acceptance criteria below that say the backend verifies through the address verification API and that the user sees whether it is verified describe the earlier design and apply only with `ADDRESS_PROVIDER=google`. `ERROR_ADDRESS_NOT_VERIFIED` and `ERROR_ADDRESS_SERVICE_UNAVAILABLE` cannot occur with `ADDRESS_PROVIDER=offline`.
 > **Update (2026-10-25, category taxonomy):** An item's location comes from an address chosen on Item Details. The public listing shows only locality and city for goods (the pincode is not public) and distance search uses rounded coordinates; the exact precision is set in the LLD. Real Estate shows the property's own city, locality and pincode.
 **As a** user entering an address (when I buy with home delivery or post an item to sell)  
 **I want to** search for my address with suggestions and have it verified  
@@ -4749,7 +4750,7 @@
 - US-001: Sign Up no longer collects an address; this story is not used there
 - US-004: posting a listing asks for the pickup address; US-020: delivery address selection; US-027: pickup address; all reuse this story's component and verification
 - US-111: Home does not use address search or verification
-- US-113: My Addresses (placeholder) manages the saved addresses
+- US-113: My Addresses manages the saved addresses
 
 **Acceptance Criteria:**
 - Given I am entering an address
@@ -4803,36 +4804,63 @@
 
 ---
 
-### US-113: My Addresses (placeholder)
+### US-113: My Addresses
 **As a** user  
 **I want to** see and manage the addresses I have saved  
 **So that** I can reuse them for delivery, pickup and finding items near me
 
-**Status:** Placeholder. The product owner will detail this story later; the acceptance criteria below are only a starting point.
+**Status:** Built (2026-11-23), 5 SP agreed. Plan: [US-113-Implementation-Plan.md](US-Implementation-Plans/US-113-Implementation-Plan.md). Backend and mobile.
 
-**Design Note:** Addresses are not collected at Sign Up. The first address is saved when the user buys an item with home delivery (US-020) or posts an item to sell (US-004), and becomes the default for delivery and pickup. A user can enter new addresses and give each a name such as Home, Office or any custom name. The Profile tab shows a "My Addresses" row under Account that shows the coming soon message until this story is built.
+**Design Note:** Addresses are not collected at Sign Up. The first address is saved when the user buys an item with home delivery (US-020) or posts an item to sell (US-004), and becomes the default for delivery and pickup. A user can enter new addresses and give each a name such as Home, Office or any custom name. The Profile tab "My Addresses" row under Account opens the list. Address search stays on Google Places (Places API New, in the app, with a restricted key). **No address verification API is used (2026-11-23):** the backend checks an address with its own rules (line length, supported state, a six-digit pincode that fits the state) and saves it as not verified; the app shows no "Verified" mark for it. An optional check against the Google place the user picked (Place Details) is built but switched off (`ADDRESS_PLACE_CHECK_ENABLED`); when on, an address that matches its place is saved as verified. Geocoding is not used.
 
 **Related User Stories:**
 - US-103: the "My Addresses" row under Account in the Profile tab
-- US-108: address entry and verification component
+- US-108: address entry component; its verification rule is changed here (see the note in US-108)
 - US-004, US-020, US-027: where addresses are first saved and chosen
 - US-111: Home offers the saved addresses as "Use my saved location"
 
-**Acceptance Criteria (to be detailed):**
+**Acceptance Criteria:**
 - Given I am logged in
 - When I tap "My Addresses" under Account in the Profile tab
-- Then I see my saved addresses with their names and full addresses, my default first
-- And I can add, edit, rename, delete and choose my default address (to be detailed)
+- Then I see my saved addresses with their names and full addresses, my default first, with a Default chip on the default and a Verified chip only on an address a provider confirmed
+- When I tap Add address
+- Then I can search a place or type the address, name it, and save it (the first address is my default)
+- When I choose Edit on an address
+- Then the form opens filled in; changing only the name saves it without a new check, and changing any address field checks it again
+- When I choose Set as default
+- Then that address becomes my only default
+- When I choose Delete and confirm
+- Then the address is removed; if it was my default, my oldest remaining address becomes the default
+- Given a cart line or a listing uses the address
+- Then it cannot be deleted and I am told why
 
-**Edge Cases:** To be detailed
+**Edge Cases:**
+- Deleting the default address promotes the oldest remaining one; deleting the last address is allowed
+- An address used by a cart line (delivery) or a listing (pickup address) cannot be deleted; open orders keep their own copy, so they do not block
+- Editing an address that a cart line delivers to clears that line's delivery choice, so the buyer chooses again and gets a new shipping cost; a rename does not
+- Two changes by the same user at once (the per-user lock keeps exactly one default)
+- Another user's address id: not found (no detail leaked)
+- At most 10 saved addresses; the eleventh is refused
+- Places search unavailable or offline: the address is typed by hand
+- Place check (when switched on) cannot reach Google, does not know the place, or finds a different pincode, city or state: the address is saved as not verified and the save is never blocked
 
-**Validation Rules:** To be detailed
+**Validation Rules:**
+- Name (label): up to 50 characters, trimmed; blank removes it
+- Address line 10 to 255 characters, landmark up to 100, city 2 to 100, pincode 6 digits not starting with 0, state one of the supported Indian states or union territories, and the pincode must fit the state (first digit zone)
+- At most 10 addresses per user
 
-**Error Scenarios:** To be detailed
+**Error Scenarios:**
+- `ERROR_ADDRESS_NOT_FOUND` (404): not the user's address
+- `ERROR_ADDRESS_IN_USE` (409): a cart line or listing uses the address
+- `ERROR_ADDRESS_LIMIT_REACHED` (400): ten addresses saved
+- `ERROR_PINCODE_MISMATCH`, `ERROR_ADDRESS_INVALID`, `ERROR_INVALID_ADDRESS_STATE`, `ERROR_ADDRESS_RATE_LIMIT`: as for verify
+- `ERROR_ADDRESS_NOT_VERIFIED` and `ERROR_ADDRESS_SERVICE_UNAVAILABLE` cannot occur while `ADDRESS_PROVIDER=offline`
 
-**Open:**
-- Story points are not estimated yet
-- Rules for deleting the default address or an address used by an open order
+**Not in this story:** the seller's pickup address on a listing has no screen until US-004 and US-027 (the delete guard and the pickup column are ready); geocoding and coordinates; a verification API.
+
+**Implementation Notes:**
+- Backend: `PUT /users/me/addresses/{id}` (rename or change), `PUT /users/me/addresses/{id}/default`, `DELETE /users/me/addresses/{id}`; `AddressManagementService`; `AddressUsagePort` implemented by the cart and the listing modules; `OfflineAddressVerificationAdapter` (`ADDRESS_PROVIDER=offline`); optional `PlaceCheck` (`ADDRESS_PLACE_CHECK_ENABLED`, `GOOGLE_PLACES_SERVER_API_KEY`). No database migration.
+- Mobile: `MyAddressesScreen` at `/profile/addresses`, `AddressCard`, `AddressFormSheet` edit mode; Place Details asks only for `id`, `formattedAddress` and `addressComponents`.
 
 ---
 
