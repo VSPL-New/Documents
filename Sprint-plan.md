@@ -183,9 +183,9 @@ Enable buyer-seller interaction and price negotiation.
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
 | US-069 | Buyer Initiates Contact from Listing ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17 with US-013) | mobile, backend | 3  | US-012     |
 | US-013 | Chat with Seller ([plan](US-Implementation-Plans/US-069-US-013-Implementation-Plan.md), built 2026-11-17: REST and polling, in-app notification; live with US-130, push with US-131) | backend, mobile | 8  | US-069     |
-| US-014 | In-App Voice Call (on hold)              | backend, mobile | 8  | US-013     |
-| US-015 | In-App Video Call with Transcript (on hold) | backend, mobile | 8  | US-014     |
-| US-016 | Communication History Storage (call logs and transcripts on hold) | backend         | 5  | US-015     |
+| US-014 | In-App Voice Call ([plan](US-Implementation-Plans/US-014-US-015-Implementation-Plan.md); on LiveKit, built together with US-015, built 2026-11-22: call from the listing or the conversation, ringing push, accept or decline, voice screen, call summary card and missed-call notification; no recording) | backend, mobile | 8  | US-013     |
+| US-015 | In-App Video Call (transcript deferred beyond the MVP; on LiveKit, built together with US-014, built 2026-11-22: camera, picture-in-picture, weak-line banner, 720p at 24 frames a second from settings; points not re-estimated) | backend, mobile | 8  | US-014     |
+| US-016 | Communication History Storage (call transcripts deferred beyond the MVP; call logs follow the calls) | backend         | 5  | US-014     |
 | US-017 | Price Negotiation ([plan](US-Implementation-Plans/US-017-Implementation-Plan.md), built 2026-11-17: offers, counters, accepted price lock, in-app and live updates; seller inbox is US-076) | backend, mobile | 8  | US-013     |
 | US-076 | Seller Negotiation Management ([plan](US-Implementation-Plans/US-076-Implementation-Plan.md), built 2026-11-18: offers received list, auto-decline of other offers, Offers screen and badge) | backend, mobile | 5  | US-017     |
 | US-018 | Prevent Checkout Without Price Acceptance ([plan](US-Implementation-Plans/US-018-Implementation-Plan.md), built 2026-11-18, backend only: checkout guard and price status endpoints; cart and checkout controls are Sprint 5) | backend         | 3  | US-017     |
@@ -197,12 +197,12 @@ Enable buyer-seller interaction and price negotiation.
 
 ## Exit Criteria
 
-* Chat and communication history working; voice and video calls are app-to-app only and **on hold** until a call provider is chosen (no recording, transcripts only)
+* Chat and communication history working; voice and video calls are app-to-app only, built on LiveKit (nothing recorded or transcribed in the MVP; call logs only)
 * Price negotiation flow complete
 * Direct buy now option available
 * Auto-expiry mechanism functional
 
-> **Update (2026-11-15, Sprint 4 LLD):** Calls are in-app only (no phone network, no VoIP to phone numbers). Nothing is recorded; transcripts are saved with consent. US-014, US-015 and the call part of US-016 are on hold until the call provider (and speech-to-text option) is chosen. The Sprint 4 LLD proposes three prerequisite stories, US-130 Realtime Gateway (5 SP), US-131 Push Notification Channel (5 SP) and US-132 Block and Report User (3 SP): 69 SP in total, 53 SP active now and 16 SP on hold. **Update (2026-11-17):** US-130 was built with its chat wiring (7 SP instead of 5), so the active total is about 55 SP. See `LLD/Sprint-4-Communication-Negotiation-LLD.md`.
+> **Update (2026-11-15, Sprint 4 LLD):** Calls are in-app only (no phone network, no VoIP to phone numbers). Nothing is recorded. (2026-11-15: transcripts saved with consent, and US-014, US-015 and the call part of US-016 on hold until a call provider was chosen; both points are superseded by the 2026-11-22 update below.) The Sprint 4 LLD proposes three prerequisite stories, US-130 Realtime Gateway (5 SP), US-131 Push Notification Channel (5 SP) and US-132 Block and Report User (3 SP): 69 SP in total, 53 SP active now and 16 SP on hold. **Update (2026-11-17):** US-130 was built with its chat wiring (7 SP instead of 5), so the active total is about 55 SP. **Update (2026-11-22, product owner):** the call provider is **LiveKit** and US-014 and US-015 are built together; **call transcripts are deferred beyond the MVP** (nothing is recorded or transcribed, call logs only), so US-015 shrinks to a video call on top of the voice call (its 8 SP were not re-estimated) and the call-log part of US-016 follows the calls. Plan: `US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`. See `LLD/Sprint-4-Communication-Negotiation-LLD.md` (decision D24).
 
 ---
 
@@ -652,7 +652,7 @@ All 109 user stories from the user-stories.md file are now covered in the sprint
 **High Complexity:**
 - Escrow payment system (US-021, US-091) - 13 SP
 - AI photo search (US-039) - 13 SP
-- In-app video calls with transcripts (US-015, on hold until a provider is chosen) - 8 SP
+- In-app video calls (US-015, on LiveKit, no recording or transcript in the MVP) - 8 SP
 - Fraud detection (US-048, US-052) - 8 SP each
 
 **External Dependencies:**

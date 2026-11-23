@@ -777,9 +777,9 @@
 
 ---
 
-### US-014: In-App Voice Call (on hold; was "Masked Voice Call")
+### US-014: In-App Voice Call (was "Masked Voice Call")
 > **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
-> **Update (2026-11-15, Sprint 4 LLD, decisions D4 and D5):** **On hold.** Calls are app-to-app only: no VoIP to phone numbers, no phone network, no SIP or PSTN, no masked numbers, no Exotel or Twilio, and no phone number is used at all. The call media provider is not chosen yet, so this story waits for that decision. A call is never recorded; a text transcript is saved after both people consent (US-015, Sprint 4 LLD Part G). The design is ready and provider-neutral: `Documents/LLD/Sprint-4-Communication-Negotiation-LLD.md` Part F.
+> **Update (2026-11-22, product owner, Sprint 4 LLD decisions D4 and D24):** **Built together with US-015 on LiveKit** (plan: `Documents/US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`). Calls are app-to-app only: no VoIP to phone numbers, no phone network, no SIP or PSTN, no masked numbers, no Exotel or Twilio, and no phone number is used at all. **A call is never recorded or transcribed in the MVP**; only the call log is kept (the 2026-11-15 plan of a consented text transcript is deferred, see US-015). Design: `Documents/LLD/Sprint-4-Communication-Negotiation-LLD.md` Part F.
 **As a** buyer  
 **I want to** call the seller without revealing my number  
 **So that** I can discuss details while maintaining privacy
@@ -803,7 +803,7 @@
 - Call service unavailable
 
 **Validation Rules:**
-- The call is not recorded; both parties must consent to a saved text transcript before the call starts
+- The call is not recorded or transcribed; the screens say so (the consent to a saved transcript of 2026-11-15 is deferred, US-015)
 - Call logs retained for 6 months
 - Max call duration: 30 minutes per session
 - No phone number is ever shown; the call is between the two app accounts
@@ -821,9 +821,9 @@
 
 ---
 
-### US-015: In-App Video Call with Transcript (on hold; was "Video Call with Recording")
+### US-015: In-App Video Call (transcript deferred; was "Video Call with Recording")
 > **Update (2026-10-25, category taxonomy):** Included in the Real Estate flow (chat, calls, video calls and price negotiation only; US-118).
-> **Update (2026-11-15, Sprint 4 LLD, decisions D4, D5 and D23):** **On hold** until the call provider is chosen. Calls are app-to-app only. **No voice or video is recorded.** Instead a text transcript is saved after both people consent (the notice reads "This call is not recorded. A text transcript is saved for safety"), kept for a configurable period after the conversation closes (default 180 days, editable by an Admin in the settings screen) and readable only by authorised Admins. Transcripts are made on each person's own phone (on-device speech-to-text; only text is uploaded, no audio leaves the phone), as decided on 2026-11-15 (Sprint 4 LLD G.11); the text is device-reported, so it is supporting evidence. The consent wording is pending legal review. Wherever this story says "recording", read "transcript"; the criteria below show the new wording.
+> **Update (2026-11-22, product owner, Sprint 4 LLD decision D24):** **Built together with US-014 on LiveKit** (plan: `Documents/US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`). **The MVP does not record and does not transcribe any voice or video call.** There is no consent step and no saved text of a call; only the call log (who, when, how long, how it ended) is kept. The ringing and in-call screens show "This call is not recorded". The earlier transcript requirements (2026-11-15: consent notice, on-device speech-to-text, stored transcript, retention) are **deferred to a later story** and are listed at the end of this section; the design is kept in Sprint 4 LLD G.3 to G.11. Story points were not re-estimated.
 **As a** buyer  
 **I want to** video call the seller to see the item  
 **So that** I can verify condition before purchasing
@@ -831,49 +831,41 @@
 **Acceptance Criteria:**
 - Given I am viewing a listing or in chat
 - When I tap "Video Call"
-- Then I see consent notice: "This call is not recorded. A text transcript is saved for safety"
-- When I accept
-- Then system prompts seller to join
-- When seller accepts (and agrees to the same notice)
+- Then the app asks for camera and microphone permission if needed
+- And the seller is prompted to join (the screens say "This call is not recorded")
+- When seller accepts
 - Then video call connects
-- And the transcript starts
 - When call ends
-- Then the transcript is stored securely
-- And the transcript is deleted after the retention period following transaction closure
+- Then a call log is stored with the duration
+- And nothing of the call is recorded or transcribed
 
 **Edge Cases:**
 - User denies camera/microphone permission
 - Seller rejects video call
 - Poor network causes video lag
-- Transcript fails but call proceeds
-- User wants a copy of the transcript
 
 **Validation Rules:**
-- Both parties must consent before the transcript starts
-- Consent captured at call start
-- Transcript stored encrypted at rest
-- Auto-delete after the transcript retention period (proposed 180 days) following transaction closure
 - User can report inappropriate behavior during call
 - Max video call duration: 30 minutes
-- No audio or video is stored in any form
+- No audio, video or text of the call is stored in any form
 
 **Error Scenarios:**
 - `ERROR_CAMERA_PERMISSION`: "Camera and microphone access required"
 - `ERROR_SELLER_DECLINED`: "Seller declined video call"
-- `ERROR_TRANSCRIPT_FAILED`: "Transcript unavailable but call can proceed"
 - `WARNING_LOW_BANDWIDTH`: "Poor connection. Video quality may be affected"
 
 **Flutter Implementation Notes:**
-- Same in-app call SDK as US-014 (provider not chosen yet; no server-side audio access is needed)
-- On-device speech recognition on each phone for the user's own speech (on-device mode only, no cloud fallback); upload text segments to the server
-- Consent dialog mandatory before initiating; cannot skip
+- Same in-app call SDK as US-014 (LiveKit, `livekit_client`); no server-side audio access is needed
 - Camera preview + remote video in PiP layout
 - Network quality indicator widget during call
+- "Turn off video" option on the low-bandwidth banner
+
+**Deferred beyond the MVP (call transcript, product owner 2026-11-22):** consent notice ("This call is not recorded. A text transcript is saved for safety") accepted by both people before the call; on-device speech-to-text on each phone with only text uploaded; transcript started when the call connects and stored securely (encrypted at rest); deleted after the retention period (proposed 180 days) following transaction closure; edge cases "transcript fails but call proceeds" and "user wants a copy of the transcript"; errors `ERROR_TRANSCRIPT_FAILED`, `ERROR_CONSENT_REQUIRED`, `ERROR_CONSENT_OUTDATED`; legal review of the consent wording.
 
 ---
 
 ### US-016: Communication History Storage
-> **Update (2026-11-15, Sprint 4 LLD, decisions D4 and D5):** Nothing is recorded. Chat and chat-image storage, retention, legal hold and Admin evidence access are active. The call-log and call-transcript parts are **on hold** with US-014 and US-015. Call transcripts replace video recordings; they are kept for a configurable period after the conversation closes (proposed 180 days) and are read through the audited Admin endpoint.
+> **Update (2026-11-22, product owner, Sprint 4 LLD decisions D4 and D24):** Nothing is recorded or transcribed. Chat and chat-image storage, retention, legal hold and Admin evidence access are active, and the call-log part is built after the calls of US-014 and US-015 (LiveKit). **Call transcripts are deferred beyond the MVP** (the 2026-11-15 plan to keep a consented text transcript, retention and Admin transcript endpoint is not built).
 **As a** platform  
 **I want to** store all communication history  
 **So that** disputes can be resolved with evidence
@@ -886,8 +878,8 @@
 - When a dispute is raised
 - Then admins can access relevant communication logs
 - When transaction closes
-- Then call transcripts are auto-deleted after the transcript retention period (proposed 180 days)
-- And chat/call logs retained for 6 months
+- Then chat and call logs are retained for 6 months after the conversation closes
+- (Deferred beyond the MVP: call transcripts auto-deleted after a transcript retention period)
 
 **Edge Cases:**
 - Storage limit exceeded
@@ -898,7 +890,7 @@
 **Validation Rules:**
 - Chat messages: 6 months retention
 - Call logs: 6 months retention
-- Call transcripts: auto-delete after the retention period following the conversation closing (no audio or video is recorded)
+- Call transcripts: deferred beyond the MVP (nothing of a call is recorded or transcribed)
 - All communication encrypted at rest
 - Access logs maintained for audit
 
@@ -2992,7 +2984,7 @@
 - Then an in-app video call request is sent to seller
 - And I see "Waiting for seller to accept" message
 
-> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Chat and Make an Offer are active. The **Call** and **Video Call** options stay shown as "Coming soon" (disabled) until a call provider is chosen and `valuex.calls.enabled` is turned on; they never use the phone network.
+> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Chat and Make an Offer are active. The **Call** and **Video Call** options stay shown as "Coming soon" (disabled) until the calls of US-014 and US-015 are built on LiveKit and `valuex.calls.enabled` is turned on; they never use the phone network.
 
 **Edge Cases:**
 - Seller is offline/unavailable
@@ -6039,7 +6031,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Then the thread becomes read-only for both of us, its history stays visible, and unblocking restores it
 - And an accepted price agreement or an order is not cancelled; blocking only stops new contact
 
-**Edge Cases:** blocking yourself; blocking or unblocking twice; a report of something the reporter was not part of (answers as not found, so ids cannot be probed); false or abusive reporting (daily limit now, Admin review in Sprint 10); a report during a call (calls are on hold, so this arrives with them); a blocked account that is later closed.
+**Edge Cases:** blocking yourself; blocking or unblocking twice; a report of something the reporter was not part of (answers as not found, so ids cannot be probed); false or abusive reporting (daily limit now, Admin review in Sprint 10); a report during a call (arrives with the calls of US-014 and US-015); a blocked account that is later closed.
 
 **Validation Rules:**
 - Report details are optional, plain text, at most 500 characters
@@ -6064,7 +6056,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 
 **Related User Stories:**
 - US-013: chat is the first user of the gateway (messages, delivered and read marks, typing, read-only changes)
-- US-017, US-076, US-080: negotiation events (later); US-014, US-015: call events (on hold)
+- US-017, US-076, US-080: negotiation events (later); US-014, US-015: call events (built with the calls, on LiveKit)
 - US-131: push for the person whose app is closed (the gateway only reaches an open app)
 - US-107: the access token refresh the gateway relies on
 - US-132: a block turns a thread read-only for both people at once
@@ -6258,7 +6250,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Premium plan pricing: Basic (Free), Smart (₹49/mo), Vision (₹149/mo) - discounted rates
 - Listing plan pricing: Basic (₹49), Boosted (₹149), Priority (₹249) - discounted rates
 - Third-party service integrations (Aadhaar, payment gateway, logistics) are provider-agnostic
-- Auto-release timeouts: 7 days for payment, transcript retention period for call transcripts, 48 hours for negotiations
+- Auto-release timeouts: 7 days for payment, 48 hours for negotiations
 - All monetary values aligned with PRD v1.3
 - State machine transitions require careful implementation to maintain data consistency
 - Lifecycle states should be implemented with audit logging for compliance

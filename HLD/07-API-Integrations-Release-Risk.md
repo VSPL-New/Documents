@@ -795,7 +795,7 @@ NotificationRead
 
 ## Video Call Signaling
 
-> **Update (2026-11-15, Sprint 4 LLD, decision D1):** `/ws/video` is not a separate endpoint. Call signalling is a logical channel of the single `/ws/v1` connection (typed events, single-use ticket). Calls are on hold until a call provider is chosen.
+> **Update (2026-11-15, Sprint 4 LLD, decision D1):** `/ws/video` is not a separate endpoint. Call signalling is a logical channel of the single `/ws/v1` connection (typed events, single-use ticket). Calls run on LiveKit (2026-11-22).
 
 ```text
 /ws/video
@@ -978,10 +978,10 @@ POST /api/v1/webhooks/logistics
 
 ## Voice
 
-> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Voice and video are **in-app (app-to-app) calls only**. There is no VoIP to phone numbers, no phone network, no SIP or PSTN bridging, no masked numbers and no Exotel or Twilio. The call media provider is **not chosen yet**; the design is provider-neutral and call stories (US-014, US-015) are on hold until it is. Agora and Twilio Video are candidates only, not decisions. Nothing is recorded (decision D5): call transcripts are saved instead, with consent from both people.
+> **Update (2026-11-15, Sprint 4 LLD, decision D4):** Voice and video are **in-app (app-to-app) calls only**. There is no VoIP to phone numbers, no phone network, no SIP or PSTN bridging, no masked numbers and no Exotel or Twilio. The call media provider is **LiveKit** (chosen 2026-11-22; it replaces the earlier "not chosen" state, and Agora and Twilio Video are not used). Calls are built on it behind a provider port, with a mock for development and CI. Nothing is recorded or transcribed in the MVP (decisions D5 and D24): a call keeps only its call log; the consented text transcript planned on 2026-11-15 is deferred to a later release.
 
 ```text
-Not chosen (in-app calls only; no telephony)
+LiveKit (in-app calls only; no telephony)
 ```
 
 ---
@@ -989,7 +989,7 @@ Not chosen (in-app calls only; no telephony)
 ## Video
 
 ```text
-Not chosen (in-app calls only)
+LiveKit (in-app calls only)
 ```
 
 ---
@@ -997,8 +997,7 @@ Not chosen (in-app calls only)
 ## Features
 
 * Call Logs
-* Call Transcripts (no audio or video recording)
-* On-device speech-to-text in the mobile app for transcripts (decision D23; no server-side speech service; see Sprint 4 LLD G.11)
+* Call Transcripts: deferred beyond the MVP (decision D24); no audio, video or text of a call is recorded or stored. The on-device speech-to-text design is kept in Sprint 4 LLD G.11.
 
 ---
 

@@ -1,16 +1,17 @@
 # Low Level Design - Sprint 4: Communication & Negotiation
 
-**Document Version:** 0.12 (2026-11-19). The product owner answered section 9.1 on 2026-11-15: D1 to D3 and D6 to D22 are confirmed as written; D4, D5 and D13 are changed as recorded in the change log and in section 9.1. Voice and video calls are **on hold** until a call provider is chosen. US-132 (as-built notes in C.10), US-069 with US-013, built together (D.11 and E.11), US-130 with the chat wiring (A.11), US-131 (B.11) US-017 (I.11), US-076 (J.11), US-018 (K.11), US-080 (L.11) and US-068 (M.11) are done; the other stories are not yet implemented.
+**Document Version:** 0.13 (2026-11-22). The product owner answered section 9.1 on 2026-11-15: D1 to D3 and D6 to D22 are confirmed as written; D4, D5 and D13 are changed as recorded in the change log and in section 9.1. **Voice and video calls are built on LiveKit (2026-11-22); no call is recorded or transcribed in the MVP (decision D24)**, so the transcript design in Part G (G.3 to G.11) is kept only as a deferred design. US-132 (as-built notes in C.10), US-069 with US-013, built together (D.11 and E.11), US-130 with the chat wiring (A.11), US-131 (B.11) US-017 (I.11), US-076 (J.11), US-018 (K.11), US-080 (L.11) and US-068 (M.11) are done; the other stories are not yet implemented.
 **Product:** ValueX (the app and business name shown to users is JustQlic)
 **Sprint:** Sprint 4 - Communication & Negotiation
-**Stories Covered:** US-069, US-013, US-014 (on hold), US-015 (on hold), US-016 (chat part active, call part on hold), US-017, US-076, US-018, US-080, US-068, and three proposed prerequisite stories found missing while designing: US-130 Realtime Gateway (Part A), US-131 Push Notification Channel (Part B) and US-132 Block and Report User (Part C)
-**Repos:** valuex-backend, valuex-mobile, infra (WebSocket ingress, Redis, FCM secrets; later the call provider and transcription secrets). `valuex-web` is not touched (Admin endpoints only, no console screen until Sprint 10). `valuex-ai` is not touched (message screening is rule based).
-**Sprint Goal:** Enable buyer-seller interaction and price negotiation: contact from a listing, chat, stored communication history, offers and counter offers with a locked accepted price, a backend guard that stops checkout without an accepted price, automatic expiry of stale negotiations, and a Buy Now path that skips negotiation. In-app voice and video calls (no phone network, no recordings, saved transcripts only) are designed but on hold until a call provider is chosen.
+**Stories Covered:** US-069, US-013, US-014 (voice call, LiveKit), US-015 (video call, LiveKit; transcript deferred), US-016 (chat and call-log parts), US-017, US-076, US-018, US-080, US-068, and three proposed prerequisite stories found missing while designing: US-130 Realtime Gateway (Part A), US-131 Push Notification Channel (Part B) and US-132 Block and Report User (Part C)
+**Repos:** valuex-backend, valuex-mobile, infra (WebSocket ingress, Redis, FCM secrets, LiveKit keys and the webhook route). `valuex-web` is not touched (Admin endpoints only, no console screen until Sprint 10). `valuex-ai` is not touched (message screening is rule based).
+**Sprint Goal:** Enable buyer-seller interaction and price negotiation: contact from a listing, chat, stored communication history, offers and counter offers with a locked accepted price, a backend guard that stops checkout without an accepted price, automatic expiry of stale negotiations, and a Buy Now path that skips negotiation. In-app voice and video calls (app to app on LiveKit, no phone network, nothing recorded or transcribed in the MVP, a call log only) complete the contact options.
 
 **Change Log:**
 
 | Version | Date | Change |
 |---|---|---|
+| 0.13 | 2026-11-22 | **LiveKit chosen as the call provider (closes O1) and call transcripts deferred out of the MVP (new decision D24).** Voice (Part F) and video (Part G) are built together on LiveKit; the plan is `US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`. Nothing is recorded or transcribed: no consent step, no on-device speech-to-text, no `call_transcript_segments`, no consent or transcript columns on `call_sessions`, no transcript endpoints, no transcript settings, no Admin transcript endpoint, no speech-recognition permission. A call keeps its call log only. The transcript design (G.3 to G.11) is kept as a deferred design for a later story. D23 is superseded for the MVP; O7 and O8 are closed for the MVP. F.3 to F.8 and Parts C, H and N updated to match. |
 | 0.12 | 2026-11-19 | US-019 (Add to Cart, Sprint 5) closes the cart hand-offs: the mobile data layer and strings of K.7 shipped with the cart (K.11 row 11), the cart badge and Add to Cart are live in the app, and Buy Now now adds its reservation to the cart and opens it (M.11 row 14). Details in Sprint 5 LLD A.8. |
 | 0.11 | 2026-11-19 | US-131 (Push Notification Channel) built, backend, mobile and infra: as-built notes in B.11 (migration `V40` with the token table and three Admin-managed settings; `PushPort` with `FcmPushAdapter` and `NoopPushAdapter`; `PushPolicy`, `PushCopy` (English and Hindi, generic text), `PushChannelSender` with three tries, `PushDispatcher` on a bounded pool after commit; chat pushed for every message with the collapse key `chat:{threadId}` and offer events pushed through the dispatcher; tokens revoked at sign-out, at account state change (`REQUIRES_NEW`) and by a daily cleanup; mobile install id, registration lifecycle, permission sheet, off banner, `/chats/{id}` deep link, Android channels and manifest, iOS entitlement ready but not verified; the Firebase files stay out of git). E.11 rows 3 and 13 point to it. |
 | 0.10 | 2026-11-18 | US-068 (Direct Buy Now Flow) built, backend and mobile: as-built notes in M.11 (migration `V39`: `listings.buy_now_enabled` and the two Buy Now settings; `valuex.checkout.enabled` default off, so Buy Now ships dark until the Sprint 5 checkout while the seller switch, the capability reasons and search hiding work now; `POST /listings/{id}/buy-now` and `DELETE /price-agreements/{id}`; the listing lock is taken first so a price edit cannot slip in; a price change cancels Buy Now reservations before the edit commits and tells the buyer (`BUY_NOW_PRICE_CHANGED`); the buyers own open offer is withdrawn; held listings are hidden from search result pages; `agreement.updated` of US-018 reused; mobile switch, button messages, `ReservationTimer` and notification texts). K.11 row 9 and I.11 point to the closed items. |
@@ -27,7 +28,7 @@
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 4 section
 - [user-stories.md](../user-stories.md) - US-069, US-013, US-014, US-015, US-016, US-017, US-076, US-018, US-080, US-068 (and the US-118 update of 2026-11-13 on negotiated prices)
-- [PRD v1.3](../PRD_ValueX_v1.3.md) - FR-7 to FR-12, FR-46, FR-58, real-time chat latency under 1 second, persistent chat history and call transcripts
+- [PRD v1.3](../PRD_ValueX_v1.3.md) - FR-7 to FR-12, FR-46, FR-58, real-time chat latency under 1 second, persistent chat history and call logs (call transcripts are deferred, D24)
 - [HLD Part 1 - High Level Architecture](../HLD/01-High-Level-Architecture.md) - communication and negotiation services
 - [HLD Part 2 - Backend Architecture](../HLD/02-Backend-Architecture.md) - §4.6 Communication Module, §4.7 Negotiation Module
 - [HLD Part 3 - Data Architecture](../HLD/03-Data-Architecture.md) - §4.4 Negotiation Domain, §4.12 Communication Domain, §9 and §14 retention
@@ -52,16 +53,16 @@
 | C | US-132 (new, proposed) | Block and Report User | 3 (proposed) | backend, mobile | US-003 | active |
 | D | US-069 | Buyer Initiates Contact from Listing | 3 | mobile, backend | US-012, US-132 | active (Call and Video entries stay disabled) |
 | E | US-013 | Chat with Seller | 8 | backend, mobile | US-069, US-130, US-131 | active |
-| F | US-014 | In-App Voice Call (was "Masked Voice Call") | 8 | backend, mobile | US-013 | **on hold: no call provider chosen** |
-| G | US-015 | In-App Video Call with Transcript (was "Video Call with Recording") | 8 | backend, mobile | US-014 | **on hold: no call provider chosen** |
-| H | US-016 | Communication History Storage | 5 | backend | US-013 (chat); US-015 (call transcripts) | active for chat; call logs and transcripts on hold |
+| F | US-014 | In-App Voice Call (was "Masked Voice Call") | 8 | backend, mobile | US-013 | planned on LiveKit ([plan](../US-Implementation-Plans/US-014-US-015-Implementation-Plan.md)); built together with US-015 |
+| G | US-015 | In-App Video Call (was "Video Call with Recording"; the transcript is deferred, D24) | 8 | backend, mobile | US-014 | planned on LiveKit; transcript **deferred beyond the MVP** |
+| H | US-016 | Communication History Storage | 5 | backend | US-013 (chat), US-014 (call logs) | active for chat and call logs; call transcripts deferred (D24) |
 | I | US-017 | Price Negotiation | 8 | backend, mobile | US-013 | active |
 | J | US-076 | Seller Negotiation Management | 5 | backend, mobile | US-017 | active |
 | K | US-018 | Prevent Checkout Without Price Acceptance | 3 | backend | US-017 | active |
 | L | US-080 | Auto-Expire Inactive Negotiations | 3 | backend | US-017 | active |
 | M | US-068 | Direct Buy Now Flow | 5 | backend, mobile | US-012, Part I (shared price agreement) | active |
 
-The ten planned stories add up to 56 SP; the three proposed stories add 13 SP, 69 SP in all. With US-014 and US-015 on hold (16 SP) the **active scope is 53 SP** (US-016 is counted whole although its call part waits), which is close to the size of the other sprints (section 9.4, O13). **What "on hold" means:** the design stays in this document, provider-neutral, so it can be built as soon as a provider is chosen; no code, migration or setting for calls is built in the meantime; `valuex.calls.enabled` stays `false`, so the `call` and `video` capabilities report `COMING_SOON` and the Call and Video buttons stay disabled as they are today.
+The ten planned stories add up to 56 SP; the three proposed stories add 13 SP, 69 SP in all. With US-014 and US-015 (16 SP) built later on LiveKit, the **first waves are 53 SP** (US-016 is counted whole although its call-log part follows the calls), which is close to the size of the other sprints (section 9.4, O13). **What the calls switch means:** the call code is built behind `valuex.calls.enabled`, which stays `false` until an environment has its LiveKit project, keys and webhook, so the `call` and `video` capabilities report `COMING_SOON` and the Call and Video buttons stay disabled as they are today. The design was first written provider-neutral while the provider was undecided; LiveKit was chosen on 2026-11-22.
 
 ```mermaid
 graph LR
@@ -70,10 +71,10 @@ graph LR
     US131[US-131 Push<br/>Channel] --> US013
     US132[US-132 Block and<br/>Report] --> US069
     US069 --> US013
-    US013 --> US014[US-014 Voice Call<br/>ON HOLD]
-    US014 --> US015[US-015 Video Call<br/>ON HOLD]
-    US013 --> US016[US-016 History Storage<br/>chat part active]
-    US015 -. call transcripts .-> US016
+    US013 --> US014[US-014 Voice Call<br/>LiveKit]
+    US014 --> US015[US-015 Video Call<br/>LiveKit]
+    US013 --> US016[US-016 History Storage<br/>chat and call logs]
+    US014 -. call logs .-> US016
     US013 --> US017[US-017 Price Negotiation]
     US017 --> US076[US-076 Seller Offers]
     US017 --> US018[US-018 Checkout Guard]
@@ -84,7 +85,7 @@ graph LR
     US068 -. consumed by .-> S5
 ```
 
-**Recommended build order:** US-130, US-131 and US-132 in parallel; then US-069 and US-013; then US-016 (chat retention and evidence), and in parallel the negotiation track (US-017, then US-076, US-018 and US-080 in parallel) and US-068 once the price agreement table of US-017 exists. The call track (US-014, US-015 and the call part of US-016) waits for the provider decision (O1). Part H is written so that its chat retention rules can be built first and the call and transcript rules added later.
+**Recommended build order:** US-130, US-131 and US-132 in parallel; then US-069 and US-013; then US-016 (chat retention and evidence), and in parallel the negotiation track (US-017, then US-076, US-018 and US-080 in parallel) and US-068 once the price agreement table of US-017 exists. The call track (US-014 and US-015, built together on LiveKit; plan in `US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`) can start once the LiveKit account and the two device spikes are done; the call-log part of US-016 follows it. Part H is written so that its chat retention rules can be built first and the call-log rules added later. Call transcripts are not part of the MVP (D24).
 
 This document has one self-contained part per story, in build order. Section 1 defines the shared pieces that later parts reuse by reference: the module layout, the realtime event envelope, the conversation thread, the price agreement, the Admin-managed settings, the notification catalogue and the external integrations.
 
@@ -96,8 +97,8 @@ This document has one self-contained part per story, in build order. Section 1 d
 - [Part C - US-132: Block and Report User (new)](#part-c---us-132-block-and-report-user-new)
 - [Part D - US-069: Buyer Initiates Contact from Listing](#part-d---us-069-buyer-initiates-contact-from-listing)
 - [Part E - US-013: Chat with Seller](#part-e---us-013-chat-with-seller)
-- [Part F - US-014: In-App Voice Call (on hold)](#part-f---us-014-in-app-voice-call-on-hold)
-- [Part G - US-015: In-App Video Call with Transcript (on hold)](#part-g---us-015-in-app-video-call-with-transcript-on-hold)
+- [Part F - US-014: In-App Voice Call](#part-f---us-014-in-app-voice-call)
+- [Part G - US-015: In-App Video Call (transcript deferred)](#part-g---us-015-in-app-video-call-transcript-deferred)
 - [Part H - US-016: Communication History Storage](#part-h---us-016-communication-history-storage)
 - [Part I - US-017: Price Negotiation](#part-i---us-017-price-negotiation)
 - [Part J - US-076: Seller Negotiation Management](#part-j---us-076-seller-negotiation-management)
@@ -115,10 +116,10 @@ This document has one self-contained part per story, in build order. Section 1 d
 
 1. **PostgreSQL is the source of truth; realtime is a hint.** A chat message, offer, call state or agreement is committed to PostgreSQL first. The WebSocket, Redis fan-out and push only tell a device that something changed. After any gap (reconnect, killed app) the app re-reads over REST using sequence cursors, so a lost realtime event never loses data.
 2. **Writes go over REST, change notifications come over WebSocket** (decision D2). Sending a message, making an offer or accepting one is an ordinary authenticated HTTP call with validation, rate limits, idempotency keys and standard error codes. The socket carries server-to-client events and a few small client signals (typing, acknowledgements, call heartbeat).
-3. **Nothing blocks on a provider.** The call media provider (not yet chosen), the transcription service, FCM and the object store are reached through ports with timeouts, a circuit breaker and a fallback (section 1.8). A provider outage degrades one feature (for example "Call unavailable") and never breaks chat, offers or listing details.
+3. **Nothing blocks on a provider.** The call media provider (LiveKit), FCM and the object store are reached through ports with timeouts, a circuit breaker and a fallback (section 1.8). A provider outage degrades one feature (for example "Call unavailable") and never breaks chat, offers or listing details.
 4. **The listing stays live while people talk and negotiate** (decision D6). Many buyers can chat and negotiate on one listing at once. Exclusivity exists only where money is about to move: an accepted price (24 hours) or a Buy Now reservation (15 minutes) reserves the item through one table, `price_agreements` (section 1.4).
 5. **Every business number is an Admin-managed setting** (Sprint 3 decision D19, section 1.6 here). Limits, timers, retention days and rate limits are not constants. Deployment-only values (timeouts, batch sizes, ports, provider endpoints) stay configuration (section 1.5).
-6. **No phone number, email or address ever reaches the other party** in a DTO, notification, push, log line or call screen. Calls are app-to-app only (no phone network, no telephony or SIP bridging), so no number is involved at all (decision D4). **No call is recorded**: neither audio nor video is stored; only a text transcript is saved (decision D5).
+6. **No phone number, email or address ever reaches the other party** in a DTO, notification, push, log line or call screen. Calls are app-to-app only (no phone network, no telephony or SIP bridging), so no number is involved at all (decision D4). **No call is recorded or transcribed in the MVP**: neither audio nor video nor any text of a call is stored; only the call log (who, when, how long, how it ended) is kept (decisions D5 and D24).
 7. **Existing conventions are reused:** `ApiResponse` envelope, `BusinessException`, `NotFoundException`, `ForbiddenException`, `ConflictException`, `DomainEventPublisher` with `@TransactionalEventListener`, the generic `StateMachine<S>` (every transition writes a history row and publishes an event), `RedisCacheService.checkRateLimit`, `PlatformSettingsService` snapshots, `AuditLogger`, programmatic Resilience4j (as in `AiGatewayConfig`), `@RequiresIdentityVerification` (Aadhaar gating), `ProfileMenuBadgeProvider`, `ListingEngagement`, Flyway, and scheduled jobs in the style of `SuspendedAccountAutoLiftJob`.
 
 ## 1.2 Component View
@@ -127,7 +128,7 @@ This document has one self-contained part per story, in build order. Section 1 d
 graph TB
     Mobile[Flutter app] -- REST --> API[Spring Boot REST APIs]
     Mobile <-- WebSocket /ws/v1 --> RT[Realtime Gateway]
-    Mobile <-- app-to-app call media (on hold) --> RTC[(Call media provider, not chosen)]
+    Mobile <-- app-to-app call media --> RTC[(LiveKit)]
     API --> Chat[ChatService]
     API --> Calls[CallService]
     API --> Neg[NegotiationService]
@@ -151,8 +152,6 @@ graph TB
     RtcPort --> RTC
     RTC -- provider events --> WH[RtcWebhookController]
     WH --> Calls
-    Calls --> TrSvc[TranscriptService<br/>validates and stores text uploaded by the apps]
-    Apps[Mobile apps<br/>on-device speech-to-text] -- text only, no audio --> TrSvc
     Jobs[NegotiationExpiryJob<br/>AgreementExpiryJob<br/>CallWatchdogJob<br/>CommunicationRetentionJob] --> PG
     Listing[Listing module<br/>events and ports] -. ListingStatusChangedEvent .-> Neg
     Listing -. ListingStatusChangedEvent .-> Chat
@@ -174,22 +173,22 @@ com.valuex.notification (additions)       (US-131)
   application/    PushChannelSender, PushMessage, port/PushPort
   domain/         DeviceToken; NotificationChannelType gains PUSH
   infrastructure/ FcmPushAdapter, NoopPushAdapter, DeviceTokenRepository, PushTokenCleanupJob
-com.valuex.communication                  (US-132, US-069, US-013, US-016; US-014 and US-015 on hold)
+com.valuex.communication                  (US-132, US-069, US-013, US-016; US-014 and US-015 planned on LiveKit)
   api/            ChatController, BlockController, ReportController, AdminCommunicationController;
-                  on hold: CallController, RtcWebhookController
+                  calls: CallController, RtcWebhookController
   application/
-    dto/          ThreadResponse, MessageResponse, SendMessageRequest; on hold: CallResponse, RtcCredentials, ...
+    dto/          ThreadResponse, MessageResponse, SendMessageRequest; calls: CallResponse, RtcCredentials, ...
     port/         ListingContextPort (implemented in listing), ParticipantDirectoryPort (implemented in auth),
-                  CommunicationHoldPort; on hold: RtcProviderPort
+                  CommunicationHoldPort; calls: RtcProviderPort
     service/      ContactEligibilityService, ChatService, MessageScreeningService, BlockService, ReportService,
                   CommunicationClosureService, CommunicationEvidenceService, CommunicationRetentionJob;
-                  on hold: CallService, TranscriptService, CallWatchdogJob, TranscriptReconcileJob
+                  calls: CallService, CallWatchdogJob
   domain/         ChatThread, ChatMessage, ContactAttempt, UserBlock, CommunicationReport, CommunicationAccessLog;
-                  on hold: CallSession, CallEvent, CallTranscriptSegment, CallState, CallStateMachine
+                  calls: CallSession, CallEvent, CallState, CallStateMachine
   infrastructure/
     persistence/  repositories
-    rtc/          (on hold) MockRtcAdapter now; the adapter of the chosen provider later
-    transcription/ (on hold) MockTranscriptionAdapter now; the adapter of the chosen service later
+    rtc/          LiveKitRtcAdapter (token factory, API client, webhook verifier) and MockRtcAdapter
+    (deferred, D24: CallTranscriptSegment, TranscriptService, TranscriptReconcileJob, transcription/ adapters)
 com.valuex.negotiation                    (US-017, US-076, US-018, US-080, US-068)
   api/            NegotiationController, OfferController, PriceAgreementController, BuyNowController
   application/
@@ -221,7 +220,7 @@ Dependency rules: `communication` and `negotiation` reach listing and user data 
 | **Conversation thread** (`chat_threads`) | D, E, F, G, H, I | One thread per buyer and listing (`UNIQUE (listing_id, buyer_id)`), created by the first contact of any kind: chat, call, video call or offer (decision D16). Chat messages, call summaries and offer cards are all rows of the thread, so one screen shows the whole conversation and one retention rule governs it. |
 | **System message** | E, F, G, I | A `chat_messages` row with `sender_id` null and a `message_type` of `LISTING_CONTEXT`, `OFFER_EVENT` or `CALL_SUMMARY`, plus a small `payload` JSON. Written by `ChatService.postSystemMessage` in the same transaction as the event that caused it. |
 | **Price agreement** (`price_agreements`) | I, J, K, L, M, Sprint 5 | One row says "buyer B may buy listing L at price P until time T". Source is `OFFER` (the seller accepted a price) or `BUY_NOW` (the listed price, reserved for 15 minutes). A partial unique index allows at most one `ACTIVE` agreement per listing, which is the exclusivity rule; an agreement reserves only while `valid_until` is in the future, and code that decides (accept, Buy Now, checkout, search) clears stale rows under the listing lock first, so a late expiry job never blocks a sale. Sprint 5 cart and checkout read it only through `CheckoutPriceGuard` (Part K). |
-| **Capability** | D, M | The `{available, reason}` object of the listing details response (Sprint 3 Part C). Sprint 4 computes it per caller instead of returning `COMING_SOON`. New reasons: `UNAVAILABLE`, `NOT_NEGOTIABLE`, `DISABLED_BY_SELLER`, `RESERVED`, `IDENTITY_REQUIRED`. `COMING_SOON` stays valid for `buyNow` until checkout exists (decision D10) and for `call` and `video` until the call provider is chosen and `valuex.calls.enabled` is turned on (decision D4). A new capability, `offer`, is added next to `chat`, `call`, `video`, `cart` and `buyNow`. |
+| **Capability** | D, M | The `{available, reason}` object of the listing details response (Sprint 3 Part C). Sprint 4 computes it per caller instead of returning `COMING_SOON`. New reasons: `UNAVAILABLE`, `NOT_NEGOTIABLE`, `DISABLED_BY_SELLER`, `RESERVED`, `IDENTITY_REQUIRED`. `COMING_SOON` stays valid for `buyNow` until checkout exists (decision D10) and for `call` and `video` until the calls of US-014 and US-015 are built on LiveKit and `valuex.calls.enabled` is turned on (decision D4). A new capability, `offer`, is added next to `chat`, `call`, `video`, `cart` and `buyNow`. |
 | **Rate limit** | D, E, F, I | `RedisCacheService.checkRateLimit(key, max, window)` with the maximum read from the Admin settings (section 1.6). A broken limiter never stops users (as in search). |
 | **Participant directory** (`ParticipantDirectoryPort`) | C to M | `find(userId)` returns `displayName`, `accountState`, `aadhaarVerified`, `rating` and `ratingCount` (through `SellerReputationPort`). It never returns mobile or email. |
 | **Listing context** (`ListingContextPort`) | D to M | `find(listingId)` returns `title`, `price`, `priceQualifier`, `negotiable`, `buyNowEnabled`, `quantity`, `status`, `sellerId`, `realEstate`, `thumbnail media id`. Implemented in the listing module over `ListingRepository`. |
@@ -238,23 +237,21 @@ Technical values, set per environment. Product numbers are Admin-managed setting
 | ~~`valuex.realtime.ticket-ttl`, `max-sessions-per-user`, `ping-interval`, `idle-timeout`, `send-buffer-bytes`, `send-time-limit`, `max-inbound-message-bytes`~~ | | **Moved to Admin-managed settings (A.11, decision G3 of the US-130 plan):** `REALTIME_TICKET_TTL_SECONDS` 30, `REALTIME_MAX_SESSIONS_PER_USER` 3, `REALTIME_PING_INTERVAL_SECONDS` 25, `REALTIME_IDLE_TIMEOUT_SECONDS` 75, `REALTIME_SEND_BUFFER_BYTES` 524288, `REALTIME_SEND_TIME_LIMIT_SECONDS` 5, `REALTIME_MAX_INBOUND_BYTES` 8192, `REALTIME_INBOUND_FRAMES_PER_SECOND` 20, `REALTIME_TICKET_REQUESTS_PER_MINUTE` 30. |
 | `valuex.push.provider` | `noop` | `fcm` in staging and production, `noop` in dev and CI. |
 | `valuex.push.fcm.credentials-secret` | empty | Name of the secret holding the service account JSON. Never in the repository. |
-| `valuex.calls.enabled` | `false` | Master switch for in-app voice and video calls (on hold, D4). While false the `call` and `video` capabilities report `COMING_SOON` and call endpoints answer `ERROR_CALLS_UNAVAILABLE`. |
-| `valuex.rtc.provider` | `mock` | The call media provider adapter; the real one is chosen later (O1); `mock` in dev and CI. |
-| `valuex.rtc.credentials-secret` | empty | Name of the secret holding the provider credentials (secret manager only). |
-| `valuex.rtc.webhook-secret` | empty | HMAC secret that verifies provider notifications (secret). |
+| `valuex.calls.enabled` | `false` | Master switch for in-app voice and video calls (D4). While false the `call` and `video` capabilities report `COMING_SOON` and call endpoints answer `ERROR_CALLS_UNAVAILABLE`. Turned on per environment once the LiveKit account, keys and webhook are in place. |
+| `valuex.rtc.provider` | `mock` | The call media provider adapter: `livekit` in staging and production (decision of 2026-11-22, closes O1), `mock` in dev and CI. |
+| `valuex.rtc.livekit.url` | empty | The LiveKit project URL the apps connect to (a `wss://` address). |
+| `valuex.rtc.credentials-secret` | empty | Name of the secret holding the LiveKit API key and API secret (secret manager only). |
+| `valuex.rtc.webhook-secret` | empty | Not separate for LiveKit: LiveKit signs its webhooks with the API secret, so the verifier reads the same secret. Kept for a future provider that uses its own. |
 | `valuex.rtc.token-grace` | 60s | Extra credential lifetime beyond the maximum call duration. |
 | `valuex.rtc.connect-timeout` / `read-timeout` | 2s / 5s | Calls to the provider. |
-| `valuex.transcription.enabled` | `false` | Kill switch for call transcripts (calls continue without them; G.8). Turned on with calls. |
-| `valuex.transcription.languages` | `hi-IN,en-IN` | Languages the phone's on-device recogniser is asked to use (the app language first). |
-| `valuex.transcription.max-batch` / `max-text-length` | 50 / 1000 | Limits on one upload of transcript segments (G.4). |
-| `valuex.transcription.flush-grace` | 120s | How long after a call ends the phones may still upload their last segments. |
+| ~~`valuex.transcription.*`~~ | | **Deferred (D24):** the four transcription keys (`enabled`, `languages`, `max-batch` and `max-text-length`, `flush-grace`) are not built and not seeded; they return with the later transcript story (G.3 to G.11). |
 | `valuex.communication.job.watchdog-interval` | 15s | `CallWatchdogJob` schedule. |
 | `valuex.communication.job.retention-cron` | `0 30 2 * * *` | Daily retention run (02:30 Asia/Kolkata). |
 | `valuex.negotiation.job.expiry-interval` | 60s | `NegotiationExpiryJob` and `AgreementExpiryJob` schedule. |
 | `valuex.negotiation.job.batch-size` | 200 | Rows per job pass (`FOR UPDATE SKIP LOCKED`). |
 | `valuex.checkout.enabled` | `false` | Turns the `buyNow` and `cart` capabilities on. Sprint 5 sets it to `true` with checkout (decision D10). |
 
-**Environment variables** (new): `FCM_SERVICE_ACCOUNT_JSON`, `REALTIME_ALLOWED_ORIGINS`, `PUSH_PROVIDER`, `CALLS_ENABLED`; and, when the call work starts, `RTC_PROVIDER`, `RTC_CREDENTIALS_SECRET`, `RTC_WEBHOOK_SECRET`, `TRANSCRIPTION_PROVIDER`, `TRANSCRIPTION_CREDENTIALS_SECRET`. Secrets come from the secret manager and are listed in `dev-real.env.example` without values.
+**Environment variables** (new): `FCM_SERVICE_ACCOUNT_JSON`, `REALTIME_ALLOWED_ORIGINS`, `PUSH_PROVIDER`, `CALLS_ENABLED`; and, for calls, `RTC_PROVIDER`, `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` (the last two from the secret manager). Secrets are listed in `dev-real.env.example` without values.
 
 ## 1.6 Admin-managed settings (every business number is configurable, Sprint 3 decision D19)
 
@@ -270,17 +267,17 @@ Technical values, set per environment. Product numbers are Admin-managed setting
 | `CHAT_NEW_THREADS_PER_DAY` | 20 | 1 to 100 | New conversations one buyer can start per day (spam prevention, US-069). |
 | `CHAT_POLICY_OVERRIDES_PER_DAY` | 5 | 1 to 50 | How many times one user can choose "Deliver message" for a message blocked for restricted terms, per day (decision D13). |
 | `CONTACT_ATTEMPTS_PER_PAIR_PER_HOUR` | 10 | 1 to 60 | Contact attempts (any channel) from one buyer to one seller per hour. |
-| `CALL_ATTEMPTS_PER_PAIR_PER_HOUR` | 3 | 1 to 20 | Call and video requests from one buyer to one seller per hour (on hold with calls). |
+| `CALL_ATTEMPTS_PER_PAIR_PER_HOUR` | 3 | 1 to 20 | Call and video requests from one buyer to one seller per hour (US-014, US-015). |
 | `CHAT_PAGE_SIZE` | 30 | 10 to 100 | Messages per page. |
 | `CHAT_NOTIFY_COALESCE_MINUTES` | 10 | 1 to 120 | At most one in-app chat notification per thread in this window. |
 | `CHAT_AUTO_REPORT_FLAGS` | 3 | 1 to 20 | Flagged messages in 24 hours that raise an automatic report for review. |
 | `REPORTS_PER_DAY` | 10 | 1 to 50 | Reports one user can file per day (Part C). |
-| `CALL_RING_SECONDS` | 45 | 15 to 120 | How long a call rings before it ends as no answer (on hold with calls). |
-| `CALL_MAX_MINUTES` | 30 | 5 to 120 | Maximum call length, voice and video (US-014, US-015; on hold). |
-| `CALL_JOIN_SECONDS` | 30 | 10 to 90 | Time both parties have to join after the call is accepted (on hold). |
+| `CALL_RING_SECONDS` | 45 | 15 to 120 | How long a call rings before it ends as no answer. |
+| `CALL_MAX_MINUTES` | 30 | 5 to 120 | Maximum call length, voice and video (US-014, US-015). |
+| `CALL_JOIN_SECONDS` | 30 | 10 to 90 | Time both parties have to join after the call is accepted. |
 | `CHAT_RETENTION_DAYS` | 180 | 30 to 730 | Chat history is kept this long after a conversation closes (US-013, US-016). |
-| `CALL_LOG_RETENTION_DAYS` | 180 | 30 to 730 | Call logs are kept this long after a conversation closes (on hold). |
-| `CALL_TRANSCRIPT_RETENTION_DAYS` | 180 | 30 to 730 | Call transcripts are kept this long after a conversation closes. Replaces the 30-day recording rule now that nothing is recorded (decision D5; on hold with calls). Confirmed by the product owner on 2026-11-15 as the default and **editable by an Admin in the settings screen (US-116, `CommunicationSetting`) without a release**. |
+| `CALL_LOG_RETENTION_DAYS` | 180 | 30 to 730 | Call logs are kept this long after a conversation closes (built with US-016). |
+| ~~`CALL_TRANSCRIPT_RETENTION_DAYS`~~ | | | **Deferred (D24):** no transcript is stored in the MVP, so this setting is not seeded. It returns with the later transcript story (it was 180 days, editable by an Admin without a release, confirmed 2026-11-15). |
 | `COMM_INACTIVE_CLOSE_DAYS` | 90 | 30 to 365 | A conversation with no activity this long counts as closed, which starts the retention clocks (decision D12). |
 | `CONTACT_ATTEMPT_RETENTION_DAYS` | 180 | 30 to 730 | How long the contact-attempt log is kept. |
 
@@ -309,7 +306,6 @@ erDiagram
     CHAT_THREADS ||--o{ CHAT_MESSAGES : contains
     CHAT_THREADS ||--o{ CALL_SESSIONS : "calls in"
     CALL_SESSIONS ||--o{ CALL_EVENTS : logs
-    CALL_SESSIONS ||--o{ CALL_TRANSCRIPT_SEGMENTS : "text of the call"
     CHAT_THREADS ||--o| NEGOTIATIONS : "price talk in"
     LISTINGS ||--o{ NEGOTIATIONS : about
     NEGOTIATIONS ||--o{ OFFERS : holds
@@ -350,7 +346,7 @@ erDiagram
 | `V33__contact_attempts.sql` (built, US-069) | D | `contact_attempts` and the four contact `CommunicationSetting` seeds |
 | `V34__chat.sql` (built, US-013) | E | `chat_threads`, `chat_messages` and the seven chat `CommunicationSetting` seeds; `MediaPurpose.CHAT_IMAGE` is a code change, the column has no CHECK. `communication_access_log` stays with Part H. |
 | `V35__realtime_settings.sql` (built, US-130) | A | The nine `REALTIME_*` `CommunicationSetting` seeds; no table (state is in Redis) |
-| `V36__call_sessions.sql` (on hold) | F, G | `call_sessions`, `call_events`, `call_transcript_segments`, the `CALL_*` setting seeds |
+| `V43__call_sessions.sql` (planned; the number was `V36` and is the next free one when the call story starts) | F, G | `call_sessions` and `call_events` (no consent or transcript columns, no `call_transcript_segments`: deferred, D24), the `CALL_*` setting seeds |
 | `V37__negotiation_and_price_agreements.sql` | I, J, K, L | `negotiations`, `offers`, `negotiation_status_history`, `price_agreements`, `NegotiationSetting` seeds |
 | `V38__buy_now.sql` | M | `listings.buy_now_enabled`, `BUY_NOW_RESERVATION_MINUTES` seed |
 
@@ -358,14 +354,14 @@ erDiagram
 
 | Integration | Purpose | Port and adapters | Failure handling |
 |---|---|---|---|
-| **In-app call media provider** (on hold, not chosen; decision D4) | App-to-app voice and video media between the two phones over the internet; no phone network, no telephony or SIP bridging | `RtcProviderPort.createCredentials(callId, userId, role, ttl)`; `MockRtcAdapter` now (dev, CI); the adapter of the chosen provider later | Credentials are made per user and per call. If the provider is down the media layer fails on the device and the app reports `ERROR_CALL_FAILED`; the server ends the call through the watchdog (`JOIN_FAILED`). |
-| **On-device speech-to-text** (in the mobile app; on hold with calls; decisions D5 and D23, G.11) | Each phone turns its own user's speech into text on the device and uploads the text; no audio leaves the phone and no server-side speech service exists | `TranscriptService.ingest` (REST upload endpoints, G.4); `LocalTranscriber` on the phone | No cloud fallback. If a phone cannot recognise speech on the device, that person's side is `FAILED`, the call continues and the app shows `ERROR_TRANSCRIPT_FAILED` (G.8). A reconcile job closes sessions whose status is unclear. |
-| **Provider notifications (webhooks)** (on hold) | Channel join and leave, and transcript events, if the chosen provider sends them | `POST /api/v1/webhooks/rtc`, public path, HMAC-SHA256 signature check, idempotent by provider event id | Invalid signature returns 401 and is counted. A missing webhook is covered by client acknowledgements and the watchdog. |
+| **In-app call media provider: LiveKit** (chosen 2026-11-22, closes O1; decision D4) | App-to-app voice and video media between the two phones over the internet; no phone network, no telephony or SIP bridging | `RtcProviderPort` (credentials, end call, list participants); `LiveKitRtcAdapter` (token signed by the backend, three HTTPS calls) and `MockRtcAdapter` (dev, CI); selected by `valuex.rtc.provider` | Credentials are made per user and per call. If the provider is down the media layer fails on the device and the app reports `ERROR_CALL_FAILED`; the server ends the call through the watchdog (`JOIN_FAILED`). Details: F.5 and the US-014 and US-015 plan. |
+| ~~On-device speech-to-text~~ | **Deferred (D24):** not built in the MVP. | | The design is kept in G.5, G.7 and G.11 for the later story. |
+| **Provider notifications (webhooks)** | LiveKit sends participant joined and left events | `POST /api/v1/webhooks/rtc`, public path; LiveKit signs the request with a JWT whose `sha256` claim is the hash of the body; idempotent by event id | Invalid signature returns 401 and is counted. LiveKit gives no delivery guarantee, so a missing webhook is covered by client acknowledgements and the watchdog. |
 | **Firebase Cloud Messaging** | Push delivery | `PushPort`; `FcmPushAdapter` (Firebase Admin SDK), `NoopPushAdapter` | Transient errors retry three times (1 s, 4 s, 15 s); an invalid or unregistered token is revoked; the in-app notification and the WebSocket already carry the event, so a push failure loses no data. |
 | **Object storage** | Chat images only (existing media API) | Existing `ObjectStoragePort` | Signed links only; see E.4 and H.5. No call audio or video is ever stored. |
 | **Redis** | Pub/sub fan-out, presence, tickets, rate limits | `RedisRealtimeBus`, `PresenceService`, `RedisCacheService` | If Redis is down, realtime degrades to the local instance and polling; rate limits fail open (as in search); writes are unaffected. |
 
-**Retry and circuit-breaker pattern.** Provider clients are built programmatically (the `AiGatewayConfig` style): a `TimeLimiter`, a `CircuitBreaker` (opens at 50 percent failures over 20 calls, half-open after 30 s) and a bounded `Retry` for idempotent calls only. Every outbound call has a metric `integration.calls{provider,outcome}` and never logs message text, transcript text, tokens or credentials.
+**Retry and circuit-breaker pattern.** Provider clients are built programmatically (the `AiGatewayConfig` style): a `TimeLimiter`, a `CircuitBreaker` (opens at 50 percent failures over 20 calls, half-open after 30 s) and a bounded `Retry` for idempotent calls only. Every outbound call has a metric `integration.calls{provider,outcome}` and never logs message text, tokens or credentials.
 
 ## 1.9 How this document maps to the LLD generator outline
 
@@ -461,8 +457,8 @@ The query string carries only the one-time ticket, never the access token (query
 | `notification.created` | `{notificationId, eventType}` | existing notifications |
 | `negotiation.updated` | `{negotiationId, listingId, state, awaiting, round, expiresAt, agreedPrice}` | I, J, L |
 | `agreement.updated` | `{agreementId, listingId, status, validUntil}` | I, K, L, M |
-| `call.incoming` | `{callId, type, callerName, listing{id,title}, ringingExpiresAt, consentRequired}` | F, G |
-| `call.updated` | `{callId, state, endReason, transcriptStatus}` (on hold with calls) | F, G |
+| `call.incoming` | `{callId, type, callerName, listing{id,title}, ringingExpiresAt}` | F, G |
+| `call.updated` | `{callId, state, endReason}` | F, G |
 | `error` | `{code}` | gateway |
 
 ### A.4.4 Client to server
@@ -748,7 +744,7 @@ Built as US-131 (plan `US-Implementation-Plans/US-131-Implementation-Plan.md`). 
 | 3 | `PushChannelSender` is called by the dispatcher inside its transaction. | `PushDispatcher` queues the push on a bounded pool (2 to 8 threads, 500 queued, bean `pushExecutor`) and, inside a transaction, only after it commits. A full queue drops the push and counts `push.failed{reason=queue_full}`. | FCM is a network call; G6. |
 | 4 | The chat push goes through the dispatcher. | The dispatcher dedupes, which would send one push per coalescing window. `ChatMessageListener` calls `PushDispatcher` directly for every message with the collapse key `chat:{threadId}` and the message id as `eventId`; the coalesced in-app notification is unchanged and the two are independent (a failure of one does not stop the other). | G4. |
 | 5 | Offer pushes later (US-017 and the rest were not built). | They are built, so `NegotiationNotificationListener` adds `PUSH` to its channels and the dispatcher pushes after commit with generic text (`PushCopy`, no price and no item title). The policy also holds `OFFER_WITHDRAWN` and `NEGOTIATION_CANCELLED` (real event types of US-017); `BUY_NOW_PRICE_CHANGED` has no row and is not pushed. Offer pushes have no collapse key. | The events exist; D18. |
-| 6 | A push-only mode of the dispatcher (no inbox row) for calls. | Not built: nothing sends calls while US-014 and US-015 are on hold. The call rows stay in `PushPolicy` and `PushCopy`. | Avoids unused code. |
+| 6 | A push-only mode of the dispatcher (no inbox row) for calls. | Not built in US-131: nothing sends calls until US-014 and US-015 are built, which add it together with a high-priority flag and a time-to-live on `PushRequest`. The call rows stay in `PushPolicy` and `PushCopy`. | Avoids unused code. |
 | 7 | `PresenceService` used by the sender. | `UserPresencePort` in `notification/application/port` with `PresenceAdapter` in `realtime`; the notification module does not import the realtime package. | Module boundary. |
 | 8 | Logout and account close "call `revokeForDevice` and `revokeForUser`". | The app calls `DELETE /devices/push-token` before the session is cleared (it waits 3 seconds at most) and then deletes its Firebase token, so even an expired session stops receiving. `AccountStatePushListener` revokes all tokens when an account state changes to anything but ACTIVE, in its own transaction (`REQUIRES_NEW`: a plain `@Transactional` after commit would not be saved). The auth module's `LogoutService` is unchanged. | G10; found by the integration test. |
 | 9 | Sender checks `NotificationPreferences`. | Done (always true until US-087); `PushTokenCleanupJob` runs daily at 03:30 and deletes through `DeviceTokenService.purgeExpired`. | |
@@ -785,7 +781,7 @@ Metrics: `push.sent{eventType}`, `push.failed{reason}`, `push.skipped{reason=onl
 | Blocking oneself | `ERROR_INVALID_BLOCK` (400 as built; see C.10). |
 | Blocking twice, unblocking twice | Idempotent. |
 | Report of a message, call, thread or user | One open report per reporter and target; a second report is accepted without creating a duplicate row. The containing thread (and, for a call report, that call) is put on hold so the evidence is not deleted before an Admin reviews it. |
-| Report during a call (on hold with calls) | The report marks the call as flagged and puts it and its transcript on hold, so retention does not delete evidence before review (G.8). |
+| Report during a call | The report marks the call as flagged and puts the call and its call log on hold, so retention does not delete evidence before review (G.8). |
 | False or abusive reporting | Rate limit and a counter; Admin review is Sprint 10. |
 
 ## C.2 Scope
@@ -845,7 +841,7 @@ POST   /api/v1/reports                    -- 201 {reportId}
 
 - **`BlockService`:** `block`, `unblock`, `isBlockedEitherWay(a, b)` (one indexed query on both directions, cached per request), `list`. After a block, a `ThreadReadOnlyChangedEvent` is published for the pair's threads so connected clients get `chat.thread.updated` with `readOnlyReason = BLOCKED`.
 - **`ReportService.report`:** resolves `reported_user_id` from the target (message sender, call counterpart, thread counterpart) and refuses a target the reporter was not part of (`NotFoundException`, so ids cannot be probed). `details` is cleaned with `PlainText`. A report on a `CALL` also sets the call's `flagged` and `legal_hold` (Part G). Rate limit: 10 reports per day per user (a `CommunicationSetting` addition `REPORTS_PER_DAY`, range 1 to 50).
-- **Evidence hold.** Every report puts the containing thread and its calls on hold (`CommunicationHoldPort`, Part H), so chat text, images and call transcripts are not deleted before an Admin reviews the report; closing the report releases the hold (US-057, Sprint 10). Until that console exists, the daily retention run exports the number of holds caused by reports (`retention.held{source=report}`) so a growing backlog is visible.
+- **Evidence hold.** Every report puts the containing thread and its calls on hold (`CommunicationHoldPort`, Part H), so chat text, images and call logs are not deleted before an Admin reviews the report; closing the report releases the hold (US-057, Sprint 10). Until that console exists, the daily retention run exports the number of holds caused by reports (`retention.held{source=report}`) so a growing backlog is visible.
 - **System reports** (`source = SYSTEM`) are created by `MessageScreeningService` when `CHAT_AUTO_REPORT_FLAGS` flagged messages from one sender appear within 24 hours (E.5).
 - **Privacy.** A blocked person is never told. `ERROR_BLOCKED` is the same response whether the pair is blocked or the seller is simply unavailable for contact, apart from the code.
 
@@ -979,14 +975,14 @@ No new endpoint. The existing `GET /api/v1/listings/{id}/public` response change
 | 6 | Listing is reserved for another buyer (Part I and M) | available | `RESERVED` | `RESERVED` |
 | 7 | Otherwise | available | available | by Part M |
 
-**Calls on hold (decision D4).** While `valuex.calls.enabled` is false, `call` and `video` are `COMING_SOON` for every caller, whatever the rows above say, and the Call and Video buttons stay disabled exactly as they are today. The rules above, the reachability check and the call limits below take effect when calls are built.
+**Calls (decision D4).** While `valuex.calls.enabled` is false, `call` and `video` are `COMING_SOON` for every caller, whatever the rows above say, and the Call and Video buttons stay disabled exactly as they are today. The rules above, the reachability check and the call limits below take effect when calls are switched on (US-014, US-015).
 
 ## D.5 Backend Design
 
 - **`ContactCapabilityPort`** (listing module) is implemented by `ContactEligibilityService` (communication module); **`OfferCapabilityPort`** is implemented by `OfferEligibilityService` (negotiation module, Part I) for `offer`, `buyNow` and `cart`. `PublicListingService.capabilities(...)` composes both. Each port has two methods: `capabilities(callerId, listing)` and a contact summary (`ContactCapabilityPort.existingThreadId`, `OfferCapabilityPort.openNegotiationId` and the caller's agreement, Part K), which are two indexed single-row queries behind the `contact` block. The block checks of a request (blocks, seller state, presence of an agreement) are read once per request, and neither port opens a transaction of its own.
 - **`ContactGuard.require(channel, callerId, listingId)`** is the single entry used by `ChatService.openThread`, `CallService.create` and `NegotiationService.createOffer`. Checks in order: caller `ACTIVE` (`ERROR_ACCOUNT_NOT_ACTIVE`); listing live (`ERROR_LISTING_NOT_AVAILABLE`); caller is not the owner (`ERROR_OWN_LISTING`); seller `ACTIVE` (`ERROR_SELLER_UNAVAILABLE`); not blocked either way (`ERROR_BLOCKED`); the rate limits (`WARNING_RATE_LIMIT`, HTTP 429): `CONTACT_ATTEMPTS_PER_PAIR_PER_HOUR`, and for a new thread `CHAT_NEW_THREADS_PER_DAY`, and for calls `CALL_ATTEMPTS_PER_PAIR_PER_HOUR`. Channel-specific checks (call reachability, negotiability, identity) follow in the calling service.
 - **Logging every attempt.** `ContactAttemptService.record(...)` runs in `REQUIRES_NEW`, so a refused attempt is stored even though the request fails. The outcome is the first failing check. Counters `contact.attempts{channel,outcome}` are exported.
-- **Reachability for calls (decision D15; on hold with calls).** The callee is reachable when `PresenceService.isOnline(calleeId)` is true or the callee has at least one active push token. With neither, the request fails at once with `ERROR_SELLER_UNAVAILABLE` instead of ringing nobody.
+- **Reachability for calls (decision D15).** The callee is reachable when `PresenceService.isOnline(calleeId)` is true or the callee has at least one active push token. With neither, the request fails at once with `ERROR_SELLER_UNAVAILABLE` instead of ringing nobody.
 - **First message context (E.5).** The first contact of any kind creates the thread and a `LISTING_CONTEXT` system message holding the title, price and photo id at that moment.
 - **`ListingEngagement.chatCount`** (built in Sprint 2 as the single place for chat counts, returning 0 today) now counts the listing's chat threads, so My Listings shows real numbers.
 
@@ -1020,7 +1016,7 @@ sequenceDiagram
 
 - `ListingActions` (built in Sprint 3 Part C) reads the new capabilities. Chat, Call and Video use the shared `SingleToneButton` with leading icons (already in place); **Make Offer** is added as a fourth secondary control in the same wrap, ahead of Add to Cart and Buy Now. Disabled controls keep their semantic label with the reason spoken ("Chat, unavailable"); the visual "Coming soon" text stays hidden as built.
 - `CapabilityReason` gains `unavailable`, `notNegotiable`, `disabledBySeller`, `reserved`, `identityRequired`; an unknown value still maps to `other`.
-- **Actions.** Chat: `POST /chats` then push `/chats/:threadId`. Call and Video are on hold (decision D4): their buttons stay disabled while the capability is `COMING_SOON`; when calls are built, Call requests microphone permission (`permission_handler`) and then `POST /calls/voice`, and Video shows the transcript consent sheet (G.7), asks for camera and microphone permission and then `POST /calls/video`. Make Offer: open the offer sheet (I.7). `IDENTITY_REQUIRED` opens the existing Aadhaar entry. A guard in each controller ignores a second tap while a request is running.
+- **Actions.** Chat: `POST /chats` then push `/chats/:threadId`. Call and Video are built with US-014 and US-015 (decision D4): their buttons stay disabled while the capability is `COMING_SOON`; when calls are on, Call requests microphone permission (`permission_handler`) and then `POST /calls/voice`, and Video asks for camera and microphone permission and then `POST /calls/video` (no consent step, no transcript: D24). Make Offer: open the offer sheet (I.7). `IDENTITY_REQUIRED` opens the existing Aadhaar entry. A guard in each controller ignores a second tap while a request is running.
 - **Existing conversation.** When `contact.threadId` is present, the Chat button is labelled "Open chat" and goes straight to the thread; when `contact.negotiationId` is present the Make Offer button becomes "View offer".
 - **Errors** are mapped once in `contact_error_messages.dart` to ARB strings (English and Hindi): `ERROR_BLOCKED`, `ERROR_SELLER_UNAVAILABLE`, `WARNING_RATE_LIMIT`, `ERROR_LISTING_NOT_AVAILABLE`, `ERROR_OWN_LISTING`, `ERROR_ACCOUNT_NOT_ACTIVE`; network failures use the standard "Unable to connect. Retry".
 - The listing details page stays within the Soft Luxe layout: no new colours, the action bar keeps its pinned and scrolling behaviour at large text sizes.
@@ -1062,7 +1058,7 @@ Built together with US-013 on branch `feature/US-069-US-013-contact-and-chat` in
 | 3 | The guard reads listing facts. | `ContactListingPort` (defined in communication, adapter `ContactListingAdapter` in the listing module). `live` means published, not deleted, not expired; the seller's account is checked on its own so the guard order of D.5 holds. `closedByAdmin` (removed or rejected) is what makes a chat read-only. | Keeps the module boundary and the error order. |
 | 4 | `offer` is available when the rules pass. | `offer` was `COMING_SOON` until US-017 (reasons `NOT_NEGOTIABLE` and `IDENTITY_REQUIRED` are served first); **since US-017 it is available when the rules pass and `RESERVED` is produced (I.11 row 4)**. `call` and `video` are `COMING_SOON` while `valuex.calls.enabled=false` (default, env `CALLS_ENABLED`). `DISABLED_BY_SELLER` and `RESERVED` are not produced (no rule exists); **`DISABLED_BY_SELLER` is marked for removal if it stays unused** (decision G6). `cart` and `buyNow` are unchanged (`COMING_SOON`, `NOT_APPLICABLE` or `OWN_LISTING`). | Offers are built in US-017. |
 | 5 | `contact` block `{threadId, negotiationId}`. | Always present on `GET /listings/{id}/public`; `threadId` is the caller's existing chat (null for the owner and when the seller is unavailable or a block exists, so a block is not revealed), `negotiationId` was null until US-017 and is now the caller's open negotiation (I.11 row 4). | D.9. |
-| 6 | `ContactGuard.require(channel, caller, listing)`. | Two entry points: `require` (checks plus the per pair hourly limit, and the call limit for CALL and VIDEO) and `requireNewThread` (adds `CHAT_NEW_THREADS_PER_DAY`). Every attempt is logged, `ALLOWED` too, in `REQUIRES_NEW`; a failure to log never fails the request. Opening a chat that already exists uses `require`. The call reachability check is not wired (calls on hold, D15). | New threads and existing ones need different limits. |
+| 6 | `ContactGuard.require(channel, caller, listing)`. | Two entry points: `require` (checks plus the per pair hourly limit, and the call limit for CALL and VIDEO) and `requireNewThread` (adds `CHAT_NEW_THREADS_PER_DAY`). Every attempt is logged, `ALLOWED` too, in `REQUIRES_NEW`; a failure to log never fails the request. Opening a chat that already exists uses `require`. The call reachability check is not wired until calls are built (US-014, US-015; D15). | New threads and existing ones need different limits. |
 | 7 | `ERROR_LISTING_NOT_AVAILABLE` is package private in `PublicListingService`. | Shared as `common.exception.ErrorCodes.LISTING_NOT_AVAILABLE`. | One code for two modules. |
 | 8 | Old attempts deleted by Part H. | `ContactAttemptRetentionJob` (daily 03:45, `valuex.communication.attempt-retention.cron`) deletes rows older than `CONTACT_ATTEMPT_RETENTION_DAYS`, read at every run. | Keeps the table bounded; US-016 may absorb it. |
 | 9 | `ParticipantDirectoryPort` has two methods. | Adds `activeAmong(ids)` and `isIdentityVerified(id)`. | The guard and the offer rules need them. |
@@ -1355,12 +1351,12 @@ Built with US-069 (see D.11). Where the build differs from E.1 to E.10:
 
 ---
 
-# Part F - US-014: In-App Voice Call (on hold)
+# Part F - US-014: In-App Voice Call
 
-> **ON HOLD (product owner, 2026-11-15).** No call provider is chosen, so this story is not built yet. The design below is provider-neutral and ready to build once a provider is selected (O1). Until then `valuex.calls.enabled` stays `false`, the `call` and `video` capabilities report `COMING_SOON` and the buttons stay disabled. Calls are **app-to-app only** (no phone network, no telephony or SIP bridging, no phone numbers) and **nothing is recorded**: a text transcript is saved instead (decision D5, Part G).
+> **PLANNED ON LIVEKIT (product owner, 2026-11-22).** LiveKit is the call media provider (closes O1) and US-014 is built together with US-015 (Part G); the plan is `US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`. `valuex.calls.enabled` stays `false` until an environment is ready (LiveKit project, keys, webhook), so the `call` and `video` capabilities report `COMING_SOON` and the buttons stay disabled until then. Calls are **app-to-app only** (no phone network, no telephony or SIP bridging, no phone numbers). **Nothing is recorded or transcribed in the MVP (decision D24):** the only thing kept about a call is its call log. Where this part says "consent" or "transcript" below, that text is struck out or marked deferred; the deferred design is in G.3 to G.11.
 
 **Story Points:** 8 | **Repos:** backend, mobile
-**Dependency:** US-013; a chosen call provider
+**Dependency:** US-013; LiveKit account and keys
 **Scope note (2026-10-25 update to the story):** Included in the Real Estate flow (US-118).
 
 ## F.1 Story Overview
@@ -1387,12 +1383,12 @@ Built with US-069 (see D.11). Where the build differs from E.1 to E.10:
 
 ## F.2 Scope
 
-**In scope:** call creation, accept, decline, cancel, join, connected confirmation, heartbeat, end, thread call history, the call state machine, the provider credential adapter (behind `RtcProviderPort`), the provider notification receiver, the watchdog job, call summaries in chat, missed-call notifications, the mobile call screens and permissions, and, for both call types, the transcript consent and transcript saving of Part G.
-**Out of scope:** the video-specific parts (Part G), any phone-network or telephony calling, SIP or PSTN bridging and any masked-number service (excluded by decision D4), recording of audio or video of any kind (decision D5), conference calls, native incoming-call UI (D15).
+**In scope:** call creation, accept, decline, cancel, join, connected confirmation, heartbeat, end, thread call history, the call state machine, the provider credential adapter (behind `RtcProviderPort`, LiveKit and mock), the provider notification receiver (webhook), the watchdog job, call summaries in chat, missed-call notifications, the mobile call screens and permissions, and, for video, the video-specific parts of Part G (camera, picture-in-picture, bandwidth banner).
+**Out of scope:** any phone-network or telephony calling, SIP or PSTN bridging and any masked-number service (excluded by decision D4), recording of audio or video of any kind (decision D5), **any transcript, speech-to-text or consent step (decision D24; deferred design in G.3 to G.11)**, conference calls, native incoming-call UI (D15).
 
 ## F.3 Data Model
 
-Part of migration `V36__call_sessions.sql` (provisional, on hold; V35 went to the realtime settings). HLD 02 names `call_logs` and `video_sessions`; one table serves both because they share over 90 percent of their columns (conflict C15). The consent and transcript columns apply to both call types (Part G); no column holds audio or video.
+Part of migration `V43__call_sessions.sql` (the number was provisionally `V36`; use the next free one when the story starts). HLD 02 names `call_logs` and `video_sessions`; one table serves both because they share over 90 percent of their columns (conflict C15). **No column holds audio, video or text of a call, and (decision D24) there are no consent or transcript columns and no transcript table in the MVP**; their design is in G.3 and is added by a later migration if the transcript story is ever built.
 
 ```sql
 CREATE TABLE call_sessions (
@@ -1404,7 +1400,7 @@ CREATE TABLE call_sessions (
     callee_id              UUID         NOT NULL REFERENCES users (id),
     state                  VARCHAR(10)  NOT NULL,                  -- RINGING | ACCEPTED | ACTIVE | ENDED
     end_reason             VARCHAR(20),
-    rtc_channel            VARCHAR(64)  NOT NULL,
+    rtc_channel            VARCHAR(64)  NOT NULL,                  -- the LiveKit room name
     requested_at           TIMESTAMPTZ  NOT NULL DEFAULT now(),
     ringing_expires_at     TIMESTAMPTZ  NOT NULL,
     accepted_at            TIMESTAMPTZ,
@@ -1416,18 +1412,6 @@ CREATE TABLE call_sessions (
     max_ends_at            TIMESTAMPTZ,
     last_heartbeat_caller_at TIMESTAMPTZ,
     last_heartbeat_callee_at TIMESTAMPTZ,
-    caller_consent_at      TIMESTAMPTZ,                           -- transcript consent, both call types (Part G)
-    callee_consent_at      TIMESTAMPTZ,
-    consent_notice_version VARCHAR(30),
-    transcript_status      VARCHAR(10)  NOT NULL DEFAULT 'NONE',   -- overall, derived: NONE | STARTING | ACTIVE | PARTIAL | COMPLETED | FAILED | DELETED
-    caller_transcript_state VARCHAR(10) NOT NULL DEFAULT 'NONE',   -- reported by the caller's app: NONE | ACTIVE | FAILED | COMPLETED
-    callee_transcript_state VARCHAR(10) NOT NULL DEFAULT 'NONE',
-    transcript_language    VARCHAR(10),
-    transcript_started_at  TIMESTAMPTZ,
-    transcript_completed_at TIMESTAMPTZ,
-    transcript_segment_count INTEGER    NOT NULL DEFAULT 0,
-    transcript_delete_after TIMESTAMPTZ,
-    transcript_deleted_at  TIMESTAMPTZ,
     flagged                BOOLEAN      NOT NULL DEFAULT FALSE,
     legal_hold             BOOLEAN      NOT NULL DEFAULT FALSE,
     purge_after            TIMESTAMPTZ,                           -- call-log retention (Part H)
@@ -1437,32 +1421,264 @@ CREATE TABLE call_sessions (
     CONSTRAINT chk_call_sessions_parties CHECK (caller_id <> callee_id),
     CONSTRAINT chk_call_sessions_type CHECK (call_type IN ('VOICE', 'VIDEO')),
     CONSTRAINT chk_call_sessions_state CHECK (state IN ('RINGING', 'ACCEPTED', 'ACTIVE', 'ENDED')),
-    CONSTRAINT chk_call_sessions_end CHECK ((state = 'ENDED') = (end_reason IS NOT NULL)),
-    CONSTRAINT chk_call_sessions_transcript CHECK (
-        transcript_status = 'NONE'
-        OR (caller_consent_at IS NOT NULL AND callee_consent_at IS NOT NULL))
+    CONSTRAINT chk_call_sessions_end CHECK ((state = 'ENDED') = (end_reason IS NOT NULL))
 );
 CREATE INDEX idx_call_sessions_thread   ON call_sessions (thread_id, requested_at DESC);
 CREATE INDEX idx_call_sessions_caller   ON call_sessions (caller_id, requested_at DESC);
 CREATE INDEX idx_call_sessions_callee   ON call_sessions (callee_id, requested_at DESC);
 CREATE INDEX idx_call_sessions_ringing  ON call_sessions (ringing_expires_at) WHERE state = 'RINGING';
 CREATE INDEX idx_call_sessions_live     ON call_sessions (max_ends_at) WHERE state IN ('ACCEPTED', 'ACTIVE');
-CREATE INDEX idx_call_sessions_tr_del   ON call_sessions (transcript_delete_after)
-    WHERE transcript_segment_count > 0 AND transcript_deleted_at IS NULL AND legal_hold = FALSE;
 CREATE INDEX idx_call_sessions_purge    ON call_sessions (purge_after) WHERE purge_after IS NOT NULL AND legal_hold = FALSE;
 
 CREATE TABLE call_events (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     call_id     UUID        NOT NULL REFERENCES call_sessions (id) ON DELETE CASCADE,
     event_type  VARCHAR(30) NOT NULL,   -- REQUESTED, PUSH_SENT, ACCEPTED, DECLINED, CANCELLED, JOINED, LEFT, CONNECTED,
-                                        -- HEARTBEAT_LOST, ENDED, CONSENT_GIVEN, TRANSCRIPT_*, REPORTED, WEBHOOK
+                                        -- HEARTBEAT_LOST, ENDED, REPORTED, WEBHOOK
     actor_id    UUID,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     detail      JSONB
 );
 CREATE INDEX idx_call_events_call ON call_events (call_id, occurred_at);
+```
 
--- the only content of a call that is ever stored: text, never audio or video (decisions D5, D23).
+`rtc_channel` is `c_` plus 32 random hex characters, never derived from user or listing ids; it is the LiveKit room name (LiveKit logs room names and identities, so neither may hold personal data). `call_events` is the timestamped log US-016 asks for; heartbeats are kept in Redis (`call:hb:{callId}:{userId}`, value = the epoch time of the last beat, 300 s TTL so the time is still known when the 45 s rule fires) and both last times are copied to the row when the call ends.
+
+**State machine** (`CallState` and `CallStateMachine extends StateMachine<CallState>`, as the other lifecycle modules; each transition writes a `call_events` row and publishes `CallStateChangedEvent`):
+
+| From | To | Action | Trigger |
+|---|---|---|---|
+| `RINGING` | `ACCEPTED` | `ACCEPT` | Callee accepts |
+| `RINGING` | `ENDED` | `DECLINE`, `CANCEL`, `TIMEOUT`, `BLOCK` | Callee declines, caller cancels, watchdog, block |
+| `ACCEPTED` | `ACTIVE` | `BOTH_JOINED` | Both clients confirm they joined the channel |
+| `ACCEPTED` | `ENDED` | `JOIN_TIMEOUT`, `CANCEL`, `FAIL`, `BLOCK` | `CALL_JOIN_SECONDS` passed, either side leaves, error |
+| `ACTIVE` | `ENDED` | `END`, `MAX_DURATION`, `DROP`, `BLOCK`, `FAIL` | Hang up, limit reached, heartbeats lost, block, error |
+
+End reasons stored in `end_reason`: `COMPLETED`, `DECLINED`, `CANCELLED`, `NO_ANSWER`, `JOIN_FAILED`, `DROPPED`, `MAX_DURATION`, `BLOCKED`, `SYSTEM_ERROR`.
+
+## F.4 API Contract
+
+```http
+POST /api/v1/calls/voice            -- {listingId, threadId?}; 201 (503 ERROR_CALLS_UNAVAILABLE while calls are off)
+POST /api/v1/calls/video            -- Part G, same body
+GET  /api/v1/calls/{callId}         -- state for either participant
+POST /api/v1/calls/{callId}/accept  -- callee; 200
+POST /api/v1/calls/{callId}/decline -- callee; 200
+POST /api/v1/calls/{callId}/cancel  -- caller, while ringing or accepted; 200
+POST /api/v1/calls/{callId}/join    -- either participant once ACCEPTED or ACTIVE; 200 RtcCredentials
+POST /api/v1/calls/{callId}/connected -- client confirms it joined the channel; 200
+POST /api/v1/calls/{callId}/heartbeat -- 204 (also available as the WebSocket frame call.heartbeat)
+POST /api/v1/calls/{callId}/end     -- either participant; 200, idempotent
+GET  /api/v1/calls?threadId=&page=0&size=20   -- call history of a thread
+POST /api/v1/webhooks/rtc           -- LiveKit notifications (participant joined and left); JWT signature with a sha256 claim of the body; public path
+```
+
+**Create response (201):**
+
+```json
+{ "callId": "c7...", "type": "VOICE", "state": "RINGING", "threadId": "8b3f...",
+  "counterpart": { "userId": "u2...", "displayName": "Asha K" },
+  "listing": { "listingId": "a1...", "title": "Apple Watch" },
+  "ringingExpiresAt": "2026-11-14T09:13:00Z", "maxMinutes": 30, "serverTime": "2026-11-14T09:12:15Z" }
+```
+
+**Join response:** the credentials are issued only after the call is accepted, so a room name and token are never handed out for a call nobody agreed to (and the provider does not bill for waiting). The shape is neutral: the `credentials` object carries whatever the provider's SDK needs (for LiveKit the server URL and the access token), so changing provider changes the adapter, not the API.
+
+```json
+{ "provider": "…", "channel": "c_5f0b…", "identity": "caller", "credentials": { "url": "wss://example.livekit.cloud", "token": "…" },
+  "expiresAt": "2026-11-14T09:45:00Z", "media": "AUDIO" }
+```
+
+`identity` is `caller` or `callee` (the room exists for one call only). LiveKit records identities and room names in its logs, so they are opaque role names and the participant `name` is never set; the app shows the other person's display name from our own API. This replaces the integer `uid` 1 and 2 of the first design (LiveKit identities are strings). The `mock` provider returns fixed values so the app and CI can run without any provider account.
+
+**Call history item:** `callId`, `type`, `direction` (`OUTGOING` or `INCOMING`), `outcome` (`COMPLETED`, `MISSED`, `DECLINED`, `NO_ANSWER`, `FAILED`), `requestedAt`, `durationSeconds`.
+
+## F.5 Backend Design
+
+- **`CallService.create(callerId, request, type)`** (`@Transactional`): `ContactGuard.require(CALL, ...)` (Part D); `valuex.calls.enabled` (`ERROR_CALLS_UNAVAILABLE`, 503); take `pg_advisory_xact_lock` on the two user ids in ascending order, then check that neither user has a call in `RINGING`, `ACCEPTED` or `ACTIVE` (`ERROR_CALL_IN_PROGRESS` for the caller, `ERROR_USER_BUSY` for the callee); reachability of the callee (D.5, `ERROR_SELLER_UNAVAILABLE`); find or create the thread (`ChatService.openThread` logic); insert the call in `RINGING` with `ringing_expires_at = now + CALL_RING_SECONDS`; write the `REQUESTED` event. After commit: publish `call.incoming` to the callee over the WebSocket and send the high-priority push (`CALL_INCOMING`, B.5).
+- **Accept, decline, cancel:** load by id with `FOR UPDATE` and the participant check (404 for others); run the transition through `CallStateMachine`; on accept set `accepted_at` and `max_ends_at = accepted_at + CALL_MAX_MINUTES + join allowance`. Each publishes `call.updated` to both parties.
+- **Join:** valid only in `ACCEPTED` or `ACTIVE` for a participant; `RtcProviderPort.createCredentials(call, userId)` builds the provider credentials, which expire at `max_ends_at + valuex.rtc.token-grace`; writes `JOINED`. Joining twice returns fresh credentials (reconnect after a network change).
+- **Connected:** records `caller_joined_at` or `callee_joined_at`; when both are set the call moves `ACCEPTED -> ACTIVE` (`BOTH_JOINED`), `connected_at = now()` (server clock), the heartbeat clocks start. LiveKit's `participant_joined` webhook also feeds this and wins when it disagrees with the client by more than 5 seconds (it is the less spoofable source).
+- **Heartbeat:** `SET call:hb:{callId}:{userId} <epoch milliseconds> EX 300`; no database write per beat. The value is the last time that person was heard from; the key outlives the 45 second rule so the exact time is still available when the watchdog applies it.
+- **End:** either participant; `duration_seconds = ended_at - connected_at` (0 when never connected); posts a `CALL_SUMMARY` system message to the thread (`COMPLETED` with the duration, or `MISSED` for the callee's view of `NO_ANSWER`, `CANCELLED`); idempotent (a second end returns the stored result). Whatever the end reason (hang up, no answer, timeout, limit, drop, block, error) the server then asks the provider to close the room and remove both participants (`RtcProviderPort.endCall`, best effort; the watchdog retries it), so a call can never run on after the log says it ended and a stale token cannot reopen the room.
+- **`CallWatchdogJob`** (every `valuex.communication.job.watchdog-interval`, `FOR UPDATE SKIP LOCKED`, batch 200, safe on several instances): `RINGING` past `ringing_expires_at` becomes `NO_ANSWER` via `TIMEOUT`; `ACCEPTED` past `accepted_at + CALL_JOIN_SECONDS` becomes `JOIN_FAILED` via `JOIN_TIMEOUT`; `ACTIVE` where either participant's last heartbeat (the Redis value, or `connected_at` when none was ever recorded) is more than 45 seconds old becomes `DROPPED` via `DROP`, with `ended_at` set to the older of the two last-heartbeat times (the other person would otherwise be alone in the channel) and both times copied to the row; any call past `max_ends_at` becomes `MAX_DURATION`. Each is counted in `call.ended{reason}`.
+- **Missed call:** when a call ends as `NO_ANSWER` or `CANCELLED` before it was answered, the callee gets a `CALL_MISSED` notification (in-app and push) and the chat summary says "Missed call".
+- **Block interplay:** `BlockService` publishes an event; `CallService` ends any live call of the pair with `BLOCK`.
+- **Provider adapter (LiveKit).** `RtcProviderPort` has one implementation per provider, chosen by `valuex.rtc.provider` (`livekit` or `mock`). `LiveKitRtcAdapter` signs the access token itself (HS256 with the API secret: `iss` = API key, `sub` = `caller` or `callee`, `exp` = the call limit plus `valuex.rtc.token-grace`, a `video` grant with `roomJoin`, the room name, publish rights limited to the microphone for voice and the microphone and camera for video, no data publishing, never `roomAdmin`, `roomCreate` or `roomRecord`, and a `roomConfig` of two participants and short empty and departure timeouts that LiveKit applies when the room is first created). It ends a call with the server API (`DeleteRoom`, then `RemoveParticipant` with `revoke_token_ts` for both identities, which revokes tokens on LiveKit Cloud) and can list a room's participants for reconciliation; these are three small JSON calls over HTTPS authenticated by a short-lived admin token, so no vendor SDK is added to the backend. Provider secrets are never logged or returned. Details and the reasons are in the US-014 and US-015 plan.
+- **`RtcWebhookController`** (public path in `SecurityConfig`, not behind JWT): LiveKit sends `participant_joined`, `participant_left` and `participant_connection_aborted`. The request carries a JWT signed with the API secret whose `sha256` claim is the base64 SHA-256 of the raw body; the controller checks the signature, the expiry and that hash in constant time, de-duplicates by event id (a short Redis key), and hands joins and leaves to `CallService`. A leave is logged as a `LEFT` event and does **not** end the call (LiveKit may reconnect the person; the heartbeat rule decides). LiveKit does not guarantee delivery, so nothing depends on a webhook arriving. Unknown events (including any recording or egress event) are acknowledged and ignored. Invalid signatures return 401 and are counted (`rtc.webhook.rejected`).
+- **Notifications:** event types `CALL_INCOMING` and `VIDEO_CALL_REQUEST` (push only), `CALL_MISSED`; copy in English and Hindi in `CommunicationNotificationCopy`, naming the caller's display name only.
+- **Rate limits:** `CALL_ATTEMPTS_PER_PAIR_PER_HOUR` and the contact limits of Part D; heartbeat and join are not limited beyond a generous per-call ceiling (60 per minute).
+
+## F.6 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant A as Caller app
+    participant S as CallService
+    participant DB as PostgreSQL
+    participant RT as Realtime and Push
+    participant B as Callee app
+    participant P as LiveKit (call media)
+
+    A->>S: POST /calls/voice {listingId}
+    S->>DB: guard, busy check, insert RINGING
+    S-->>A: 201 {callId, ringingExpiresAt}
+    S->>RT: call.incoming (socket) and high-priority push
+    RT-->>B: ring
+    B->>S: POST /calls/{id}/accept
+    S->>DB: RINGING to ACCEPTED
+    S->>RT: call.updated to both
+    A->>S: POST /calls/{id}/join
+    B->>S: POST /calls/{id}/join
+    S-->>A: token (uid 1)
+    S-->>B: token (uid 2)
+    A->>P: join channel
+    B->>P: join channel
+    A->>S: POST /calls/{id}/connected
+    B->>S: POST /calls/{id}/connected
+    S->>DB: ACCEPTED to ACTIVE, connected_at
+    S->>S: ACCEPTED to ACTIVE, connected_at set
+        A->>S: heartbeat
+        B->>S: heartbeat
+    end
+    A->>S: POST /calls/{id}/end
+    S->>DB: ACTIVE to ENDED, duration, CALL_SUMMARY message
+    S->>RT: call.updated to both
+```
+
+## F.7 Mobile Design (valuex-mobile)
+
+- **Structure** (`features/calls/`): `data/call_repository.dart`; `domain/` (`Call`, `CallState`, `CallEndReason`, `RtcCredentials`); `data/rtc/rtc_client.dart` (an interface) with `LiveKitRtcClient` (over a thin gateway that wraps the `livekit_client` `Room`, so no controller or test imports the SDK) and a `FakeRtcClient` for tests; `presentation/` with `call_controller.dart` (Riverpod notifier: `idle`, `requesting`, `outgoingRinging`, `incomingRinging`, `joining`, `active`, `ended(reason)`), `incoming_call_screen.dart`, `in_call_screen.dart`, `call_ended_sheet.dart`, widgets `call_controls.dart` and `network_quality_chip.dart`.
+- **Routes:** `/call/:callId` (full-screen, no bottom navigation). A global `CallOverlayListener` under the app shell listens to `call.incoming` and navigates to the incoming-call screen, even from another screen.
+- **Outgoing flow:** tap Call, check microphone permission (`permission_handler`; on refusal `ERROR_MICROPHONE_PERMISSION` with an Open settings action), `POST /calls/voice`, show "Calling..." with a Cancel action and one line "This call is not recorded" (information only: no tick box, nothing is stored; D24), then on `ACCEPTED` call `join` and join the room through `RtcClient`, then `connected`. Ringing ends with the server state; the app never ends a call locally without telling the server.
+- **Incoming flow:** full-screen ringing UI with the caller's display name, the listing title, Accept and Decline (48 dp minimum, large touch areas) and the same "This call is not recorded" line; a vibration and the system ringtone while the screen is open; a silent timeout when `ringingExpiresAt` passes.
+- **In-call (voice):** initial avatar, name, listing title, the timer from `connected_at` (server time), Mute, Speaker, End, Report; a network-quality chip fed by the SDK callback; a two-minute warning banner before `max_ends_at`; a heartbeat timer (15 s) through the socket with REST fallback; audio route changes and phone interruptions end or pause the call as the platform dictates.
+- **Platform setup:** Android `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `ACCESS_NETWORK_STATE`, `CHANGE_NETWORK_STATE`, Bluetooth permissions, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MICROPHONE` (an ongoing-call foreground service keeps the call alive in the background), `POST_NOTIFICATIONS`; iOS `NSMicrophoneUsageDescription` (localised) and the `audio` background mode.
+- **Ended sheet:** outcome text (`ERROR_NO_ANSWER`: "Seller didn't answer. Try again later", declined, dropped, limit reached) with Call again and Chat actions.
+- **Call history:** call summaries appear as system cards in the thread (E.7) and the thread has a Calls list via `GET /calls?threadId=`.
+- **Accessibility and language:** controls have semantic labels and states ("Mute, on"); the timer is announced at intervals, not continuously; 200 percent text and 320 px width must not overflow; English and Hindi strings.
+
+## F.8 Validation Rules & Error Codes
+
+| Rule | Code | HTTP |
+|---|---|---|
+| Microphone permission refused | `ERROR_MICROPHONE_PERMISSION`: "Microphone access required for calls" (client side, before any request) | - |
+| Cannot reach the media service, token or join failure | `ERROR_CALL_FAILED`: "Unable to connect call. Please try again" | 502 or client |
+| Calls switched off (no provider yet) | `ERROR_CALLS_UNAVAILABLE`: "Calls are not available yet" | 503 |
+| ~~Transcript consent missing or notice outdated~~ | ~~`ERROR_CONSENT_REQUIRED`, `ERROR_CONSENT_OUTDATED`~~ **Deferred (D24):** no consent step in the MVP (G.8 keeps the design) | - |
+| No answer in the ringing window | `ERROR_NO_ANSWER`: "Seller didn't answer. Try again later" (end reason `NO_ANSWER`) | - |
+| Seller or callee not reachable, or not active | `ERROR_SELLER_UNAVAILABLE` | 409 |
+| Callee on another call | `ERROR_USER_BUSY` | 409 |
+| Caller already in a call, or the pair already has one ringing | `ERROR_CALL_IN_PROGRESS` | 409 |
+| Action not valid in the current state (for example accept after timeout) | `ERROR_CALL_NOT_ACTIVE` | 409 |
+| Caller is not a participant | the not-found error | 404 |
+| Blocked, rate limited, own listing | `ERROR_BLOCKED`, `WARNING_RATE_LIMIT`, `ERROR_OWN_LISTING` (Part D) | 403, 429, 409 |
+| Duration | at most `CALL_MAX_MINUTES` (30) | ends the call |
+| Retention | call logs kept `CALL_LOG_RETENTION_DAYS` (180) after the conversation closes (Part H) | - |
+
+## F.9 Security & NFR Notes
+
+- **Masking by construction.** Calls run app to app over the internet; no telephone number is used or needed. No DTO, event, push, notification, log line or token contains a phone number or email. The channel name is random and is revealed only to accepted participants. Credentials are per user and per call, expire at the call's limit plus 60 s, and give access to that channel only.
+- Only participants can read a call or act on it; another user gets 404. Provider webhooks (if any) are authenticated by signature, not by network location.
+- Provider secrets are held in the secret manager and never logged or returned.
+- Performance: ringing starts within about 2 seconds of the tap at p95 (one insert, one publish, one push call after commit); the watchdog scans small partial indexes; heartbeats cost no database writes.
+- Availability: a media-provider outage affects calls only (`ERROR_CALL_FAILED`); chat, offers and listing details continue.
+- Cost control: credentials are issued only after acceptance, the call is capped at 30 minutes by both the server and the credentials, and nothing of the call is recorded or transcribed (D24).
+
+## F.10 Testing Strategy
+
+- **Unit:** `CallStateMachine` (every allowed and a sample of forbidden transitions), duration maths (never connected, dropped, completed, limit), end idempotency, busy and in-progress checks including the concurrent case, reachability rule, credential expiry maths and token grants (no admin or record grant, the identity is a role name), webhook signature, `sha256` body hash, expiry and replay, ending a room on every end reason, summary message content.
+- **Integration (PostgreSQL, Redis, mock RTC adapter, fake clock):** full happy path, no answer, decline, cancel, join timeout, drop by missed heartbeat, limit reached, block ends the call, participant isolation, two simultaneous requests between the same users create one call, watchdog with two instances does not double-process.
+- **Heartbeats:** the call drops when either participant is silent for 45 seconds, and `ended_at` equals the older last-heartbeat time.
+- **Controller:** status codes and envelopes of F.8, public webhook path with and without a valid signature.
+- **Mobile:** controller states with `FakeRtcClient` and a fake realtime stream, permission refusal, ringing timeout, cancel, accept, hang up, drop handling, two-minute warning, incoming call from another screen, Hindi and large-text layouts.
+- **Manual (two real phones, different networks):** audio quality, Wi-Fi to mobile data switch, screen off, Bluetooth headset, app killed on the callee, 30-minute limit.
+
+## F.11 As built (US-014 + US-015, 2026-11-22)
+
+Built as designed, with these differences (the plan file lists them with the reason):
+
+- **Errors:** `ERROR_CALL_FAILED` is a 503 (`ServiceUnavailableException`), not 502. `ERROR_CALLS_UNAVAILABLE` is the 503 while `valuex.calls.enabled` is false.
+- **Create:** `POST /calls/voice` and `/video` take `{listingId}` only. The server finds or opens the buyer's thread itself. Only a buyer can call, and the callee is the listing's seller (`ContactGuard` channels `CALL` and `VIDEO`).
+- **Join answer:** `{provider, channel, identity ("caller" or "callee"), credentials: {url, token}, expiresAt, media (AUDIO or VIDEO), video: {maxHeight, maxFps} or null}`. The video limits come from `CALL_VIDEO_MAX_HEIGHT` and `CALL_VIDEO_MAX_FPS` and the app applies them when it turns the camera on (heights snap to 360, 540, 720 or 1080).
+- **Time limits:** at accept, `max_ends_at` is now plus `CALL_JOIN_SECONDS` plus `CALL_MAX_MINUTES` (this bounds the token life); when both are in the room it is tightened to `connected_at` plus `CALL_MAX_MINUTES`.
+- **Heartbeats:** the app sends them over REST only (no socket frame): every 15 seconds. The server keeps them in Redis (`call:hb:{callId}:{userId}`, value epoch milliseconds, 300 s life) and never writes the database per beat. A Redis error on read leaves the call running; the next watchdog pass decides.
+- **Ending:** `CallEnder.finish` is the only place a call becomes `ENDED`. It posts the `CALL_SUMMARY` card and publishes `CallStateChangedEvent`; after commit `CallRoomCloser` closes the room, and the watchdog retries after 30 seconds when `room_closed_at` is still null.
+- **LiveKit facts found against the real project:** `DeleteRoom` needs the `roomCreate` grant (`roomAdmin` answers 401); `RemoveParticipant` needs `roomAdmin` plus `room`, and with `revoke_token_ts` it answers 200 even when the room is gone. The webhook `Authorization` header is the raw JWT (no `Bearer`), its `sha256` claim is the base64 SHA-256 of the raw body.
+- **Not built because nothing uses it:** `CallRoomReconcileJob`, `listParticipants`.
+- **Push:** the time-to-live (60 seconds, and the Apple `apns-expiration`) is applied by the FCM adapter to every high-priority push, not through a field of `PushRequest`.
+- **Holds:** `CommunicationHolds` replaces the no-op `CommunicationHoldPort` and flags a reported call (`flagged`); US-016 extends it.
+- **Mobile:** route `/call/:callId` for all states; a global listener opens it on `call.incoming`; the push deep link `/call/{id}` opens it; Android has a foreground service (types microphone, and camera for video) and a keep-screen-on flag through the channel `com.valuex.valuex_mobile/call`; iOS has the `audio` background mode and the usage texts but no keep-awake yet. The Android and iOS SDK constraint of the app is unchanged; `flutter_secure_storage` moved to 11.x and `livekit_client` 2.14 was added.
+
+---
+
+# Part G - US-015: In-App Video Call (transcript deferred)
+
+**Story Points:** 8 | **Repos:** backend, mobile
+**Status:** Planned on LiveKit and built together with US-014 (`US-Implementation-Plans/US-014-US-015-Implementation-Plan.md`). Everything is behind `valuex.calls.enabled`.
+**Dependency:** US-014
+**Decision D24 (2026-11-22):** **the MVP does not record and does not transcribe any voice or video call.** There is no consent step, no on-device speech-to-text, no transcript table, no transcript endpoint and no transcript setting. The earlier design (decisions D5 and D23 of 2026-11-15: a text transcript made on each phone, kept with consent) is **kept unchanged below as the deferred design** (G.3 to G.11) for a later story; it is not built, not in the migration and not tested. The video-specific MVP design is in G.1 to G.2a; where G.7 or G.8 differ from G.2a, G.2a wins.
+**Scope note (2026-10-25 update to the story):** Included in the Real Estate flow (US-118).
+
+## G.1 Story Overview
+
+**As a** buyer **I want** to video call the seller inside the app to see the item **so that** I can check its condition before buying. The seller is asked to join, accepts, and the call connects over LiveKit; the ringing and in-call screens say "This call is not recorded". The call is not recorded or transcribed; only its call log (who, when, how long, how it ended) is kept (Part H).
+
+### G.1.1 Edge Cases Covered (MVP)
+
+| Edge case | Handling |
+|---|---|
+| User denies camera or microphone permission | The app asks before the request; refusal shows `ERROR_CAMERA_PERMISSION`; nothing is created. A person who only wants to talk can use a voice call. |
+| Seller rejects the video call | End reason `DECLINED`; the buyer sees `ERROR_SELLER_DECLINED`; chat summary "Video call declined". |
+| Poor network causes lag | Client-side `WARNING_LOW_BANDWIDTH` banner from the SDK connection-quality callback with a "Turn off video" option (turns the camera off and keeps audio); the call is not ended for quality alone. |
+| Abuse during a call | A Report action marks the call `flagged` and puts a hold on the call and its log (Part C). |
+| Call longer than 30 minutes | Ended by the server at `max_ends_at` (`MAX_DURATION`), warned two minutes before; the room is deleted. |
+| Someone asks "was it recorded?" | No. Nothing is recorded or transcribed (D24): the server never records, the tokens never carry a record grant and the Egress service is never called. The screens say so. |
+| A transcript or a copy of a call | Not offered in the MVP (D24). |
+| Everything else (busy callee, no answer, drop, block, caller cancels, app closed, joining twice) | As Part F (F.1.1). |
+
+## G.2 Scope
+
+**In scope (MVP):** the video call on top of the voice call of Part F: `call_type = VIDEO`, the camera permission and camera grant, the picture-in-picture video screen, camera controls, the bandwidth banner, the video errors, the "not recorded" line.
+**Out of scope (MVP):** any recording of audio or video, any transcript or speech recognition (deferred design in G.3 to G.11), a consent step, user download or sharing of anything from a call, screen sharing, blur or background effects, live streaming, Admin transcript UI.
+
+## G.2a MVP design (what the video call adds to Part F)
+
+- **API:** `POST /api/v1/calls/video` with `{listingId, threadId?}` and every other endpoint as in F.4. The create and join responses carry `"media": "VIDEO"`. There is no `consent`, `noticeVersion`, `transcriptStatus` or consent-notice endpoint.
+- **Backend:** the same `CallService`, state machine, watchdog and webhook as voice. The only differences are `call_type = VIDEO`, the LiveKit grant (`canPublishSources` is `microphone` and `camera`) and the capability: `video` follows the same rules as `call` (D.5) and is `COMING_SOON` while `valuex.calls.enabled` is false.
+- **Mobile:** permissions for camera and microphone (`permission_handler`); the in-call screen shows the remote video full screen, the local preview as a small draggable picture-in-picture, and the controls Mute, Camera on or off, Flip camera, Speaker, End and Report; the network-quality chip, the `WARNING_LOW_BANDWIDTH` banner with "Turn off video" and the two-minute warning banner; the timer from the server `connected_at`; one line "This call is not recorded" on the ringing and in-call screens (information only: nothing is stored about it). Portrait only; the screen stays awake during the call; Android foreground service types `camera` and `microphone`; iOS `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` (localised) and the `audio` background mode; no VoIP push or CallKit in the MVP (D15). The camera is capped at 720p and 24 frames per second (settings, so they can change without a release). All controls have 48 dp targets and semantic labels; layouts hold at 200 percent text; strings in English and Hindi.
+- **Errors:** `ERROR_CAMERA_PERMISSION` (client side), `ERROR_SELLER_DECLINED`, `WARNING_LOW_BANDWIDTH` (client side), and every code of F.8. The consent and transcript codes are deferred.
+- **Tests:** F.10, plus the video grant in the token tests, the camera permission and Turn off video in the mobile tests, and a check that no code path calls the recording or egress APIs.
+
+---
+
+## Deferred design: call transcripts (post-MVP, decision D24)
+
+> **Not built in the MVP.** Sections G.3 to G.11 are the design of 2026-11-15 (decisions D5 and D23), kept so a later story can pick it up. They describe a consent step, an on-device transcript and transcript storage, none of which exists in the MVP; the `call_sessions` columns and the `call_transcript_segments` table below are **not** in the MVP migration (F.3) and would be added by a later migration. The legal review of the consent wording (O7) and the user-copy question (O8) return with that story. One new fact for that story: the LiveKit Flutter documentation describes no access to the local microphone frames, so the fallback named in G.5 and G.11 is not documented and the microphone-sharing spike would decide whether the design is feasible at all.
+
+### Deferred schema (was part of F.3)
+
+```sql
+-- added to call_sessions by the later migration
+caller_consent_at       TIMESTAMPTZ,
+callee_consent_at       TIMESTAMPTZ,
+consent_notice_version  VARCHAR(30),
+transcript_status       VARCHAR(10) NOT NULL DEFAULT 'NONE',  -- NONE | STARTING | ACTIVE | PARTIAL | COMPLETED | FAILED | DELETED
+caller_transcript_state VARCHAR(10) NOT NULL DEFAULT 'NONE',  -- NONE | ACTIVE | FAILED | COMPLETED
+callee_transcript_state VARCHAR(10) NOT NULL DEFAULT 'NONE',
+transcript_language     VARCHAR(10),
+transcript_started_at   TIMESTAMPTZ,
+transcript_completed_at TIMESTAMPTZ,
+transcript_segment_count INTEGER    NOT NULL DEFAULT 0,
+transcript_delete_after TIMESTAMPTZ,
+transcript_deleted_at   TIMESTAMPTZ
+-- CONSTRAINT chk_call_sessions_transcript CHECK (transcript_status = 'NONE'
+--     OR (caller_consent_at IS NOT NULL AND callee_consent_at IS NOT NULL))
+-- CREATE INDEX idx_call_sessions_tr_del ON call_sessions (transcript_delete_after)
+--     WHERE transcript_segment_count > 0 AND transcript_deleted_at IS NULL AND legal_hold = FALSE;
+-- call_events.event_type also gains CONSENT_GIVEN and TRANSCRIPT_*
+
+-- the only content of a call that would be stored: text, never audio or video.
 -- Each row is uploaded by the phone of the person who spoke it (on-device speech-to-text).
 CREATE TABLE call_transcript_segments (
     id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1482,181 +1698,12 @@ CREATE TABLE call_transcript_segments (
 );
 ```
 
-`rtc_channel` is `c_` plus 32 random hex characters, never derived from user or listing ids. `call_events` is the timestamped log US-016 asks for; heartbeats are kept in Redis (`call:hb:{callId}:{userId}`, value = the epoch time of the last beat, 300 s TTL so the time is still known when the 45 s rule fires) and both last times are copied to the row when the call ends.
-
-**State machine** (`CallState` and `CallStateMachine extends StateMachine<CallState>`, as the other lifecycle modules; each transition writes a `call_events` row and publishes `CallStateChangedEvent`):
-
-| From | To | Action | Trigger |
-|---|---|---|---|
-| `RINGING` | `ACCEPTED` | `ACCEPT` | Callee accepts |
-| `RINGING` | `ENDED` | `DECLINE`, `CANCEL`, `TIMEOUT`, `BLOCK` | Callee declines, caller cancels, watchdog, block |
-| `ACCEPTED` | `ACTIVE` | `BOTH_JOINED` | Both clients confirm they joined the channel |
-| `ACCEPTED` | `ENDED` | `JOIN_TIMEOUT`, `CANCEL`, `FAIL`, `BLOCK` | `CALL_JOIN_SECONDS` passed, either side leaves, error |
-| `ACTIVE` | `ENDED` | `END`, `MAX_DURATION`, `DROP`, `BLOCK`, `FAIL` | Hang up, limit reached, heartbeats lost, block, error |
-
-End reasons stored in `end_reason`: `COMPLETED`, `DECLINED`, `CANCELLED`, `NO_ANSWER`, `JOIN_FAILED`, `DROPPED`, `MAX_DURATION`, `BLOCKED`, `SYSTEM_ERROR`.
-
-## F.4 API Contract
-
-```http
-POST /api/v1/calls/voice            -- {listingId, threadId?, consent: true, noticeVersion}; 201 (503 ERROR_CALLS_UNAVAILABLE while calls are off)
-POST /api/v1/calls/video            -- Part G, same body
-GET  /api/v1/calls/{callId}         -- state for either participant
-POST /api/v1/calls/{callId}/accept  -- callee, body {consent: true, noticeVersion}; 200
-POST /api/v1/calls/{callId}/decline -- callee; 200
-POST /api/v1/calls/{callId}/cancel  -- caller, while ringing or accepted; 200
-POST /api/v1/calls/{callId}/join    -- either participant once ACCEPTED or ACTIVE; 200 RtcCredentials
-POST /api/v1/calls/{callId}/connected -- client confirms it joined the channel; 200
-POST /api/v1/calls/{callId}/heartbeat -- 204 (also available as the WebSocket frame call.heartbeat)
-POST /api/v1/calls/{callId}/end     -- either participant; 200, idempotent
-GET  /api/v1/calls?threadId=&page=0&size=20   -- call history of a thread
-POST /api/v1/webhooks/rtc           -- provider notifications, only if the chosen provider sends them; HMAC signature; public path
-```
-
-**Create response (201):**
-
-```json
-{ "callId": "c7...", "type": "VOICE", "state": "RINGING", "threadId": "8b3f...",
-  "counterpart": { "userId": "u2...", "displayName": "Asha K" },
-  "listing": { "listingId": "a1...", "title": "Apple Watch" },
-  "ringingExpiresAt": "2026-11-14T09:13:00Z", "maxMinutes": 30, "serverTime": "2026-11-14T09:12:15Z" }
-```
-
-**Join response:** the credentials are issued only after the call is accepted, so a channel name and token are never handed out for a call nobody agreed to (and the provider does not bill for waiting). The shape is neutral: the `credentials` object carries whatever the chosen provider's SDK needs, so changing provider changes the adapter, not the API.
-
-```json
-{ "provider": "…", "channel": "c_5f0b…", "uid": 1, "credentials": { "token": "…" },
-  "expiresAt": "2026-11-14T09:45:00Z", "media": "AUDIO" }
-```
-
-`uid` is 1 for the caller and 2 for the callee (the channel exists for one call only). The `mock` provider returns fixed values so the app and CI can run without any provider account.
-
-**Call history item:** `callId`, `type`, `direction` (`OUTGOING` or `INCOMING`), `outcome` (`COMPLETED`, `MISSED`, `DECLINED`, `NO_ANSWER`, `FAILED`), `requestedAt`, `durationSeconds`.
-
-## F.5 Backend Design
-
-- **`CallService.create(callerId, request, type)`** (`@Transactional`): `ContactGuard.require(CALL, ...)` (Part D); `valuex.calls.enabled` (`ERROR_CALLS_UNAVAILABLE`, 503); the transcript consent of the caller (`consent = true` and the current `noticeVersion`, G.4; `ERROR_CONSENT_REQUIRED`, `ERROR_CONSENT_OUTDATED`); take `pg_advisory_xact_lock` on the two user ids in ascending order, then check that neither user has a call in `RINGING`, `ACCEPTED` or `ACTIVE` (`ERROR_CALL_IN_PROGRESS` for the caller, `ERROR_USER_BUSY` for the callee); reachability of the callee (D.5, `ERROR_SELLER_UNAVAILABLE`); find or create the thread (`ChatService.openThread` logic); insert the call in `RINGING` with `ringing_expires_at = now + CALL_RING_SECONDS` and `caller_consent_at`; write the `REQUESTED` event. After commit: publish `call.incoming` to the callee over the WebSocket and send the high-priority push (`CALL_INCOMING`, B.5).
-- **Accept, decline, cancel:** load by id with `FOR UPDATE` and the participant check (404 for others); run the transition through `CallStateMachine`; accept requires the callee's transcript consent (`consent = true`, current `noticeVersion`) and stores `callee_consent_at`; on accept set `accepted_at` and `max_ends_at = accepted_at + CALL_MAX_MINUTES + join allowance`. Each publishes `call.updated` to both parties.
-- **Join:** valid only in `ACCEPTED` or `ACTIVE` for a participant; `RtcProviderPort.createCredentials(call, userId)` builds the provider credentials, which expire at `max_ends_at + valuex.rtc.token-grace`; writes `JOINED`. Joining twice returns fresh credentials (reconnect after a network change).
-- **Connected:** records `caller_joined_at` or `callee_joined_at`; when both are set the call moves `ACCEPTED -> ACTIVE` (`BOTH_JOINED`), `connected_at = now()` (server clock), the heartbeat clocks start and `transcript_status` becomes `STARTING` so the apps start their on-device recognisers (Part G). If the chosen provider sends join events, they also feed this and win when they disagree by more than 5 seconds (they are the less spoofable source).
-- **Heartbeat:** `SET call:hb:{callId}:{userId} <epoch milliseconds> EX 300`; no database write per beat. The value is the last time that person was heard from; the key outlives the 45 second rule so the exact time is still available when the watchdog applies it.
-- **End:** either participant; `duration_seconds = ended_at - connected_at` (0 when never connected); posts a `CALL_SUMMARY` system message to the thread (`COMPLETED` with the duration, or `MISSED` for the callee's view of `NO_ANSWER`, `CANCELLED`); idempotent (a second end returns the stored result).
-- **`CallWatchdogJob`** (every `valuex.communication.job.watchdog-interval`, `FOR UPDATE SKIP LOCKED`, batch 200, safe on several instances): `RINGING` past `ringing_expires_at` becomes `NO_ANSWER` via `TIMEOUT`; `ACCEPTED` past `accepted_at + CALL_JOIN_SECONDS` becomes `JOIN_FAILED` via `JOIN_TIMEOUT`; `ACTIVE` where either participant's last heartbeat (the Redis value, or `connected_at` when none was ever recorded) is more than 45 seconds old becomes `DROPPED` via `DROP`, with `ended_at` set to the older of the two last-heartbeat times (the other person would otherwise be alone in the channel) and both times copied to the row; any call past `max_ends_at` becomes `MAX_DURATION`. Each is counted in `call.ended{reason}`.
-- **Missed call:** when a call ends as `NO_ANSWER` or `CANCELLED` before it was answered, the callee gets a `CALL_MISSED` notification (in-app and push) and the chat summary says "Missed call".
-- **Block interplay:** `BlockService` publishes an event; `CallService` ends any live call of the pair with `BLOCK`.
-- **Provider adapter (on hold).** `RtcProviderPort` has one implementation per provider, chosen by `valuex.rtc.provider`; only `MockRtcAdapter` exists until a provider is selected (O1). Whatever the provider, the adapter builds per-user, per-call credentials locally where possible, with a lifetime ending at the call's limit plus the grace period, and never exposes provider secrets. Provider-specific code (token algorithm, SDK parameters) is written and unit-tested in the story that selects the provider.
-- **`RtcWebhookController`** (public path in `SecurityConfig`, not behind JWT; only used if the chosen provider sends notifications): verifies the HMAC signature header in constant time, rejects a stale timestamp, de-duplicates by provider event id (a short Redis key), and hands `join` and `leave` events to `CallService`. Unknown events are acknowledged and ignored. Invalid signatures return 401 and are counted (`rtc.webhook.rejected`).
-- **Notifications:** event types `CALL_INCOMING` and `VIDEO_CALL_REQUEST` (push only), `CALL_MISSED`; copy in English and Hindi in `CommunicationNotificationCopy`, naming the caller's display name only.
-- **Rate limits:** `CALL_ATTEMPTS_PER_PAIR_PER_HOUR` and the contact limits of Part D; heartbeat and join are not limited beyond a generous per-call ceiling (60 per minute).
-
-## F.6 Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant A as Caller app
-    participant S as CallService
-    participant DB as PostgreSQL
-    participant RT as Realtime and Push
-    participant B as Callee app
-    participant P as Call media provider (not chosen)
-
-    A->>S: POST /calls/voice {listingId}
-    S->>DB: guard, busy check, insert RINGING
-    S-->>A: 201 {callId, ringingExpiresAt}
-    S->>RT: call.incoming (socket) and high-priority push
-    RT-->>B: ring
-    B->>S: POST /calls/{id}/accept
-    S->>DB: RINGING to ACCEPTED
-    S->>RT: call.updated to both
-    A->>S: POST /calls/{id}/join
-    B->>S: POST /calls/{id}/join
-    S-->>A: token (uid 1)
-    S-->>B: token (uid 2)
-    A->>P: join channel
-    B->>P: join channel
-    A->>S: POST /calls/{id}/connected
-    B->>S: POST /calls/{id}/connected
-    S->>DB: ACCEPTED to ACTIVE, connected_at
-    S->>S: start transcript (Part G)
-        A->>S: heartbeat
-        B->>S: heartbeat
-    end
-    A->>S: POST /calls/{id}/end
-    S->>DB: ACTIVE to ENDED, duration, CALL_SUMMARY message
-    S->>RT: call.updated to both
-```
-
-## F.7 Mobile Design (valuex-mobile)
-
-- **Structure** (`features/calls/`): `data/call_repository.dart`; `domain/` (`Call`, `CallState`, `CallEndReason`, `RtcCredentials`); `data/rtc/rtc_client.dart` (an interface) with a provider implementation added when the provider is chosen (O1) and a `FakeRtcClient` for tests; `presentation/` with `call_controller.dart` (Riverpod notifier: `idle`, `requesting`, `outgoingRinging`, `incomingRinging`, `joining`, `active`, `ended(reason)`), `incoming_call_screen.dart`, `in_call_screen.dart`, `call_ended_sheet.dart`, `call_consent_sheet.dart` (G.4), widgets `call_controls.dart` and `network_quality_chip.dart`.
-- **Routes:** `/call/:callId` (full-screen, no bottom navigation). A global `CallOverlayListener` under the app shell listens to `call.incoming` and navigates to the incoming-call screen, even from another screen.
-- **Outgoing flow:** tap Call, show the transcript consent sheet (G.4) and wait for agreement, check microphone permission (`permission_handler`; on refusal `ERROR_MICROPHONE_PERMISSION` with an Open settings action), `POST /calls/voice` with the consent, show "Calling..." with a Cancel action, then on `ACCEPTED` call `join` and join the channel through `RtcClient`, then `connected`. Ringing ends with the server state; the app never ends a call locally without telling the server.
-- **Incoming flow:** full-screen ringing UI with the caller's display name, the listing title, Accept and Decline (48 dp minimum, large touch areas); the notice that the call is transcribed as text and not recorded sits above Accept, and Accept counts as consent; a vibration and the system ringtone while the screen is open; a silent timeout when `ringingExpiresAt` passes.
-- **In-call (voice):** initial avatar, name, listing title, the timer from `connected_at` (server time), Mute, Speaker, End, Report; a "Transcript on" chip (audio is not recorded); a network-quality chip fed by the SDK callback; a two-minute warning banner before `max_ends_at`; a heartbeat timer (15 s) through the socket with REST fallback; audio route changes and phone interruptions end or pause the call as the platform dictates.
-- **Platform setup:** Android `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MICROPHONE` (an ongoing-call foreground service keeps the call alive in the background), `POST_NOTIFICATIONS`; iOS `NSMicrophoneUsageDescription` and, for the on-device transcript, `NSSpeechRecognitionUsageDescription` (both localised) and the `audio` background mode.
-- **Ended sheet:** outcome text (`ERROR_NO_ANSWER`: "Seller didn't answer. Try again later", declined, dropped, limit reached) with Call again and Chat actions.
-- **Call history:** call summaries appear as system cards in the thread (E.7) and the thread has a Calls list via `GET /calls?threadId=`.
-- **Accessibility and language:** controls have semantic labels and states ("Mute, on"); the timer is announced at intervals, not continuously; 200 percent text and 320 px width must not overflow; English and Hindi strings.
-
-## F.8 Validation Rules & Error Codes
-
-| Rule | Code | HTTP |
-|---|---|---|
-| Microphone permission refused | `ERROR_MICROPHONE_PERMISSION`: "Microphone access required for calls" (client side, before any request) | - |
-| Cannot reach the media service, token or join failure | `ERROR_CALL_FAILED`: "Unable to connect call. Please try again" | 502 or client |
-| Calls switched off (no provider yet) | `ERROR_CALLS_UNAVAILABLE`: "Calls are not available yet" | 503 |
-| Transcript consent missing or notice outdated | `ERROR_CONSENT_REQUIRED`, `ERROR_CONSENT_OUTDATED` (G.8) | 422, 409 |
-| No answer in the ringing window | `ERROR_NO_ANSWER`: "Seller didn't answer. Try again later" (end reason `NO_ANSWER`) | - |
-| Seller or callee not reachable, or not active | `ERROR_SELLER_UNAVAILABLE` | 409 |
-| Callee on another call | `ERROR_USER_BUSY` | 409 |
-| Caller already in a call, or the pair already has one ringing | `ERROR_CALL_IN_PROGRESS` | 409 |
-| Action not valid in the current state (for example accept after timeout) | `ERROR_CALL_NOT_ACTIVE` | 409 |
-| Caller is not a participant | the not-found error | 404 |
-| Blocked, rate limited, own listing | `ERROR_BLOCKED`, `WARNING_RATE_LIMIT`, `ERROR_OWN_LISTING` (Part D) | 403, 429, 409 |
-| Duration | at most `CALL_MAX_MINUTES` (30) | ends the call |
-| Retention | call logs kept `CALL_LOG_RETENTION_DAYS` (180) after the conversation closes (Part H) | - |
-
-## F.9 Security & NFR Notes
-
-- **Masking by construction.** Calls run app to app over the internet; no telephone number is used or needed. No DTO, event, push, notification, log line or token contains a phone number or email. The channel name is random and is revealed only to accepted participants. Credentials are per user and per call, expire at the call's limit plus 60 s, and give access to that channel only.
-- Only participants can read a call or act on it; another user gets 404. Provider webhooks (if any) are authenticated by signature, not by network location.
-- Provider secrets are held in the secret manager and never logged or returned.
-- Performance: ringing starts within about 2 seconds of the tap at p95 (one insert, one publish, one push call after commit); the watchdog scans small partial indexes; heartbeats cost no database writes.
-- Availability: a media-provider outage affects calls only (`ERROR_CALL_FAILED`); chat, offers and listing details continue.
-- Cost control: credentials are issued only after acceptance, the call is capped at 30 minutes by both the server and the credentials, and audio is never recorded (only the transcript text is kept, Part G).
-
-## F.10 Testing Strategy
-
-- **Unit:** `CallStateMachine` (every allowed and a sample of forbidden transitions), duration maths (never connected, dropped, completed, limit), end idempotency, busy and in-progress checks including the concurrent case, reachability rule, consent checks on create and accept, credential expiry maths, webhook signature and replay (when a provider uses them), summary message content.
-- **Integration (PostgreSQL, Redis, mock RTC adapter, fake clock):** full happy path, no answer, decline, cancel, join timeout, drop by missed heartbeat, limit reached, block ends the call, participant isolation, two simultaneous requests between the same users create one call, watchdog with two instances does not double-process.
-- **Heartbeats:** the call drops when either participant is silent for 45 seconds, and `ended_at` equals the older last-heartbeat time.
-- **Controller:** status codes and envelopes of F.8, public webhook path with and without a valid signature.
-- **Mobile:** controller states with `FakeRtcClient` and a fake realtime stream, permission refusal, ringing timeout, cancel, accept, hang up, drop handling, two-minute warning, incoming call from another screen, Hindi and large-text layouts.
-- **Manual (two real phones, different networks):** audio quality, Wi-Fi to mobile data switch, screen off, Bluetooth headset, app killed on the callee, 30-minute limit.
-
----
-
-# Part G - US-015: In-App Video Call with Transcript (on hold)
-
-**Story Points:** 8 | **Repos:** backend, mobile
-**Status:** **On hold** until a call media provider is chosen (O1); the transcript method is decided (on-device, D23). Nothing in this part is built in Sprint 4 unless that decision is made first. Everything is behind `valuex.calls.enabled=false`.
-**Dependency:** US-014
-**Decisions D5 and D23 (2026-11-15):** no voice or video is recorded. The only content of a call that is stored is a text transcript, kept with consent, produced on each person's own phone. Voice (Part F) and video use the same transcript design, described once here (G.3 to G.5 and G.11).
-**Scope note (2026-10-25 update to the story):** Included in the Real Estate flow (US-118).
-
-## G.1 Story Overview
-
-**As a** buyer **I want** to video call the seller inside the app to see the item **so that** I can check its condition. Before the call both people see "This call is not recorded. A text transcript is saved for safety" and must agree; the transcript is stored securely and deleted a set time after the conversation closes.
-
-### G.1.1 Edge Cases Covered
+### Deferred edge cases (was G.1.1)
 
 | Edge case | Handling |
 |---|---|
-| User denies camera or microphone permission | The app asks before the request; refusal shows `ERROR_CAMERA_PERMISSION`; nothing is created. |
-| Seller rejects the video call | End reason `DECLINED`; the buyer sees `ERROR_SELLER_DECLINED`; chat summary "Video call declined". |
-| Poor network causes lag | Client-side `WARNING_LOW_BANDWIDTH` banner from the SDK quality callback with a "Turn off video" option; audio and the transcript continue. |
 | Transcript fails but the call proceeds | That person's side state is `FAILED` and `transcript_status` becomes `PARTIAL` or `FAILED`; that person sees "Transcript unavailable but call can proceed" (`ERROR_TRANSCRIPT_FAILED` as an information message); the call is not stopped. |
-| User wants a copy of the transcript | Not offered in the MVP; only an Admin can read a transcript for a dispute (Part H). A person who needs a copy goes through support (O8). |
+| User wants a copy of the transcript | Not offered; only an Admin can read a transcript for a dispute (Part H). A person who needs a copy goes through support (O8). |
 | Consent not given | The server refuses to create or accept a call without consent from that side (`ERROR_CONSENT_REQUIRED`), and the database refuses any transcript status other than `NONE` without both consents. |
 | Consent text changes | The server's current notice version must match; otherwise `ERROR_CONSENT_OUTDATED` and the app refreshes the notice. |
 | Abuse during a call | A Report action marks the call `flagged` and puts a hold on its transcript (Part C, G.5). |
@@ -1668,14 +1715,14 @@ sequenceDiagram
 | Consent withdrawn during the call | There is no mid-call opt-out: the person ends the call, and transcription stops at the end (stated in the notice). |
 | Someone asks "was it recorded?" | No: audio and video are never saved anywhere. The phone turns speech into text on the device and only the text is uploaded. |
 
-## G.2 Scope
+### Deferred scope (was G.2)
 
 **In scope:** video call creation with consent, accept with consent, on-device transcription in the app, text upload, finalisation and storage, failure handling, retention deletion of transcripts, reporting, video call screens and permissions, the consent notice endpoint. The transcript design here also serves voice calls (Part F).
 **Out of scope:** any recording of audio or video, any server-side or cloud speech recognition, user download or sharing of transcripts, live captions shown to users (a possible later story), live streaming, screen sharing, blur or background effects, Admin transcript UI (Sprint 10).
 
-## G.3 Data Model
+## G.3 Data Model (deferred)
 
-The consent and transcript columns are in `call_sessions` (F.3), with the database rule that `transcript_status` can only be other than `NONE` when both consent timestamps are set. The transcript text is stored in `call_transcript_segments` (F.3): one row per utterance with the speaker (`CALLER` or `CALLEE`), the time offset from the call's `connected_at`, the text, the language and optional flags.
+The consent and transcript columns are in `call_sessions` (see "Deferred schema" above), with the database rule that `transcript_status` can only be other than `NONE` when both consent timestamps are set. The transcript text is stored in `call_transcript_segments` (same place): one row per utterance with the speaker (`CALLER` or `CALLEE`), the time offset from the call's `connected_at`, the text, the language and optional flags.
 
 - No audio or video is stored in any form, and no audio is sent to the server: each phone converts its own user's speech to text on the device and uploads only the text (decision D23). There is no recordings bucket and no object storage for calls.
 - **Speaker identity is the authenticated uploader.** A device can only upload segments for its own side of the call, so one person's phone never writes the other person's words.
@@ -1684,8 +1731,7 @@ The consent and transcript columns are in `call_sessions` (F.3), with the databa
 - `transcript_segment_count` is kept on the call row so listings and retention need not count rows.
 - Rows are deleted by the retention job (hold-aware); the cascade from `call_sessions` removes them when a call row is purged.
 
-## G.4 API Contract
-
+## G.4 API Contract (deferred)
 ```http
 GET  /api/v1/calls/consent-notice              -- {version, text: {en, hi}}
 POST /api/v1/calls/video                       -- {listingId, threadId?, consent: true, noticeVersion}; 201
@@ -1701,8 +1747,7 @@ The remaining lifecycle (`decline`, `cancel`, `join`, `connected`, `heartbeat`, 
 
 **Consent notice.** One notice serves voice and video. The text lives on the server (English and Hindi) with a version such as `call-transcript-v1`, so wording can change after legal review (O7) without an app release. It states: the call is **not recorded**, each person's own phone converts their speech to text on the phone itself and only the text is sent to ValueX, who can read the transcript (only authorised Trust & Safety staff when needed), how long it is kept (`CALL_TRANSCRIPT_RETENTION_DAYS` after the conversation closes), and that ending the call stops the transcript.
 
-## G.5 Backend Design
-
+## G.5 Backend Design (deferred)
 - **Create and accept.** `CallService.create(..., VIDEO)` requires `consent = true` and the current `noticeVersion` (`ERROR_CONSENT_REQUIRED`, `ERROR_CONSENT_OUTDATED`) and stores `caller_consent_at` and `consent_notice_version`; the callee's `accept` requires the same and stores `callee_consent_at`. A decline stores no consent. Consent is also written to `call_events` (`CONSENT_GIVEN`) with the notice version. The same rules apply to voice calls (Part F).
 - **No server-side speech recognition.** The server never receives call audio. `TranscriptService` only validates, stores and summarises text that the two apps upload (decision D23), so there is no speech-to-text vendor, no per-minute cost and no audio-processing data-protection exposure.
 - **Start.** When the call becomes `ACTIVE` (both consents are on the row; the invariant is also checked in code) and `valuex.transcription.enabled`, `transcript_status` becomes `STARTING` and each app starts its recogniser (G.7). When an app reports `ACTIVE` (`transcript/state`) its side state is stored, `transcript_started_at` is set on the first report, and `transcript_status` becomes `ACTIVE`.
@@ -1714,8 +1759,7 @@ The remaining lifecycle (`decline`, `cancel`, `join`, `connected`, `heartbeat`, 
 - **Access.** There is no user-facing transcript endpoint. The only access is the Admin evidence endpoint of Part H, which writes an access log row and labels the transcript "device-reported" (see the evidence limit in G.9).
 - **Spike (half a day, before this part is built, on real phones):** the on-device recogniser (platform speech recognition on Android and iOS, through the pinned Flutter package) for Hindi, Indian English and mixed Hindi-English speech: whether an offline language pack is available and how a person installs it, accuracy on typical phones, battery and heat over 30 minutes, and **whether the recogniser can run at the same time as the call SDK on the microphone** (the main risk; the fallback is to feed the recogniser from the call SDK's local audio frames, if the chosen provider offers them). The result decides how many languages and devices are supported at launch.
 
-## G.6 Sequence Diagram
-
+## G.6 Sequence Diagram (deferred)
 ```mermaid
 sequenceDiagram
     participant A as Buyer app
@@ -1750,8 +1794,7 @@ sequenceDiagram
     R->>S: derived status COMPLETED, segment count stored
 ```
 
-## G.7 Mobile Design (valuex-mobile)
-
+## G.7 Mobile Design (valuex-mobile; transcript and consent parts deferred, the video screen is in G.2a)
 - **Consent sheet** (caller, before the request, voice and video) and **incoming screen** (callee): the server-provided notice text in the user's language (it says the call is not recorded and a text transcript is saved), a single primary button ("I agree, start call" or "Accept and join") and a clear Cancel or Decline; no pre-ticked box and no way to skip. The notice version is sent back with the action.
 - **Transcription on the device** (`features/calls/data/transcription/`): a `LocalTranscriber` interface with a platform implementation (Flutter `speech_to_text` or equivalent, package and version pinned in the spike, G.5) and a `FakeLocalTranscriber` for tests. It starts when the call becomes `ACTIVE` and recognises **only the local microphone**, in on-device mode only (never the cloud mode of the platform recogniser; if on-device recognition is not available for the language, it reports `FAILED` with `ON_DEVICE_UNAVAILABLE`). It keeps final results only, numbers them per side, offsets them from the server's `connected_at`, and a `TranscriptUploader` sends batches of up to 20 segments or every 5 seconds through `POST transcript/segments`, with a bounded on-device queue (200) and retry with backoff. It reports `ACTIVE`, `FAILED` and `COMPLETED` through `transcript/state`. The language is the app language with the other of Hindi or English as fallback (`valuex.transcription.languages`). Nothing is written to disk beyond the in-memory queue, and segments are discarded after a successful upload.
 - **Permissions:** camera and microphone through `permission_handler`; refusal shows `ERROR_CAMERA_PERMISSION` and the Open settings shortcut. A video call needs both permissions; a person who only wants to talk uses a voice call. Speech recognition needs a further permission on iOS (`NSSpeechRecognitionUsageDescription`, localised); refusing it only turns the transcript off for that person (`PERMISSION_DENIED`), not the call.
@@ -1760,8 +1803,7 @@ sequenceDiagram
 - **Rendering and platform:** the SDK's platform view for video inside the design-system scaffold; portrait only; the screen stays awake during the call; Android foreground service types `camera` and `microphone`; iOS `NSCameraUsageDescription` and `NSMicrophoneUsageDescription` (localised) with the `audio` background mode, and no VoIP push or CallKit in the MVP (decision D15). The app cannot prevent a person from capturing their own screen; the notice is the disclosure.
 - **Strings** (English and Hindi ARB): consent texts come from the server; labels, banners and errors are ARB entries. All controls have 48 dp targets and semantic labels; layouts hold at 200 percent text.
 
-## G.8 Validation Rules & Error Codes
-
+## G.8 Validation Rules & Error Codes (the video rows are MVP, see G.2a; consent and transcript rows deferred)
 | Rule | Code | HTTP |
 |---|---|---|
 | Camera or microphone permission refused | `ERROR_CAMERA_PERMISSION`: "Camera and microphone access required" (client side) | - |
@@ -1777,8 +1819,7 @@ sequenceDiagram
 | Reported call | `flagged` and `legal_hold` until an Admin clears it | - |
 | All other call errors | as Part F.8 (`ERROR_SELLER_UNAVAILABLE`, `ERROR_USER_BUSY`, `ERROR_CALL_IN_PROGRESS`, `ERROR_BLOCKED`, ...) | - |
 
-## G.9 Security & NFR Notes
-
+## G.9 Security & NFR Notes (deferred)
 - **Consent is evidence:** timestamps and the notice version are stored per call and per party, and are visible to the dispute process; a transcript cannot exist without them (database rule plus code check).
 - **Encrypted at rest:** the database and backups are encrypted by the platform (decision D14); transcript text is ordinary rows, so no separate store, key or bucket is needed. In transit: TLS to the API; the provider's media is encrypted on the wire.
 - **Least privilege:** no user-facing transcript endpoint; only the Admin evidence endpoint (Part H) reads transcripts, and each read writes an audit row. The upload endpoints accept only a participant of an active call and only for that person's own side.
@@ -1787,16 +1828,14 @@ sequenceDiagram
 - **Cost and capacity:** no speech-to-text vendor and no per-minute cost; the cost is a few small uploads per minute per call, bounded by the 30-minute cap and the rate limit. A global kill switch (`valuex.transcription.enabled`) lets operations stop transcription without stopping calls. A 30-minute call yields roughly 3,000 to 5,000 words, tens of kilobytes, so storage is negligible. Phone battery and heat are the real cost and are measured in the spike (G.5).
 - Failure of transcription never ends a call and never blocks listing, chat or negotiation.
 
-## G.10 Testing Strategy
-
+## G.10 Testing Strategy (deferred)
 - **Unit:** consent rules (missing, outdated, one side only), the database rule (a transcript status without consent is refused), derived status (both sides active, one failed, both failed, completed, never reported), upload validation (batch size, text length, offsets, `seq` order, exact resend ignored, wrong user 404, upload after grace 409), speaker taken from the uploader, finalisation by the reconcile job, deletion eligibility (past date, hold, already deleted), report sets hold.
 - **Integration (PostgreSQL):** full video call with both sides uploading, one side failing while the call continues, upload after the call within the grace period, partial transcript kept, reconcile finalises a stuck call, retention deletes only eligible transcripts and never a held one, no audio or video data written anywhere.
 - **Controller:** consent notice endpoint, create and accept payloads, upload endpoints (status codes, rate limit, error codes).
 - **Mobile:** consent sheet and incoming screen content from a fake notice, no way to proceed without the button, `FakeLocalTranscriber` driving segment batching, queue limit and retry, "Transcript on" chip shown only while the recogniser runs, no cloud fallback when on-device is unavailable, speech permission refusal, mute pauses the recogniser, failure banner, low-bandwidth banner and "Turn off video", report during a call, Hindi and large text.
 - **Manual (two real phones, once a provider is chosen):** recogniser and call running together on the microphone, accuracy in Hindi, English and mixed speech, battery and heat over 30 minutes, network loss and recovery, app in the background, deletion after the retention window using a shortened setting, report-and-hold.
 
-## G.11 Call Transcription: Options and Decision (D23)
-
+## G.11 Call Transcription: Options and Decision (D23; deferred by D24)
 The product owner asked how to obtain transcripts when calls are not recorded. Three ways were compared; **on 2026-11-15 the product owner chose option 2, on-device speech-to-text.**
 
 | # | Approach | How it works | Strengths | Weaknesses |
@@ -1812,17 +1851,17 @@ The product owner asked how to obtain transcripts when calls are not recorded. T
 # Part H - US-016: Communication History Storage
 
 **Story Points:** 5 | **Repos:** backend
-**Dependency:** US-015
+**Dependency:** US-013 (chat), US-014 (call logs)
 
 ## H.1 Story Overview
 
-**As a** platform **I want** to store all communication history **so that** disputes can be resolved with evidence. Chats, call logs and call transcripts (no audio or video is ever recorded, decision D5) are logged with timestamps, stored encrypted, retrievable by Admins for a case, and deleted on schedule. Call logs and transcripts are part of the work on hold with calls (F, G); the chat parts are active.
+**As a** platform **I want** to store all communication history **so that** disputes can be resolved with evidence. Chats and call logs (no audio, video or text of a call is ever recorded or kept, decisions D5 and D24) are logged with timestamps, stored encrypted, retrievable by Admins for a case, and deleted on schedule. The call-log part follows the calls of US-014 and US-015 (F, G); the chat parts are active. Call transcripts are deferred (D24); where this part still mentions them, that text is the deferred design and is not built.
 
 ### H.1.1 Edge Cases Covered
 
 | Edge case | Handling |
 |---|---|
-| Storage limit exceeded | Chat images fail through the existing media errors; the metric `chat.media.bytes` and an alert warn before the limit. Transcript text is small (G.9) and stored in the database, so it adds no separate storage limit. |
+| Storage limit exceeded | Chat images fail through the existing media errors; the metric `chat.media.bytes` and an alert warn before the limit. Calls store no media and no text, so they add no storage. |
 | User asks for their data to be deleted | Recommended behaviour in H.5 (anonymise the user's messages unless a hold or open dispute applies); the service method is built, its trigger depends on the account-closure rules (O9). |
 | Inappropriate content | The auto-report and the Admin report queue of Part C reach the evidence service; flagged messages are findable (`flagged` index). |
 | Very old logs | After retention the data is deleted for good; there is no archive tier. Data under legal hold is kept until the hold is lifted. |
@@ -1834,7 +1873,7 @@ The product owner asked how to obtain transcripts when calls are not recorded. T
 
 ## H.2 Scope
 
-**In scope:** the closure rules that start retention clocks, the retention job for chat, calls, call transcripts and contact attempts, legal holds, the evidence service and the Admin endpoints, the access log, anonymisation of a user's messages, metrics.
+**In scope:** the closure rules that start retention clocks, the retention job for chat, calls (the call log only; transcripts are deferred, D24) and contact attempts, legal holds, the evidence service and the Admin endpoints, the access log, anonymisation of a user's messages, metrics.
 **Out of scope:** the Admin console screens (US-057, Sprint 10), the dispute workflow (US-047, US-055, Sprint 8; it calls the hold and evidence ports built here), user-facing export, legal discovery tooling.
 
 ## H.3 Data Model
@@ -1845,7 +1884,7 @@ Part of migration `V34__chat_and_contact.sql` (provisional):
 CREATE TABLE communication_access_log (
     id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     admin_id       UUID         NOT NULL REFERENCES users (id),
-    access_type    VARCHAR(30)  NOT NULL,      -- LIST_THREADS | READ_MESSAGES | READ_CALL | READ_TRANSCRIPT | HOLD | RELEASE_HOLD
+    access_type    VARCHAR(30)  NOT NULL,      -- LIST_THREADS | READ_MESSAGES | READ_CALL | HOLD | RELEASE_HOLD   (READ_TRANSCRIPT returns with the transcript story)
     target_type    VARCHAR(10)  NOT NULL,      -- THREAD | CALL | USER
     target_id      UUID,
     case_reference VARCHAR(60)  NOT NULL,
@@ -1862,7 +1901,7 @@ CREATE TRIGGER comm_access_log_no_update BEFORE UPDATE OR DELETE ON communicatio
     FOR EACH ROW EXECUTE FUNCTION trg_comm_access_log_immutable();
 ```
 
-The retention fields already exist: `chat_threads.closed_at`, `close_reason`, `purge_after`, `legal_hold` (E.3) and `call_sessions.purge_after`, `transcript_delete_after`, `legal_hold` (F.3). Settings used: `CHAT_RETENTION_DAYS`, `CALL_LOG_RETENTION_DAYS`, `CALL_TRANSCRIPT_RETENTION_DAYS`, `COMM_INACTIVE_CLOSE_DAYS`, `CONTACT_ATTEMPT_RETENTION_DAYS` (section 1.6).
+The retention fields already exist: `chat_threads.closed_at`, `close_reason`, `purge_after`, `legal_hold` (E.3) and `call_sessions.purge_after` and `legal_hold` (F.3). Settings used: `CHAT_RETENTION_DAYS`, `CALL_LOG_RETENTION_DAYS`, `COMM_INACTIVE_CLOSE_DAYS`, `CONTACT_ATTEMPT_RETENTION_DAYS` (section 1.6).
 
 **Retention summary (HLD 03 sections 9 and 14 made concrete):**
 
@@ -1870,7 +1909,7 @@ The retention fields already exist: `chat_threads.closed_at`, `close_reason`, `p
 |---|---|---|
 | Chat messages and threads | `CHAT_RETENTION_DAYS` (180, about 6 months) | `closed_at` |
 | Call logs (`call_sessions`, `call_events`) | `CALL_LOG_RETENTION_DAYS` (180) | `closed_at` of the thread |
-| Call transcripts (on hold with calls) | `CALL_TRANSCRIPT_RETENTION_DAYS` (180, to confirm) | `closed_at` of the thread |
+| ~~Call transcripts~~ | Deferred (D24): nothing is stored, so there is no rule | - |
 | Chat images | with the thread | `closed_at` |
 | Contact attempts | `CONTACT_ATTEMPT_RETENTION_DAYS` (180) | created time |
 | Access log | 7 years (audit class in HLD 03 section 14) | created time |
@@ -1878,30 +1917,30 @@ The retention fields already exist: `chat_threads.closed_at`, `close_reason`, `p
 
 ## H.4 API Contract
 
-All paths are under `/api/v1/admin/**`, which `SecurityConfig` already limits to `ADMIN` and `SUPER_ADMIN`; transcripts are readable by both roles and every read is logged (the earlier `SUPER_ADMIN`-only rule belonged to recording links, which no longer exist; finer roles are O11). Every request must carry the header `X-Case-Reference` (for example a dispute id) and a `reason` query parameter or body field of at least 10 characters; without them the call fails with `ERROR_CASE_REFERENCE_REQUIRED`.
+All paths are under `/api/v1/admin/**`, which `SecurityConfig` already limits to `ADMIN` and `SUPER_ADMIN`; every read is logged (the earlier `SUPER_ADMIN`-only rule belonged to recording links, which no longer exist; finer roles are O11). Every request must carry the header `X-Case-Reference` (for example a dispute id) and a `reason` query parameter or body field of at least 10 characters; without them the call fails with `ERROR_CASE_REFERENCE_REQUIRED`.
 
 ```http
 GET    /api/v1/admin/communications/threads?listingId=&userId=&page=0&size=20
 GET    /api/v1/admin/communications/threads/{threadId}/messages?afterSeq=&limit=100
 GET    /api/v1/admin/communications/calls/{callId}
-GET    /api/v1/admin/communications/calls/{callId}/transcript?afterSeq=&limit=500   -- on hold with calls
+GET    /api/v1/admin/communications/calls/{callId}/transcript?afterSeq=&limit=500   -- deferred (D24): no transcript exists in the MVP
 POST   /api/v1/admin/communications/holds        -- {targetType: THREAD|CALL, targetId}; 201
 DELETE /api/v1/admin/communications/holds/{targetType}/{targetId}
 GET    /api/v1/admin/communications/access-log?targetId=&page=0&size=50
 ```
 
-Thread and message responses include both participants' user ids, display names and roles (`BUYER`, `SELLER`), the full timeline with system messages, flags, and the call list; they never include a phone number or email. The transcript response is the ordered segments (`seq`, `speaker` as `CALLER` or `CALLEE` with the participant ids resolved in the call object, `startedMs`, `endedMs`, `text`, `flags`) plus `transcriptStatus`; it is refused when the transcript is `DELETED` or the call has none (`ERROR_RETRIEVAL_FAILED` with a reason).
+Thread and message responses include both participants' user ids, display names and roles (`BUYER`, `SELLER`), the full timeline with system messages, flags, and the call list; they never include a phone number or email. (The transcript response of the deferred design, ordered segments plus `transcriptStatus`, is not built in the MVP.)
 
 ## H.5 Backend Design
 
-- **Closure (`CommunicationClosureService.close(threadId, reason)`).** Sets `closed_at`, `close_reason`, `purge_after = closed_at + CHAT_RETENTION_DAYS`; for the thread's calls `purge_after = closed_at + CALL_LOG_RETENTION_DAYS` and, where a transcript has segments, `transcript_delete_after = closed_at + CALL_TRANSCRIPT_RETENTION_DAYS`. It publishes `ThreadClosedEvent`. Triggers:
+- **Closure (`CommunicationClosureService.close(threadId, reason)`).** Sets `closed_at`, `close_reason`, `purge_after = closed_at + CHAT_RETENTION_DAYS`; for the thread's calls `purge_after = closed_at + CALL_LOG_RETENTION_DAYS`. It publishes `ThreadClosedEvent`. Triggers:
   1. `ListingStatusChangedEvent` to `SOLD` (this includes the US-118 property close), `REMOVED_BY_ADMIN`, `REJECTED` or `DEACTIVATED_BY_SELLER`, and `ListingDeletedEvent`. `EXPIRED` is not a closure because a listing can be renewed.
   2. An order closing (Sprint 5 and 6): the order lifecycle publishes `OrderClosedEvent(listingId, buyerId, sellerId)` and communication closes the matching thread. Until that event exists, trigger 1 covers a sale.
   3. Inactivity: `CommunicationInactivityJob` (daily) closes threads with `last_activity_at` older than `COMM_INACTIVE_CLOSE_DAYS` that have no open negotiation, no `ACTIVE` price agreement and no live call (reason `INACTIVE`).
-  4. A new message in a thread closed as `INACTIVE` reopens it: `closed_at` and `purge_after` are cleared; a transcript already scheduled for deletion keeps its date (earlier deletion is the privacy-safe side).
-- **`CommunicationRetentionJob`** (daily at 02:30; batches of 500 with `FOR UPDATE SKIP LOCKED`; metrics `retention.deleted{type}`, counts and durations only, no content in logs): (a) threads with `purge_after <= now()` and no hold: delete the chat images through `MediaAssetService.delete`, then the thread (messages cascade; its calls keep their own dates because `thread_id` is `ON DELETE SET NULL`); (b) calls with `purge_after <= now()` and no hold: delete the row (events cascade); (c) call transcripts with `transcript_delete_after <= now()` and no hold: delete the `call_transcript_segments` rows, set `DELETED` (the call log row stays until its own date); (d) contact attempts older than the setting. Each batch runs in its own transaction; a failure in one thread is logged with its id and does not stop the batch.
+  4. A new message in a thread closed as `INACTIVE` reopens it: `closed_at` and `purge_after` are cleared.
+- **`CommunicationRetentionJob`** (daily at 02:30; batches of 500 with `FOR UPDATE SKIP LOCKED`; metrics `retention.deleted{type}`, counts and durations only, no content in logs): (a) threads with `purge_after <= now()` and no hold: delete the chat images through `MediaAssetService.delete`, then the thread (messages cascade; its calls keep their own dates because `thread_id` is `ON DELETE SET NULL`); (b) calls with `purge_after <= now()` and no hold: delete the row (events cascade); (c) contact attempts older than the setting. Each batch runs in its own transaction; a failure in one thread is logged with its id and does not stop the batch.
 - **Holds.** `CommunicationHoldPort.hold(targetType, targetId, caseReference)` sets `legal_hold` (on a thread it also holds all of the thread's calls) and writes an access log row; `release` clears it, and if the retention date has passed the next job run deletes. The dispute module calls the port when a dispute opens (Sprint 8). A report on any target holds the containing thread and its calls (Part C); closing the report releases that hold.
-- **Evidence service (`CommunicationEvidenceService`).** Each method checks the headers, writes one `communication_access_log` row (and an `AuditLogger` entry) before returning data, reads through the repositories, and maps to the Admin DTOs. The case reference is checked through `CaseReferencePort.isOpenAndAuthorised(adminId, caseReference)`, implemented by the dispute module in Sprint 8; until then the default implementation checks only the format, so Sprint 4 relies on the role check (`ADMIN` or `SUPER_ADMIN`), the mandatory reason, the immutable access log and an alert on unusual volume (`communication.evidence.reads{admin}`), with extra weight on `READ_TRANSCRIPT` reads. The audit row is written even when retrieval then fails (`ERROR_RETRIEVAL_FAILED`).
+- **Evidence service (`CommunicationEvidenceService`).** Each method checks the headers, writes one `communication_access_log` row (and an `AuditLogger` entry) before returning data, reads through the repositories, and maps to the Admin DTOs. The case reference is checked through `CaseReferencePort.isOpenAndAuthorised(adminId, caseReference)`, implemented by the dispute module in Sprint 8; until then the default implementation checks only the format, so Sprint 4 relies on the role check (`ADMIN` or `SUPER_ADMIN`), the mandatory reason, the immutable access log and an alert on unusual volume (`communication.evidence.reads{admin}`). The audit row is written even when retrieval then fails (`ERROR_RETRIEVAL_FAILED`).
 - **Anonymisation (`CommunicationErasureService.anonymiseUser(userId)`).** Replaces the user's message bodies with a removed marker, deletes their chat images and clears flags and previews, in threads that have no hold, open dispute or active agreement; held threads are processed when the hold ends. The method is built and tested here; it is called by the account-closure flow once that flow defines when (O9).
 - **Encryption.** At rest by the platform (database volume, backups, and the bucket KMS key for chat images, decision D14); the evidence endpoints are the only read path besides the participants' own APIs.
 
@@ -1918,46 +1957,46 @@ sequenceDiagram
     participant E as CommunicationEvidenceService
 
     L-->>C: listing SOLD / order closed / inactivity
-    C->>DB: closed_at, purge_after, transcript_delete_after
+    C->>DB: closed_at, purge_after
     Note over J: daily, skips legal_hold
-    J->>DB: threads, calls, transcripts, attempts past their dates
+    J->>DB: threads, calls, attempts past their dates
     J->>K: delete chat images of purged threads
     Ad->>E: GET messages (X-Case-Reference, reason)
     E->>DB: insert access log row
     E-->>Ad: timeline (no phone, no email)
-    Ad->>E: GET call transcript (on hold with calls)
+    Ad->>E: GET call log
     E->>DB: insert access log row
-    E-->>Ad: transcript segments
+    E-->>Ad: call log entries
 ```
 
 ## H.7 Mobile Design
 
-None: this is a backend story. The user-facing disclosures it depends on are part of Parts E and G: the chat safety banner and the call transcript notice state how long data is kept. The privacy policy and the in-app help text are updated by the product team (O7).
+None: this is a backend story. The user-facing disclosures it depends on are part of Parts E and G: the chat safety banner and the "this call is not recorded" line on the call screens. The privacy policy and the in-app help text are updated by the product team (O7).
 
 ## H.8 Validation Rules & Error Codes
 
 | Rule | Code | HTTP |
 |---|---|---|
 | Missing case reference or reason | `ERROR_CASE_REFERENCE_REQUIRED` | 422 |
-| Conversation, call or transcript cannot be read | `ERROR_RETRIEVAL_FAILED`: "Unable to load conversation history" | 502 |
+| Conversation or call cannot be read | `ERROR_RETRIEVAL_FAILED`: "Unable to load conversation history" | 502 |
 | Hold target not found | the not-found error | 404 |
-| Retention | chat 6 months, call logs 6 months, call transcripts `CALL_TRANSCRIPT_RETENTION_DAYS` (180, to confirm) after the conversation closes | - |
+| Retention | chat 6 months, call logs 6 months after the conversation closes (`CHAT_RETENTION_DAYS`, `CALL_LOG_RETENTION_DAYS`) | - |
 
 ## H.9 Security & NFR Notes
 
-- Only `ADMIN` and `SUPER_ADMIN` reach the evidence endpoints; a real case registry check arrives with the dispute module (Sprint 8) and finer roles (for example read-only analysts, transcript access) with the Admin console (Sprint 10, O11). Participants never read other people's history.
+- Only `ADMIN` and `SUPER_ADMIN` reach the evidence endpoints; a real case registry check arrives with the dispute module (Sprint 8) and finer roles (for example read-only analysts) with the Admin console (Sprint 10, O11). Participants never read other people's history.
 - Reading evidence is always logged in an append-only table (database trigger), with who, what, which case and why; the log itself is kept for 7 years.
-- Messages and transcripts are encrypted at rest (platform) and in transit; there is no downloadable call file of any kind.
+- Messages are encrypted at rest (platform) and in transit; there is no downloadable call file of any kind.
 - Logs and metrics from the jobs contain counts and ids only.
-- Performance: the retention job works in batches over partial indexes (`purge_after`, `transcript_delete_after`, `closed_at IS NULL`); one pass over a million threads stays inside its maintenance window because only rows past their date are touched.
+- Performance: the retention job works in batches over partial indexes (`purge_after`, `closed_at IS NULL`); one pass over a million threads stays inside its maintenance window because only rows past their date are touched.
 
 ## H.10 Testing Strategy
 
 - **Unit:** closure date maths for each trigger and setting, reopen rule, hold propagation (thread to calls), job selection (past date, held, already deleted), erasure scope, evidence header validation, access-log write before retrieval and on failure, the trigger refusing updates and deletes (integration).
-- **Integration (PostgreSQL, mock storage, fake clock):** SOLD closes the thread, the job deletes after the retention window, a held thread survives, a released hold is deleted on the next run, transcripts are deleted only past their date, inactivity close respects open negotiations and live calls, Admin endpoints return the timeline and write the log, non-admin users get 403. The transcript parts run once calls are enabled.
-- **Holds from reports:** a report on a message holds its thread and calls; closing the report lets the next retention run delete; a held call's transcript survives.
+- **Integration (PostgreSQL, mock storage, fake clock):** SOLD closes the thread, the job deletes after the retention window, a held thread survives, a released hold is deleted on the next run, inactivity close respects open negotiations and live calls, Admin endpoints return the timeline and write the log, non-admin users get 403. The call-log parts run once calls are enabled.
+- **Holds from reports:** a report on a message holds its thread and calls; closing the report lets the next retention run delete; a held call's log survives.
 - **Controller:** Admin role enforcement and header requirements.
-- **Operational check:** a staging run with shortened settings proves messages, call transcripts and images disappear on schedule and that held items stay.
+- **Operational check:** a staging run with shortened settings proves messages, call logs and images disappear on schedule and that held items stay.
 
 ---
 
@@ -2871,9 +2910,9 @@ Built on branch `feature/US-068-direct-buy-now` in `valuex-backend` and `valuex-
 | Scalability | Stateless instances; Redis pub/sub fan-out; 10,000 WebSocket sessions per 2 vCPU instance (to be load tested); jobs use `FOR UPDATE SKIP LOCKED` so any number of instances can run them | A.9, L.9 |
 | Caching | Admin settings snapshot (60 s); presence and tickets in Redis; no cache of message or offer data | 1.6, A.3 |
 | Security | Single-use WebSocket tickets, per-user event channels, participant-scoped queries (404 for others), plain-text messages, signed short-lived links for chat images, provider webhook HMAC (if used), append-only access log, role-gated Admin endpoints, rate limits on every write path | A.9, E.9, F.9, G.9, H.9 |
-| Privacy | No phone or email shared between users (calls are app to app, no telephony); generic push text; nothing recorded, consent evidence for call transcripts; defined retention with legal hold | F.9, G.9, H.5 |
+| Privacy | No phone or email shared between users (calls are app to app, no telephony); generic push text; nothing recorded or transcribed (D24); defined retention with legal hold | F.9, H.5 |
 | Encryption | At rest by the platform (database volume, backups, bucket KMS for chat images); in transit TLS 1.3 and `wss`; AES-256 application encryption stays reserved for the fields named in HLD 06 (decision D14) | H.5 |
-| Monitoring | Micrometer metrics per part (listed in each Backend Design), structured JSON logs with request id, user id and action, never message text, amounts, tokens or transcript text; alerts on webhook rejections, push failure ratio, transcript failures, job lag and WebSocket error rate | per part |
+| Monitoring | Micrometer metrics per part (listed in each Backend Design), structured JSON logs with request id, user id and action, never message text, amounts, tokens or LiveKit secrets; alerts on webhook rejections, push failure ratio, call API failures, job lag and WebSocket error rate | per part |
 | Resilience | Ports with timeouts, circuit breakers and fallbacks for the call provider, FCM and storage; Redis loss degrades realtime only; no provider outage blocks chat, offers or listing details | 1.8 |
 | Accessibility and localisation | English and Hindi ARB strings for every new text; 48 dp targets; 320 px width and 200 percent text tests; semantic labels for status, countdowns and call controls | each Mobile Design |
 
@@ -2905,10 +2944,10 @@ Codes follow `SCREAMING_SNAKE_CASE` and the standard error envelope. Codes that 
 | `ERROR_USER_BUSY` / `ERROR_CALL_IN_PROGRESS` / `ERROR_CALL_NOT_ACTIVE` | 409 | F | Call state conflicts |
 | `ERROR_CAMERA_PERMISSION` | client | G | Camera or microphone refused |
 | `ERROR_SELLER_DECLINED` | end reason | G | Seller declined the video call |
-| `ERROR_TRANSCRIPT_FAILED` | information | G | Transcript unavailable, call continues |
-| `ERROR_CALLS_UNAVAILABLE` | 503 | F, G | Calls are switched off (no provider yet) |
+| `ERROR_TRANSCRIPT_FAILED` | information | G (deferred, D24) | Transcript unavailable, call continues |
+| `ERROR_CALLS_UNAVAILABLE` | 503 | F, G | Calls are switched off (`valuex.calls.enabled`) |
 | `WARNING_LOW_BANDWIDTH` | client | G | Poor connection |
-| `ERROR_CONSENT_REQUIRED` / `ERROR_CONSENT_OUTDATED` | 422 / 409 | F, G | Call transcript consent |
+| `ERROR_CONSENT_REQUIRED` / `ERROR_CONSENT_OUTDATED` | 422 / 409 | F, G (deferred, D24) | Call transcript consent |
 | `ERROR_CASE_REFERENCE_REQUIRED` | 422 | H | Admin evidence access without a case |
 | `ERROR_RETRIEVAL_FAILED` | 502 | H | "Unable to load conversation history" |
 | `ERROR_INVALID_OFFER` / `ERROR_INVALID_COUNTER` | 422 | I, J | Amount rules |
@@ -2953,7 +2992,7 @@ The mobile category mapping already files `CHAT_`, `OFFER_`, `NEGOTIATION_` and 
 
 ## 8.4 Mobile Shared Structure
 
-- **New dependencies** (versions chosen and pinned during each story; the repository's `pubspec.yaml` lists ranges): `web_socket_channel` (A), `firebase_core` and `firebase_messaging` (B), the call provider's SDK and an on-device speech recognition package (F, G; on hold until the provider is chosen, O1). Existing `permission_handler`, `image_picker`, `intl`, `flutter_secure_storage`, `shared_preferences`, `go_router`, Riverpod and `dio` are reused. A dependency is added only in the story that needs it.
+- **New dependencies** (versions chosen and pinned during each story; the repository's `pubspec.yaml` lists ranges): `web_socket_channel` (A), `firebase_core` and `firebase_messaging` (B), the LiveKit Flutter SDK `livekit_client` (F, G; needs Dart 3.10 and Flutter 3.38, so the `pubspec.yaml` constraints are raised in that story). No speech recognition package is added for calls (D24). Existing `permission_handler`, `image_picker`, `intl`, `flutter_secure_storage`, `shared_preferences`, `go_router`, Riverpod and `dio` are reused. A dependency is added only in the story that needs it.
 - **Folders** (CODING_STANDARDS 3.2): `core/realtime/`, `core/push/`, `features/chat/`, `features/calls/`, `features/negotiation/`, each with `data/`, `domain/`, `presentation/`; shared widgets only in `core/widgets/`.
 - **Routes** (`RouteNames` and `app_router.dart`, with the existing sign-in route guard): `/chats`, `/chats/:threadId`, `/call/:callId`, `/offers`, `/negotiations/:id`, `/blocked-users`; notification deep links `/chats/{id}`, `/offers/{id}`, `/call/{id}` are added to `notification_deep_links.dart`.
 - **Navigation:** the Chats tab opens the chat list; the unread dot reads `chat_unread_provider`; Profile gets an Offers row with badges.
@@ -2961,7 +3000,7 @@ The mobile category mapping already files `CHAT_`, `OFFER_`, `NEGOTIATION_` and 
 - **Local storage:** secure storage keeps the install id for push; `shared_preferences` keeps small flags (safety banner dismissed, notification-permission explained, per-thread unsent draft text); no message database in the MVP (history is read from the server).
 - **Platform setup:** Android manifest permissions and foreground service types (F, G), iOS usage descriptions and background modes (B, F, G), Firebase configuration files per environment (not committed).
 - **Design system:** only existing tokens (`AppColors`, `AppTextStyles`, `AppSpacing`, `AppRadius`) and shared widgets; new reusable pieces (`ReservationTimer`, `ExpiryChip`, system message cards) go to `core/widgets/` or the feature; contrast pairs for new colour uses are added to the token contrast test.
-- **Strings:** every new string is in `app_en.arb` and `app_hi.arb` (English fallback); server-provided texts (consent notice) are the only strings not in ARB.
+- **Strings:** every new string is in `app_en.arb` and `app_hi.arb` (English fallback); server-provided texts are the only strings not in ARB (none in the MVP: the consent notice is deferred, D24).
 
 ## 8.5 Web and AI
 
@@ -2971,10 +3010,10 @@ The mobile category mapping already files `CHAT_`, `OFFER_`, `NEGOTIATION_` and 
 ## 8.6 Testing and Quality Gates
 
 - **Unit and service tests** for every rule table in this document; **integration tests** with Testcontainers PostgreSQL and Redis (Redis is a new container in the CI integration job for Part A and the realtime tests; existing tests keep mocking `RedisConnectionFactory`); **controller tests** for envelopes and status codes.
-- **Fakes** shipped with the stories: `MockRtcAdapter`, `NoopPushAdapter` with a recording variant for assertions, an in-memory `RealtimePublisher` for service tests, a controllable `Clock`, a fake transcription port, and on mobile `FakeRealtimeClient`, `FakeRtcClient`, `FakePushService`.
+- **Fakes** shipped with the stories: `MockRtcAdapter`, `NoopPushAdapter` with a recording variant for assertions, an in-memory `RealtimePublisher` for service tests, a controllable `Clock`, and on mobile `FakeRealtimeClient`, `FakeRtcClient`, `FakePushService`.
 - **Coverage:** more than 90 percent of new and changed backend and mobile code, with the repository minimums of CODING_STANDARDS (backend 80, mobile 85) as the gate.
 - **Static checks before any push:** backend `mvn verify` with Checkstyle and the SonarQube scan; mobile `dart format`, `flutter analyze --fatal-infos`, `flutter gen-l10n`, and the contrast test; all findings fixed before the branch is pushed.
-- **End-to-end and device checks** (manual, scripted in the testing guides): two phones for chat, voice and video (latency, background push, killed app, network switch, limits); one iOS device for push and calls; staging transcripts with shortened retention (once calls are enabled); Hindi device language; 200 percent text.
+- **End-to-end and device checks** (manual, scripted in the testing guides): two phones for chat, voice and video (latency, background push, killed app, network switch, limits); one iOS device for push and calls; Hindi device language; 200 percent text.
 - **Manual testing guides** to be written per story in `Manual Testing Guides/`: US-013, US-014, US-015, US-017, US-076, US-068 (and the shared US-130 and US-131 setup notes).
 
 ## 8.7 Documentation Reconciliation and Hand-offs
@@ -2985,11 +3024,11 @@ Items that must be updated when the stories are built (documentation work, track
 2. **HLD 02** section 4.6 and 4.7: `call_sessions` instead of `call_logs` and `video_sessions`; `negotiation_status_history` instead of `offer_status_history`; the calls and offers endpoints as built; `price_agreements`.
 3. **HLD 03** section 4.4 and 4.12: negotiation, offer, agreement and chat tables as designed here; retention clock definition; no message partitioning in the MVP.
 4. **HLD 05:** realtime client, push permission timing, call and chat screens, Offers screen; section 10 notification types.
-5. **HLD 06:** WebSocket ingress and origin rule; call transcript retention and the on-device transcript data-handling requirement (no audio leaves the phone, no cloud fallback); rate-limit values now Admin-managed settings.
-6. **HLD 07:** section 19 WebSocket APIs (single endpoint and ticket, event list), section 23 (in-app voice and video only, provider not chosen; Exotel, Twilio, masked calls and video recording removed), negotiation and call endpoint details.
-7. **user-stories.md:** add US-130, US-131 and US-132; update US-069, US-013, US-014, US-015, US-016, US-017, US-018, US-068, US-076, US-080 with the decisions and clarified rules (round definition, activity definition, retention clock, no call recorded, transcripts only, calls on hold, blocked-term override); US-103 related stories (Offers row).
-8. **Sprint-plan.md:** Sprint 4 table with the three new stories (13 SP proposed, 69 SP total, 53 SP active while US-014, US-015 and the call part of US-016 are on hold) and the capacity note (O13); the Sprint 5 dependency on `CheckoutPriceGuard`.
-9. **US-116** (Admin settings, Sprint 10): the platform settings screen gains the `CommunicationSetting` and `NegotiationSetting` fields, including `CALL_TRANSCRIPT_RETENTION_DAYS` (the product owner wants transcript retention editable there), and the cross-field rule (warning before expiry is lower than the timeout).
+5. **HLD 06:** WebSocket ingress and origin rule; rate-limit values now Admin-managed settings. (The call transcript retention and on-device transcript requirements are deferred with the transcript, D24.)
+6. **HLD 07:** section 19 WebSocket APIs (single endpoint and ticket, event list), section 23 (in-app voice and video only on LiveKit; Exotel, Twilio, masked calls, video recording and call transcripts out of the MVP), negotiation and call endpoint details.
+7. **user-stories.md:** add US-130, US-131 and US-132; update US-069, US-013, US-014, US-015, US-016, US-017, US-018, US-068, US-076, US-080 with the decisions and clarified rules (round definition, activity definition, retention clock, no call recorded or transcribed, blocked-term override); US-103 related stories (Offers row).
+8. **Sprint-plan.md:** Sprint 4 table with the three new stories (13 SP proposed, 69 SP total; US-014 and US-015 now planned on LiveKit with the transcript deferred) and the capacity note (O13); the Sprint 5 dependency on `CheckoutPriceGuard`.
+9. **US-116** (Admin settings, Sprint 10): the platform settings screen gains the `CommunicationSetting` and `NegotiationSetting` fields, and the cross-field rule (warning before expiry is lower than the timeout). (`CALL_TRANSCRIPT_RETENTION_DAYS` returns with a transcript story.)
 10. **US-057 and US-055:** consume `communication_reports` and the evidence service (Part H).
 11. **US-010:** `chatCount` in My Listings becomes real through `ListingEngagement` (D.5); `buyNowEnabled` is returned to the owner.
 12. **Sprint 5 LLD (future):** cart and checkout call `CheckoutPriceGuard.requireValid` and `markConsumed`; decide the listing transition to `ORDER_CREATED` (K.5); the cart item status badge uses the K.4 endpoints; turn on `valuex.checkout.enabled`.
@@ -3007,17 +3046,17 @@ Items that must be updated when the stories are built (documentation work, track
 | D1 | WebSocket shape | One multiplexed endpoint `/ws/v1` with typed events and single-use ticket authentication. HLD's `/ws/chat`, `/ws/notifications` and `/ws/video` become logical channels of that connection. |
 | D2 | Read and write paths | Writes (send message, make or answer an offer, call actions) are REST; the socket carries server events and a few client signals. |
 | D3 | Missing foundations | Three new stories: US-130 Realtime Gateway (5 SP), US-131 Push Notification Channel (5 SP), US-132 Block and Report User (3 SP). |
-| D4 | Voice and video technology | **Changed (2026-11-15).** Voice and video are app-to-app calls only: no VoIP to phone numbers, no phone network, no SIP or PSTN bridging, no masked numbers, no Exotel or Twilio. The media provider is not chosen, so calls are provider-neutral behind `RtcProviderPort` (Mock adapter only) and the stories that need a provider (US-014, US-015, the call part of US-016) are **on hold**; all else proceeds. |
-| D5 | Recording | **Changed (2026-11-15).** No voice or video is recorded. The plan is to save text transcripts only, with consent from both people for voice and video, in a database table; users cannot download them (Admin evidence access only, audited). How transcripts are obtained is D23. |
+| D4 | Voice and video technology | **Changed (2026-11-15).** Voice and video are app-to-app calls only: no VoIP to phone numbers, no phone network, no SIP or PSTN bridging, no masked numbers, no Exotel or Twilio. The media provider is **LiveKit** (chosen 2026-11-22), behind `RtcProviderPort` (`LiveKitRtcAdapter` and `MockRtcAdapter`); the stories that need it (US-014, US-015, the call-log part of US-016) are built together on it. First recorded as "on hold, no provider chosen". |
+| D5 | Recording | **Changed (2026-11-15), narrowed by D24 (2026-11-22).** No voice or video is recorded. The 2026-11-15 plan to save text transcripts is **deferred out of the MVP by D24**: nothing of a call is recorded, transcribed or stored except its call log. |
 | D6 | Listing state during contact | The listing stays `PUBLISHED` and visible during chats and negotiations; `BUYER_INQUIRY_PENDING` and `NEGOTIATION_IN_PROGRESS` are not used; only an active price agreement reserves the item. |
 | D7 | Real Estate negotiation | Offers, counters and acceptance work as for goods, but acceptance is not exclusive, creates no price lock or reservation, and does not reject other offers; the owner closes the deal with US-118. |
 | D8 | Negotiation limits | A round is one submitted price (offer or counter); at most 5 per negotiation (Admin setting); 48 hours of inactivity expires it; an absolute lifetime of 14 days applies. |
 | D9 | Identity | Chat, call and video need an active account only. Make Offer and Buy Now need an Aadhaar-verified buyer (they can lock the seller's item). |
 | D10 | Checkout dependency | Buy Now and Add to Cart capabilities stay `COMING_SOON` and the Buy Now endpoint answers `ERROR_CHECKOUT_UNAVAILABLE` until `valuex.checkout.enabled` is turned on with Sprint 5; backend and tests are complete in Sprint 4. |
 | D11 | Buy Now setting | `listings.buy_now_enabled`, default true; a goods listing must allow Buy Now or negotiation (`ERROR_NO_PURCHASE_OPTION`). |
-| D12 | Retention clock | Chat (6 months), call logs (6 months) and call transcripts (180 days, to confirm) start when the conversation closes: listing sold, removed, rejected, deactivated or deleted, order closed, or 90 days without activity. Legal hold stops deletion. All periods are Admin-managed settings. |
+| D12 | Retention clock | Chat (6 months) and call logs (6 months) start when the conversation closes: listing sold, removed, rejected, deactivated or deleted, order closed, or 90 days without activity. Legal hold stops deletion. All periods are Admin-managed settings. (Call transcripts, 180 days, are deferred with the transcript, D24.) |
 | D13 | Message screening | **Changed (2026-11-15).** A message with blocked terms is not delivered; the sender is told "we detected restricted terms in your message and blocked it" and may remove the terms and resubmit, or tap Deliver message and accept an agreement ("I am confident that I'm not violating JustQlic policies. If any violation found, I understand my account may be blocked permanently."). A delivered override is flagged and reported at once, and is limited per day. Contact details, links, off-platform payment words and repeated text are flagged but delivered; automatic report after three flags in 24 hours. See E.4, E.5, E.7. |
-| D14 | Encryption at rest | Platform-level encryption (database volume and backups with KMS, bucket SSE-KMS for chat images). No application-level column encryption for chat bodies or transcripts; Admin access is audited. |
+| D14 | Encryption at rest | Platform-level encryption (database volume and backups with KMS, bucket SSE-KMS for chat images). No application-level column encryption for chat bodies; Admin access is audited. |
 | D15 | Reachability and ringing | A callee is reachable when foreground on the socket or holding a push token; calls ring 45 seconds; a high-priority push wakes the app; native CallKit and ConnectionService screens are post-MVP. |
 | D16 | Negotiation and chat | Every negotiation belongs to the buyer-seller chat thread for the listing (created if needed); offers appear in the thread as cards. |
 | D17 | Admin-managed numbers | Two registries, `CommunicationSetting` and `NegotiationSetting`, in `platform_settings`, exactly as the discovery settings (Sprint 3 D19). |
@@ -3027,19 +3066,20 @@ Items that must be updated when the stories are built (documentation work, track
 | D21 | Activity definition | A negotiation stays alive on any offer action or any user message in its thread, but never beyond its lifetime cap. |
 | D22 | Search and reservations | Reserved listings are hidden from result pages by a new `retainBrowsable` filter; `retainLive` and the index are not changed. |
 | D23 | Call transcription | **Confirmed 2026-11-15: option 2, on-device speech-to-text.** Each phone converts its own user's speech to text on the device (on-device mode only, no cloud fallback) and uploads only the text; the server validates and stores it. No speech-to-text vendor, no audio leaves the phone. Accepted trade-off: the text is device-reported and the server cannot verify it, so it is supporting evidence, not proof (G.9). Transcript consent is mandatory for voice and video; retention is 180 days by default and Admin-configurable. See G.11. |
+| D24 | Call transcripts and recording in the MVP | **Decided 2026-11-22. Supersedes D23 for the MVP.** The MVP does not record and does not transcribe any voice or video call, and stores no text of a call; a call keeps its call log only (who, when, how long, how it ended; Part H). The transcript design (G.3 to G.11) stays in this document as a deferred design for a later story; no code, migration, setting, permission or notice for it is built. Consequences: no consent step (the ringing and in-call screens carry a "This call is not recorded" line, information only); no on-device speech-to-text; no `call_transcript_segments` and no consent or transcript columns; no transcript endpoints, Admin transcript endpoint or `valuex.transcription.*` and `CALL_TRANSCRIPT_RETENTION_DAYS` settings; no speech-recognition permission on iOS; O7 and O8 closed for the MVP. |
 
 ## 9.2 Conflicts Found and How This LLD Resolves Them
 
 | # | Conflict | Resolution |
 |---|---|---|
-| C1 | HLD 07 section 23 lists Exotel or Twilio for masked voice (a phone network call), while US-014 describes a VoIP SDK, microphone permission and an in-call overlay. | D4 (2026-11-15): app-to-app calls only; no phone network, telephony or numbers, so "caller ID shows platform number" is satisfied by design. Exotel, Twilio and Agora are not the plan; the provider is not chosen and the call stories are on hold. |
+| C1 | HLD 07 section 23 lists Exotel or Twilio for masked voice (a phone network call), while US-014 describes a VoIP SDK, microphone permission and an in-call overlay. | D4 (2026-11-15): app-to-app calls only; no phone network, telephony or numbers, so "caller ID shows platform number" is satisfied by design. Exotel, Twilio and Agora are not the plan; **LiveKit is the provider (2026-11-22)** and the call stories are planned on it. |
 | C2 | HLD 02 and 07 name three WebSocket paths. | D1. |
 | C3 | Sprint 3 left open whether `BUYER_INQUIRY_PENDING` and `NEGOTIATION_IN_PROGRESS` listings stay visible, while US-017 expects several buyers negotiating at once and US-076 rejects other offers only on acceptance. | D6: listing state is not used for negotiation; exclusivity only at acceptance or Buy Now. |
 | C4 | US-068 and US-018 talk about cart and checkout (Sprint 5) but are Sprint 4 stories. | Backend contract (`CheckoutPriceGuard`, agreement endpoints) now; capability flag for the UI (D10). |
 | C5 | "Max 5 back-and-forth per buyer-seller pair" can mean 5 offers or 5 negotiations. | D8: 5 submitted prices per negotiation; a pair can start a new negotiation after expiry or the rejection cooldown. |
 | C6 | US-013 says chat is kept 6 months "after transaction closure"; US-016 and HLD say 6 months; many chats never lead to a transaction. | D12. |
-| C7 | Video deletion is worded "1 month" and "30 days" after closure. | Nothing is recorded now (D5); the rule becomes the transcript retention setting, `CALL_TRANSCRIPT_RETENTION_DAYS` (180, to confirm). |
-| C8 | US-014 says both parties consent to recording "if applicable". | No call is recorded (D5). Both parties consent to the saved transcript, for voice and video; the notice says the call is not recorded. |
+| C7 | Video deletion is worded "1 month" and "30 days" after closure. | Nothing is recorded or transcribed (D5, D24), so there is no video or transcript to delete; the call log follows `CALL_LOG_RETENTION_DAYS`. |
+| C8 | US-014 says both parties consent to recording "if applicable". | No call is recorded (D5) and, from D24, no call is transcribed, so there is no consent step; the screens say the call is not recorded. |
 | C9 | Sprint 1 built no push channel; stories say the user "receives notification". | US-131. |
 | C10 | Stories mention blocking (`ERROR_BLOCKED`, "user blocks seller") but no block feature exists. | US-132. |
 | C11 | US-080 says 48 hours "from last message", US-017 says "inactivity", US-076 says respond within 48 hours. | D8 and D21 give one definition. |
@@ -3055,31 +3095,31 @@ Items that must be updated when the stories are built (documentation work, track
 
 ## 9.3 Implementation Notes for the Builders
 
-1. **Spikes first (half a day each, results recorded in the pull request):** FCM and APNs set-up and a killed-app push on a real device; WebSocket upgrade and idle timeout through the real ingress. (The on-device transcription spike of G.5 and the call provider spike wait for the provider decision, O1.)
-2. **Order of work:** Wave 1: US-130, US-131, US-132, US-069, US-013 (24 SP). Wave 2: US-017, then US-076, US-018 and US-080 in parallel (19 SP). Wave 3: the chat part of US-016, and US-068 (10 SP). US-014 and US-015 (16 SP) and the call part of US-016 wait for the provider decision.
-3. **Safe defaults:** `valuex.realtime.enabled=true`, `valuex.push.provider=noop`, `valuex.calls.enabled=false`, `valuex.rtc.provider=mock`, `valuex.transcription.enabled=false`, `valuex.checkout.enabled=false`. A developer can run the whole sprint without any provider account.
+1. **Spikes first (half a day each, results recorded in the pull request):** FCM and APNs set-up and a killed-app push on a real device; WebSocket upgrade and idle timeout through the real ingress. For calls: the LiveKit Flutter SDK on two real phones (build in CI with its native library, audio route, background rules) and the timing of a dropped call (see the US-014 and US-015 plan). The on-device transcription spike is cancelled with the transcript (D24).
+2. **Order of work:** Wave 1: US-130, US-131, US-132, US-069, US-013 (24 SP). Wave 2: US-017, then US-076, US-018 and US-080 in parallel (19 SP). Wave 3: the chat part of US-016, and US-068 (10 SP). US-014 and US-015 (16 SP, built together on LiveKit) and the call-log part of US-016 follow once the LiveKit account and keys are ready.
+3. **Safe defaults:** `valuex.realtime.enabled=true`, `valuex.push.provider=noop`, `valuex.calls.enabled=false`, `valuex.rtc.provider=mock`, `valuex.checkout.enabled=false`. A developer can run the whole sprint without any provider account.
 4. **Migrations:** provisional V32 to V38 (1.7; V32 to V35 are built); take the next free numbers when each branch is cut.
 5. **Pull requests:** one per story, each with its manual testing guide, tests, and "As built" notes appended to this LLD in the style of Sprint 3 (deviations are documented, not hidden).
 6. **Shared test fixtures:** a `CommunicationFixtures` helper (two active users, a published listing, a thread) and a `NegotiationFixtures` helper are built in US-013 and US-017 and reused by the later stories; the block and rate-limit contract tests of Part C run against every contact entry point.
 7. **Hindi:** all new copy is drafted in both languages in the same pull request; native review is tracked as O5.
-8. **No logging of content:** a Checkstyle or ArchUnit rule (or a review checklist item) forbids logging message bodies, offer amounts, tokens and transcript text.
+8. **No logging of content:** a Checkstyle or ArchUnit rule (or a review checklist item) forbids logging message bodies, offer amounts, tokens and LiveKit secrets.
 
 ## 9.4 Open Items
 
 | # | Item | Needed by |
 |---|---|---|
-| O1 | **Call provider (blocks US-014, US-015 and the call part of US-016).** Choose an app-to-app call media provider: Flutter SDK, India performance, price, and ideally access to the local audio frames (a fallback if the on-device recogniser cannot share the microphone with the call SDK). No speech-to-text vendor is needed (D23). The on-device transcription spike (G.5) must also pass on target phones, in Hindi, Indian English and mixed speech. | Product and tech lead, before US-014 |
-| O2 | Who owns the Firebase project and the Apple APNs key, and how secrets reach staging and production (the call provider project joins this list once chosen). | Before US-131 |
+| O1 | **Closed (2026-11-22): the call provider is LiveKit.** It is an app-to-app call media service with a Flutter SDK, an India region and a free development plan (limits and prices in the US-014 and US-015 plan). The account is created; keys go to the secret manager. No speech-to-text vendor and no transcription spike are needed (D24). | Closed |
+| O2 | Who owns the Firebase project and the Apple APNs key, and how secrets reach staging and production (the LiveKit project and its API key and secret join this list). | Before US-131 |
 | O3 | Closed by D4: the product owner does not want phone-network calls. | Closed |
 | O4 | Owner and update process for the blocked-term lists (English, Hindi, Hinglish, Devanagari). | Before US-013 |
-| O5 | Native-speaker review of Hindi copy (chat, notifications, consent notice). | Before release |
+| O5 | Native-speaker review of Hindi copy (chat, notifications, call screens). | Before release |
 | O6 | HEIC and very large chat images depend on libvips in the production image (the photo-variant story); confirm the pixel and time limits of the processor for chat images. | Before US-013 release |
-| O7 | **Legal-team review required** (product owner, 2026-11-15) of the call transcript consent text (including that the phone converts speech to text on the device), transcript retention, the blocked-message agreement wording (D13) and privacy-policy updates under Indian data-protection law. The wording stays marked "pending legal review" until signed off. | Before US-015 release and before US-013 release (agreement text) |
-| O8 | How a user can obtain a copy of a call transcript, if at all (support process). | Product and legal |
+| O7 | **Legal-team review required** (product owner, 2026-11-15) of the blocked-message agreement wording (D13) and privacy-policy updates under Indian data-protection law; **the call transcript consent text and transcript retention are out of the MVP (D24)** and return with a transcript story. The privacy review of routing calls through LiveKit's network (no region pinning, product owner 2026-11-22; end-to-end encryption is not planned for the MVP (product owner, 2026-11-22)) is part of the same legal review. The wording stays marked "pending legal review" until signed off. | Before US-013 release (agreement text) and before calls are switched on in production |
+| O8 | Closed for the MVP (D24): there is no call transcript to copy. Returns with a transcript story. | Closed |
 | O9 | When user data is anonymised on account closure and how it interacts with disputes. | Account-closure story |
 | O10 | Retention of closed negotiation and agreement rows. | Sprint 10 archival |
-| O11 | Finer Admin roles for evidence access (read-only analyst, transcript access). | Sprint 10 |
+| O11 | Finer Admin roles for evidence access (read-only analyst). | Sprint 10 |
 | O12 | Backups versus purge: how a restore re-applies deletions. | Infra |
-| O13 | **Capacity:** the sprint is 69 SP including the three proposed stories, of which 53 SP are active now and 16 SP (US-014, US-015) wait for the call provider. The active 53 SP run in the three waves of 9.3. If the provider is chosen late, US-014, US-015 and the call part of US-016 move to the next sprint. | Planning |
+| O13 | **Capacity:** the sprint is 69 SP including the three proposed stories. The 16 SP of US-014 and US-015 are no longer on hold; they are built together on LiveKit, and their size was not re-estimated when the transcript left the scope (D24). | Planning |
 | O14 | Listings with quantity above 1: the MVP reserves the whole listing for one buyer. | Sprint 5 (stock) |
 

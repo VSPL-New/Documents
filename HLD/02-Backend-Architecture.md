@@ -394,18 +394,18 @@ POST /api/v1/entitlements/check
 ### Responsibilities
 
 * Chat
-* Voice calls (in-app, app to app; on hold until a call provider is chosen)
-* Video calls (in-app, app to app; on hold)
+* Voice calls (in-app, app to app, on LiveKit)
+* Video calls (in-app, app to app, on LiveKit)
 * Communication history
 
-> **Update (2026-11-15, Sprint 4 LLD, decisions D4, D5, D19):** One table, `call_sessions`, replaces `call_logs` and `video_sessions`, and `call_transcript_segments` holds saved transcripts. No phone network or telephony is used and no audio or video is recorded.
+> **Update (2026-11-22, Sprint 4 LLD, decisions D4, D5, D19, D24):** One table, `call_sessions`, replaces `call_logs` and `video_sessions`. No phone network or telephony is used and no audio, video or text of a call is recorded or stored: call transcripts (`call_transcript_segments`) are deferred beyond the MVP.
 
 ### Owns
 
 * chat_threads
 * chat_messages
 * call_sessions (was call_logs and video_sessions)
-* call_transcript_segments
+* call_events
 
 ### APIs
 

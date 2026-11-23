@@ -210,8 +210,8 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Communication
 - Chat (stored)
-- In-app voice calls (app to app; no phone network; on hold until a call provider is chosen)
-- In-app video calls (app to app; on hold; nothing is recorded, a consented text transcript is saved)
+- In-app voice calls (app to app; no phone network; on LiveKit, built with video calls)
+- In-app video calls (app to app; on LiveKit; nothing is recorded or transcribed in the MVP)
 
 ### Transactions
 - Price negotiation system
@@ -280,9 +280,9 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 
 ### Communication
 - **FR-7:** Platform must support chat between buyer and seller
-- **FR-8:** Platform must provide in-app voice calling between buyer and seller (app to app only; no phone network, no phone numbers; on hold until a call provider is chosen; updated 2026-11-15)
-- **FR-9:** Platform must support in-app video calling (app to app; on hold; calls are not recorded; updated 2026-11-15)
-- **FR-10:** Chat history and call transcripts must be stored; no audio or video is recorded (updated 2026-11-15)
+- **FR-8:** Platform must provide in-app voice calling between buyer and seller (app to app only; no phone network, no phone numbers; on LiveKit; updated 2026-11-22)
+- **FR-9:** Platform must support in-app video calling (app to app; on LiveKit; calls are not recorded or transcribed in the MVP; updated 2026-11-22)
+- **FR-10:** Chat history and call logs must be stored; no audio, video or call transcript is recorded or stored in the MVP; a call transcript with consent is deferred to a later release (updated 2026-11-22)
 
 ### Negotiation & Orders
 - **FR-11:** Buyers must negotiate price via system
@@ -474,7 +474,6 @@ The platform aims to combine the **simplicity of OLX** with the **transaction re
 - **ReturnRequest**
 - **ChatMessage**
 - **CallSession** (replaces CallLog and VideoSession)
-- **CallTranscriptSegment**
 - **Rating**
 - **FraudFlag**
 - **ImageEmbedding**
