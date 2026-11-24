@@ -32,7 +32,7 @@
 - AC5. When an accepted item is newly added to the cart, the seller gets one chat card ("<buyer> added this to the cart at <price>, held until <time>") and one in-app notification. Adding the same item again under the same agreement creates nothing new. Removing it or letting it expire creates nothing.
 - AC6. If the buyer has no conversation yet for the listing (a Buy Now hold, for example), the server opens it, as it does for offers and calls, and posts the card there. If the thread is read-only (blocked, listing removed) the card and notification are skipped and the add still succeeds.
 - AC7. Saved items shows "View details" instead of "Add to Cart" on an available item; it opens the listing page. Unavailable items are unchanged.
-- AC8. An older app build (which does not know the new card kind) shows the neutral "Conversation update" line for the seller's card and keeps working.
+- AC8. The seller's card has its own look in the app, and an unknown card kind still falls back to the neutral "Conversation update" line (the existing behaviour for any unknown kind).
 - AC9. The cart stays behind `valuex.checkout.enabled`: with it off, the new button is hidden (the cart is not available) and no card or notification is created.
 
 **Not in this change:** a push to the seller, a seller action on the card, removing the capability from the API, changes to Buy Now, checkout or the cart screen.
@@ -45,8 +45,8 @@
 
 **Key design points**
 
-- **No API removal.** `POST /cart/items`, the listing `capabilities.cart` and the cart screen are unchanged. Only the app stops showing the button on the listing page, so older builds keep working.
-- **New card kind, existing card type.** The seller's card is an `OFFER_EVENT` with `kind` = `ADDED_TO_CART` and payload `{kind, listingId, amount, validUntil, by:"BUYER", negotiationId?}`. An older app does not know the kind and shows "Conversation update". No new message type or migration.
+- **No API removal (kept for simplicity).** `POST /cart/items`, the listing `capabilities.cart` and the cart screen are unchanged; only the app stops showing the button on the listing page. There is no installed older build to protect (development phase), so this is not a compatibility measure: removing the unused `capabilities.cart` field is a possible later clean-up and is out of scope here.
+- **New card kind, existing card type.** The seller's card is an `OFFER_EVENT` with `kind` = `ADDED_TO_CART` and payload `{kind, listingId, amount, validUntil, by:"BUYER", negotiationId?}`. This needs no new message type and no migration.
 - **Event after commit.** `CartService.add` publishes `CartItemAddedEvent` (ids, price, expiry) only when a line was created. A cart-side `@TransactionalEventListener(AFTER_COMMIT)` with `REQUIRES_NEW` calls a new port `CartChatPort`, implemented in the communication module (mirrors `NegotiationChatPort`). A failure is logged and never reaches the buyer.
 - **One per agreement.** The listener claims `cart:added:{agreementId}` with a set-if-absent in Redis (48 hours). The notification also carries `dedupeKey = "cart-added:" + agreementId`. A Redis outage can at worst post a second card, which is harmless; it never blocks the add.
 - **Live state at tap time.** A chat card is history. The button is shown on the newest accepted card only (AC4) and the server decides on tap, so an ended price answers with the existing error and the card does not need to poll.
@@ -106,13 +106,28 @@ Create branches from `main`: `feature/US-019-cart-from-accepted-offer` in `value
 
 ## 7. Open Gaps / Questions
 
-| # | Item | Proposal |
+| # | Item | Decision (2026-11-24) |
 |---|---|---|
-| 1 | Where the "one per agreement" marker lives | Redis set-if-absent (48 hours); a lost key can only repeat a harmless card. A small table is the stricter alternative. |
-| 2 | Should the buyer also see a line in the chat? | Yes, a quiet "You added this to the cart" line on the buyer's side, the same card with buyer wording. |
-| 3 | A card for removal or expiry | None (decision). |
-| 4 | Estimate | About 5 SP; confirm. |
+| 1 | Where the "one per agreement" marker lives | **Redis** set-if-absent (48 hours); a lost key can only repeat a harmless card. |
+| 2 | Should the buyer also see a line in the chat? | **Yes**, a quiet "You added this to the cart" line on the buyer's side (the same card with buyer wording). |
+| 3 | A card for removal or expiry | None. |
+| 4 | Estimate | **About 5 SP**, agreed. |
 | 5 | Notification deep link | The chat thread, as for other chat notifications. |
 | 6 | This work and the US-014/US-015 branches | Independent. It starts from `main` and merges separately. The un-pushed US-014/US-015 branches must not carry it. |
+| 7 | Older app builds | Not a concern: development phase, no installed older app. |
 
-**Status: Draft** (2026-11-24). Waiting for the product owner's review and approval; no code has been written.
+## 8. As built (2026-11-24)
+
+Branches: backend and mobile `feature/US-019-cart-from-accepted-offer`; Documents `docs/US-019-cart-from-accepted-offer-plan`. LLD: Sprint 5 A.9 (also Sprint 4 change log 0.14 and the Sprint 3 D.11 note).
+
+- **Backend.** `CartService.add` publishes `CartItemAddedEvent` for a newly created line. `CartAddedListener` (after commit, own transaction) takes a Redis marker `cart:added:{agreementId}` for 48 hours, then `CartChatPort` (adapter `CartChatAdapter`, communication module) posts the `ADDED_TO_CART` card and an in-app `CART_ITEM_ADDED` notification (dedupe key `cart-added:{agreementId}`, link `/chats/{thread}`). No push. A read-only or blocked thread gets no card. `CartMetrics.sellerNotified(outcome)`.
+- **Mobile.** Add to Cart removed from the listing page (`ListingActions`, `ListingViewScreen`); Saved items shows "View details"; the chat's newest accepted card and the negotiation screen give the buyer "Add to cart" through `addAcceptedToCart`; `SystemCard` renders `ADDED_TO_CART` with "Price held until"; new English and Hindi strings (`offerCardAddedToCart`, `offerCardHeldUntil`, `offerCardAddToCart`, `savedItemViewDetails`); `listingViewAddToCart` and `listingViewNegotiationRequired` removed.
+- **Deviation (AC9).** With `valuex.checkout.enabled` off the button stays **visible** and a tap shows the existing "not available yet" text (the add answers 503 `ERROR_CHECKOUT_UNAVAILABLE`); no card or notification is created. Hiding it would have needed a new capability read on the chat and the negotiation screen for no gain while the cart ships dark.
+- **Hindi.** `offerCardAddedToCart` is "{who} इसे {amount} पर कार्ट में जोड़ा": the "who" word already carries "ने" (a test caught a doubled "ने"). Needs native review with the other Hindi texts.
+- **Tests.** Backend `mvn clean verify`: 3,745 run, 0 failures, 9 skipped; checkstyle clean; new code 100 percent lines and branches (`CartService` 77/77, `CartAddedListener`, `CartChatAdapter`, `CartItemAddedEvent`, `CartMetrics`). New: `CartAddedListenerTest` (4), `CartChatAdapterTest` (5), 4 cases each in `CartServiceTest` and `CartIntegrationTest`. Mobile: 2,415 pass, only the 2 known `google_accessibility_test` failures; `dart analyze lib test` clean; `dart format` clean on touched files; new or changed files 91 to 100 percent. New: `add_accepted_to_cart_test.dart` (replaces the old listing-page cart test), chat thread, card, negotiation screen, listing and Saved items cases.
+- **SonarQube.** No issue in any file this change adds or edits. The quality gate stays ERROR on 24 pre-existing new-code issues in other stories' tests (`DeliveryChoiceServiceTest`, `CartItemViewAssemblerTest`, `StubShippingQuoteAdapterTest`, and others) and one INFO in `ValuexProperties`.
+- **Hand-offs closed.** The Saved items "Add to Cart" of US-019, the listing-page action of US-012 and its testing guide, the US-073 and US-069 guides, and the user-story notes were updated; the old listing-page cart widget test was replaced.
+- **Bug fix found while testing (2026-11-24).** `PriceAgreementService.createFromOffer` refused the seller's accept with `ERROR_ALREADY_ACCEPTED` while the **same buyer** held a Buy Now reservation. It now cancels the buyer's own hold (`REPLACED_BY_OFFER`) and creates the offer's agreement; another buyer's hold is still refused. Tests: `PriceAgreementServiceTest` (own hold replaced) and `BuyNowIntegrationTest` (seller accepts while the buyer holds Buy Now). A cart line that pointed at the replaced Buy Now agreement shows as expired until the buyer taps Add to cart on the accepted offer, which re-points it.
+- **Open.** Hindi review; iOS not verified; `capabilities.cart` and `NEGOTIATION_REQUIRED` remain in the API unused by the app (removal is a separate clean-up). Device check on two phones: see the testing guide, section M.
+
+**Status: Approved** (2026-11-24, product owner: "Approved"). Implemented; waiting for the owner's approval to commit, push and open the pull requests.

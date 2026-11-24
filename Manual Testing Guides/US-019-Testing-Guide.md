@@ -15,6 +15,8 @@ the cart (Home, Saved items). Backend and mobile.
 > delivery per item (built later by US-020, see US-020-Testing-Guide.md; until a choice is made each line still says "Choose at checkout"), paying, orders. The cart **ships dark**: with
 > `CHECKOUT_ENABLED=false` (default) Add to Cart shows "Coming soon" and `POST /cart/items` answers 503; sections D
 > onwards need `CHECKOUT_ENABLED=true`.
+>
+> **Follow-up (2026-11-24):** Add to Cart is **no longer on the listing page or on the Saved items card**. A buyer adds an item from the accepted offer (the chat card and the negotiation screen), and the seller then gets a neutral chat card and an in-app notification. Saved items now has **View details**. Where a case below says Add to Cart on the listing page, read section M instead.
 
 | Setting | Value |
 |---|---|
@@ -68,7 +70,7 @@ addcart() { curl -s -i -X POST $B/cart/items -H "$2" -H "$J" -d '{"listingId":"'
 
 | # | Steps | Expected |
 |---|---|---|
-| C1 | `curl -s $B/listings/$L1/public -H "$H1" \| jq .data.capabilities.cart` | `{"available": false, "reason": "COMING_SOON"}`. In the app Add to Cart is dimmed; a screen reader says "Add to Cart, Coming soon". |
+| C1 | `curl -s $B/listings/$L1/public -H "$H1" \| jq .data.capabilities.cart` | `{"available": false, "reason": "COMING_SOON"}`. The app no longer shows Add to Cart on the listing page (M1); the capability stays in the API. |
 | C2 | `addcart $L1 "$H1"` | 503 `ERROR_CHECKOUT_UNAVAILABLE`; no `cart_items` row. |
 | C3 | Reads (B1, B2) | Still 200. |
 
@@ -76,14 +78,14 @@ addcart() { curl -s -i -X POST $B/cart/items -H "$2" -H "$J" -d '{"listingId":"'
 
 | # | Steps | Expected |
 |---|---|---|
-| D1 | `$BUYER1` has no price agreement on `$L1`. `curl -s $B/listings/$L1/public -H "$H1" \| jq .data.capabilities.cart`. | `{"available": false, "reason": "NEGOTIATION_REQUIRED"}`. In the app the button is **tappable**; the tap shows "Make an offer or Buy Now first" and sends nothing. |
+| D1 | `$BUYER1` has no price agreement on `$L1`. `curl -s $B/listings/$L1/public -H "$H1" \| jq .data.capabilities.cart`. | `{"available": false, "reason": "NEGOTIATION_REQUIRED"}`. The listing page has no Add to Cart button (M1). The capability is unchanged in the API. |
 | D2 | `addcart $L1 "$H1"` | 409 `ERROR_PRICE_NOT_ACCEPTED`. |
 | D3 | `$BUYER1` makes an offer on `$L1` in the app and it is still waiting; `addcart $L1 "$H1"`. | 409 `ERROR_PRICE_NOT_ACCEPTED` ("Seller hasn't accepted your offer yet"). |
 | D4 | The seller accepts the offer (price lock). The buyer opens the listing. | Capability `cart` available. `addcart $L1 "$H1"` returns **201** with `itemId`, `agreedPrice` equal to the accepted price, `status` `ACCEPTED`, `expiresAt` about 24 hours after `addedAt`. SQL: one `carts` row (`state` `CART_ACTIVE`) and one `cart_items` row with `negotiated_price` equal to the agreed price. |
 | D5 | Repeat D4. | **200** with the **same** `itemId`; still one row; `expires_at` not extended. |
-| D6 | In the app, open the listing and tap Add to Cart. | Snackbar "Added to your cart" with **View cart**; View cart opens the Cart. A second quick tap sends one request only. |
+| D6 | In the app, open the accepted-offer card in the chat (or the negotiation screen) and tap **Add to cart** (M3, M5). | Snackbar "Added to your cart" with **View cart**; View cart opens the Cart. A second quick tap sends one request only. |
 | D7 | `buynow $L3 "$H1" <price>` then `addcart $L3 "$H1"`. | The Buy Now agreement counts: 201. |
-| D8 | `$BUYER1` taps Add to Cart on a listing with a bad network (airplane mode). | A message about the connection; nothing added. |
+| D8 | `$BUYER1` taps **Add to cart** on the accepted offer with a bad network (airplane mode). | A message about the connection; nothing added. |
 
 ## E. Refusals
 
@@ -151,9 +153,9 @@ Open the Cart from the header cart icon on Home (signed in).
 |---|---|---|
 | J1 | In the app tap **Buy Now** on a listing. | One request; "Reserved for you and added to your cart"; the Cart opens with the item, "Accepted", "Price held for 14m" (the 15-minute hold). Back returns to the listing, read again. |
 | J2 | Make the cart full, then tap Buy Now on another listing. | The reservation is made, the cart refuses: "Cart limit reached..."; the Cart does **not** open; the listing still shows Buy Now usable (a repeat tap returns the same reservation). |
-| J3 | Saved items: an available item with an accepted price, tap **Add to Cart**. | "Added to your cart" with View cart. |
-| J4 | Saved items: an item with no accepted price. | "Your price hasn't been accepted yet. Make an offer or use Buy Now first". |
-| J5 | Saved items: a sold or under-review item. | No Add to Cart button (as before). |
+| J3 | Saved items: an available item, tap **View details**. | The listing page opens (the same as tapping the card). No cart request is sent. |
+| J4 | Saved items: an available item, check the card's buttons. | **View details** and **Remove from saved**; no Add to Cart. |
+| J5 | Saved items: a sold or under-review item. | No View details button (as before there was no action button). |
 | J6 | Home header. | The cart icon opens the Cart; the badge shows the number of lines (nothing when zero or when the cart cannot be read); a screen reader says "Cart, 2 items". |
 
 ## K. Races
@@ -171,6 +173,26 @@ Open the Cart from the header cart icon on Home (signed in).
 | L2 | A 320 px wide screen with text at 200 percent. | No overflow; remove, undo and the footer stay reachable. |
 | L3 | Screen reader. | The title and each seller name are headers; each line is one sentence ("Hero phone, ₹4,500.50, Accepted, from Asha K"), with the problem read after it; **Remove** is a separate button of at least 48 dp; the total is one sentence. |
 
+## M. Add to Cart from an accepted offer (follow-up, 2026-11-24)
+
+Needs `CHECKOUT_ENABLED=true`, a buyer (`$BUYER1`, signed in on one phone) and a seller (`$SELLER1`, signed in on another phone) with an accepted offer on a goods listing (`$L1`).
+
+| # | Steps | Expected |
+|---|---|---|
+| M1 | Buyer opens `$L1`. | Chat, Call, Video, Make an Offer / View offer and Buy Now. **No** Add to Cart, whatever the offer state. |
+| M2 | The seller accepts the buyer's offer. Buyer opens the chat with the seller. | An accepted-offer card ("The seller accepted ₹…") with an **Add to cart** button below it. The seller sees the same card **without** a button. |
+| M3 | Buyer taps **Add to cart**. | Snackbar "Added to your cart" with **View cart**; View cart opens the Cart with the item at the accepted price. A second quick tap sends one request. |
+| M4 | Seller looks at the chat and the notification list. | A card "The buyer added this to the cart at ₹…" with "Price held until <date, time>", and an in-app notification that opens the chat. **No** push notification arrives on a locked phone. The buyer's chat shows "You added this to the cart at ₹…". |
+| M5 | Buyer opens the negotiation (the card's **View offer**). | In the accepted state: the price-lock banner and an **Add to cart** button. Not shown for a Real Estate listing, to the seller, or while the offer is still open. |
+| M6 | Buyer taps Add to cart again (chat or negotiation). | "Added to your cart" again; still one cart row; the seller gets **no second** card or notification (one per agreement). |
+| M7 | The seller accepts a **new** offer at another price (a new agreement) and the buyer adds again. | A new card and a new notification for the new agreement. Only the newest accepted card has the button. |
+| M8 | The accepted price ends (`UPDATE price_agreements SET valid_until = now() - interval '1 second' ...`) and the buyer taps Add to cart. | "Make an offer or use Buy Now first"; nothing added; no card for the seller. |
+| M9 | Fill the cart to 20, then tap Add to cart on another accepted offer. | "Cart limit reached (20 items)"; nothing added; no card for the seller. |
+| M10 | The thread is read-only (the pair is blocked) and the buyer adds. | The item is added; the seller gets **no** card. |
+| M11 | `CHECKOUT_ENABLED=false`. Buyer taps Add to cart. | "Not available yet" message; nothing added; no card. (The button stays visible; this differs from AC9 of the plan.) |
+| M12 | Hindi, 320 px wide, text at 200 percent. | The card, its button, the held-until line and the negotiation button read in Hindi, do not overflow, and the buttons are at least 48 dp. A screen reader reads the button as "Add to cart". |
+| M13 | Buyer taps **Buy Now** (15-minute hold), then makes an offer on the same item; the seller accepts the offer. | The accept **succeeds** (it used to fail with "reserved for another buyer"). The Buy Now hold ends (`ended_reason` `REPLACED_BY_OFFER`) and the offer's 24-hour agreement starts. A second buyer's hold still refuses the seller's accept. |
+
 ---
 
 ## Automated tests
@@ -178,13 +200,13 @@ Open the Cart from the header cart icon on Home (signed in).
 ```bash
 # backend
 cd valuex-backend
-mvn test "-Dtest=Cart*Test,CheckoutSettingTest,ContactEligibilityServiceTest,PublicListingServiceTest,PlatformSettingsServiceTest"
+mvn test "-Dtest=Cart*Test,CartAddedListenerTest,CartChatAdapterTest,CheckoutSettingTest,ContactEligibilityServiceTest,PublicListingServiceTest,PlatformSettingsServiceTest"
 $env:JAVA_TOOL_OPTIONS='-Dapi.version=1.44 -Duser.timezone=UTC'   # PowerShell, Testcontainers
 mvn test "-Dtest=CartIntegrationTest,PublicListingIntegrationTest"
 
 # mobile
 cd valuex-mobile
-flutter test --no-pub --dart-define=SKIP_PIXEL_CONTRAST=true test/features/cart test/features/listing_view test/features/saved_listings test/features/home test/core/routing
+flutter test --no-pub --dart-define=SKIP_PIXEL_CONTRAST=true test/features/cart test/features/listing_view test/features/saved_listings test/features/chat test/features/negotiation test/features/home test/core/routing
 ```
 
 | Test | Covers |
@@ -194,5 +216,7 @@ flutter test --no-pub --dart-define=SKIP_PIXEL_CONTRAST=true test/features/cart 
 | `CartItemExpiryJobTest`, `CartIntegrationTest` | I3. |
 | `ContactEligibilityServiceTest`, `PublicListingServiceTest`, `PublicListingIntegrationTest` | the `cart` capability and its reasons (C1, D1, E3, E5). |
 | `cart_screen_test.dart`, `cart_providers_test.dart`, `cart_repository_test.dart` | G, H, L. |
-| `listing_actions_test.dart`, `listing_add_to_cart_test.dart`, `listing_buy_now_test.dart` | D6, J1, J2. |
+| `listing_actions_test.dart`, `listing_view_test.dart`, `listing_buy_now_test.dart` | M1, J1, J2. |
+| `add_accepted_to_cart_test.dart`, `chat_thread_screen_test.dart`, `offer_card_test.dart`, `negotiation_screen_test.dart` | M2 to M6, M8, M9, M11, M12. |
+| `CartAddedListenerTest`, `CartChatAdapterTest`, `CartIntegrationTest` | M4, M6, M10 (card, notification, once per agreement, read-only thread). |
 | `saved_items_screen_test.dart`, `home_screen_test.dart`, `api_home_repository_test.dart`, `route_guard_test.dart` | J3 to J6, G13. |

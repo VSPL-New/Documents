@@ -637,7 +637,7 @@
   - Seller name, rating, location (city of the seller's pickup address), joined date
   - Listing age
   - Communication options (chat, call, video call)
-  - Add to cart button
+  - Add to cart button (moved on 2026-11-24: not on this page; it is offered on the accepted offer, see US-019)
 - When I swipe photos
 - Then I can view all images in full resolution
 - When I click on seller profile
@@ -1026,6 +1026,7 @@
 - `ERROR_CART_EXPIRED`: "Cart items expired. Please add again"
 
 > **Built (2026-11-19, Sprint 5 LLD Part A, A.8):** backend and mobile. A buyer adds an item while holding an accepted price (an accepted offer or a Buy Now reservation); the cart groups items by seller, shows image, title, seller name, the agreed price, a status (Accepted, Pending, Expired, Unavailable) and the time left, and removes an item with an Undo. At most 20 items, each lasts 24 hours (both Admin settings); an item whose price ended stays visible as Expired until its 24 hours pass. Buy Now adds its reservation to the cart and opens it; the Saved items "Add to Cart" button and the Home cart icon and badge work. **Not built here:** "Proceed to checkout" is disabled (the one payment and one order per item are US-021 and US-023), choosing delivery per item (US-020), a local copy of the cart (the server is the truth). The cart ships dark: `valuex.checkout.enabled` stays off until US-021, so a released build shows "Coming soon" on Add to Cart. Plan: `Documents/US-Implementation-Plans/US-019-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-019-Testing-Guide.md`.
+> **Follow-up (2026-11-24, US-019 follow-up):** Add to Cart is no longer offered on the listing page or on the Saved items card. A buyer adds an item from the **accepted offer** (the chat card and the negotiation screen); the seller sees a neutral chat card and gets an in-app notification once per agreement (no push). Saved items shows "View details" instead. The `cart` capability stays in the API. Plan: `Documents/US-Implementation-Plans/US-019-Cart-From-Accepted-Offer-Implementation-Plan.md`; LLD Sprint 5 A.9.
 **Flutter Implementation Notes:**
 - CartScreen groups items by seller using ListView with section headers
 - 24hr expiry countdown shown per item as a subtle timer chip
@@ -3131,7 +3132,7 @@
 
 ### US-073: Save and Bookmark Listings
 > **Update (2026-11-09, Sprint 3 LLD):** The limit (default 200) and the retention period (default 90 days) are Admin-managed settings. Retention counts from the day a saved listing became unavailable (sold, expired, removed, deleted or seller suspended); entries of listings that are still available are never removed. A listing that is only hidden for review is shown as temporarily unavailable, with no notification. See `Documents/LLD/Sprint-3-Discovery-Search-LLD.md` Part D.
-> **Implementation (2026-11-14, US-073):** The limit is an Admin setting from 10 to 500 (default 200) and the retention period from 7 to 365 days (default 90). A listing sold (including a property the owner marked Sold, Rented or Leased in US-118), expired, removed, deleted, deactivated or whose seller is no longer active is marked "No longer available" and the buyer gets one in-app notification; a listing hidden for review shows "Under review" with no notification. The heart is on search results, Home and the listing page; Saved Items is opened from Profile. See Part D.11 of the Sprint 3 LLD and `Documents/Manual Testing Guides/US-073-Testing-Guide.md`. Not built: the Saved Items count badge on the Profile hub, Add to cart from Saved Items (Sprint 5) and price-drop alerts.
+> **Implementation (2026-11-14, US-073):** The limit is an Admin setting from 10 to 500 (default 200) and the retention period from 7 to 365 days (default 90). A listing sold (including a property the owner marked Sold, Rented or Leased in US-118), expired, removed, deleted, deactivated or whose seller is no longer active is marked "No longer available" and the buyer gets one in-app notification; a listing hidden for review shows "Under review" with no notification. The heart is on search results, Home and the listing page; Saved Items is opened from Profile. See Part D.11 of the Sprint 3 LLD and `Documents/Manual Testing Guides/US-073-Testing-Guide.md`. Not built: the Saved Items count badge on the Profile hub, Add to cart from Saved Items (Sprint 5; since the US-019 follow-up Saved Items shows "View details" instead) and price-drop alerts.
 **As a** buyer  
 **I want to** save listings I'm interested in  
 **So that** I can review them later

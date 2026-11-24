@@ -76,14 +76,14 @@ L1=<listing id of L1>; SELLER=<seller id>
 | TC-030 | `curl -s -H "$H" "$B/listings/$L4/public"` | `transactionIntent: "SALE"`, `capabilities.cart` and `capabilities.buyNow` are `{available:false, reason:"NOT_APPLICABLE"}` |
 | TC-031 | App: open L4 | "For sale" label, category path, attributes, price; **no** Add to Cart and **no** Buy Now |
 | TC-032 | A new-development listing with `priceQualifier = STARTING_FROM` | The price reads "Starting from ₹…" |
-| TC-033 | App: open a goods listing | Add to Cart and Buy Now are shown, disabled, with "Coming soon" |
-| TC-033a | Since US-068, with the default `CHECKOUT_ENABLED=false` | Buy Now is still disabled with "Coming soon" for a verified buyer; for a buyer who is not Aadhaar verified a screen reader says "Identity verification needed", and when the seller switched Buy Now off it says "Seller requires price negotiation for this item". Add to Cart stays "Coming soon" while the flag is off; since US-019 it follows the cart rules (see US-019-Testing-Guide.md). |
+| TC-033 | App: open a goods listing | Buy Now is shown (and Make an Offer); there is **no** Add to Cart on the listing page since the US-019 follow-up |
+| TC-033a | Since US-068, with the default `CHECKOUT_ENABLED=false` | Buy Now is still disabled with "Coming soon" for a verified buyer; for a buyer who is not Aadhaar verified a screen reader says "Identity verification needed", and when the seller switched Buy Now off it says "Seller requires price negotiation for this item". Add to Cart is no longer on this page; it is offered on the accepted offer (see US-019-Testing-Guide.md, section M). |
 
 ## D. Actions that are not built yet
 
 | ID | Steps | Expected |
 |---|---|---|
-| TC-040 | App: look at the action area of L1 | Chat, Call, Video, Add to Cart and Buy Now are disabled, each with "Coming soon" |
+| TC-040 | App: look at the action area of L1 | Chat, Call, Video, Make an Offer and Buy Now (Add to Cart is not here since the US-019 follow-up) |
 | TC-041 | Tap each of them | Nothing opens and no message appears |
 | TC-042 | App: open one of your own listings through its link (`/listing/<id>`) | The actions say "Your listing"; `ownListing` is true in the API |
 | TC-043 | Screen reader on | Each action is read as, for example, "Chat, Coming soon" and as disabled |
