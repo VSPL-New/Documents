@@ -15,7 +15,8 @@
 | 0.2 | 2026-11-19 | US-019 (Add to Cart) built, backend and mobile: as-built notes in A.8 (`V41__cart.sql`, `cart` package, `CartListingPort`, no ShedLock so the expiry job is safe through `SKIP LOCKED`, amounts as JSON numbers, the `cart` capability and `NEGOTIATION_REQUIRED`, Buy Now hand-off, no `cartSummaryProvider`). G1 to G12 of the US-019 plan were confirmed by the product owner. |
 | 0.3 | 2026-11-20 | Product-owner answers to the Sprint 5 gaps G1 to G19 recorded in N.4: no distance rule for pickup or delivery (G6), address provider moves to MapmyIndia later (G7), escrow at a third-party provider behind `EscrowProviderPort` (G9, new D.2a), payout verification becomes story US-133 (G16). G17 decided: OpenPDF on the server, PDF and CSV both built in US-071. |
 | 0.4 | 2026-11-21 | US-020 (Choose Delivery or Self-Pickup) built, backend and mobile: as-built notes in B.6 (`V42__cart_delivery.sql`; two cart endpoints; a new `POST /users/me/addresses` because no endpoint saved an address; the `shipping` ports with a stand-in quote adapter; pickup falls back from the listing's address to the seller's default address to the place typed on the listing; no `quoteId` from the app, the server re-quotes and compares `expectedShippingCost`; terms stored as a time and a version on the line). B.2 and Part M corrected where the build differs. G1 to G13 of the US-020 plan were confirmed by the product owner. |
-| 0.5 | 2026-11-23 | US-113 (My Addresses) built, backend and mobile: Part M rewritten as built (edit, set default and delete endpoints, `AddressUsagePort`, the `offline` provider with outcome `ACCEPTED_UNVERIFIED`, the optional Google place check, mobile screen); the Google Address Validation API and geocoding are not used; G18 done. |
+| 0.5 | 2026-11-24 | US-019 follow-up: Add to Cart moves from the listing page and the Saved items card into the accepted offer (the chat card and the negotiation screen); the seller sees a neutral card and an in-app notification once per agreement. Details in A.9. |
+| 0.6 | 2026-11-23 | US-113 (My Addresses) built, backend and mobile: Part M rewritten as built (edit, set default and delete endpoints, `AddressUsagePort`, the `offline` provider with outcome `ACCEPTED_UNVERIFIED`, the optional Google place check, mobile screen); the Google Address Validation API and geocoding are not used; G18 done. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 section
@@ -293,7 +294,7 @@ sequenceDiagram
 
 - `CartScreen` (route `/cart`): `ListView` with a section header per seller, line card with image, title, agreed price, status badge, a 24-hour countdown chip (shared `ReservationTimer` from US-068), a remove button with undo snackbar, the delivery summary line ("Choose at checkout" until Part B), a footer with total of valid lines and "Proceed to checkout" (disabled when no valid line).
 - Providers: `cartProvider` (server is the source of truth, re-read on open, on `agreement.updated` and after each action), `cartSummaryProvider` (home badge).
-- `ListingActions`: Add to Cart calls `CartRepository.add`; on `NEGOTIATION_REQUIRED` it shows the hint; refusal texts from 0.5 in English and Hindi.
+- Add to Cart is offered on the accepted offer, not on `ListingActions` (A.9): the chat card and the negotiation screen call `CartRepository.add` through `addAcceptedToCart`; refusal texts from 0.5 in English and Hindi.
 - Offline: the last successful response is kept in memory only (the story's `isar` / `drift` store is **not** added, G5).
 
 ## A.7 Validation, Edge Cases and NFR
@@ -328,10 +329,30 @@ Plan: `Documents/US-Implementation-Plans/US-019-Implementation-Plan.md`. Backend
 | 11 | Mobile: `ReservationTimer` on each line; `cartSummaryProvider`. | The line uses the existing `CountdownText` ("Price held for 14m" for the price, "Leaves your cart in 23h" for the line) because `ReservationTimer` is an mm:ss timer for the 15-minute hold. There is **no** `cartSummaryProvider`: `ApiHomeRepository.badges()` reads `GET /cart/summary` (zero on any error) and the home badge provider is invalidated after an add or a remove. | Fewer providers, one badge source. |
 | 12 | `cartProvider` re-read on open, `agreement.updated`, after actions. | Also on every realtime reconnect. A failed quiet read keeps the last answer. `CartAdder` is **not** auto-dispose (a screen that only reads it, Saved items, would lose it during a request). | |
 | 13 | Buy Now hand-off. | After a reservation, `ListingViewScreen._buyNow` calls `add` and pushes `/cart` ("Reserved for you and added to your cart"); a refusal shows its text and the reservation stays. | D3. |
-| 14 | Hand-offs from earlier stories. | Saved items "Add to Cart" is wired; `HomeScreen.onCart` opens `/cart`; the route is signed-in only (`RouteGuard`). The "Proceed to checkout" button is disabled with "Checkout is coming soon" (US-021). | |
+| 14 | Hand-offs from earlier stories. | Saved items "Add to Cart" was wired here and is now "View details" (A.9); `HomeScreen.onCart` opens `/cart`; the route is signed-in only (`RouteGuard`). The "Proceed to checkout" button is disabled with "Checkout is coming soon" (US-021). | |
 
 **Not built:** checkout, delivery choice (US-020), the local cart store (G5 of N.4: the server is the truth), a `cart.updated` event. **Open:** the Hindi texts need native review; the l10n files of this branch and mobile PR #82 (US-131) both change `app_en.arb` and `app_hi.arb`, so the second to merge resolves a conflict there.
 
+
+## A.9 Add to Cart from an accepted offer (2026-11-24, US-019 follow-up)
+
+Plan: `Documents/US-Implementation-Plans/US-019-Cart-From-Accepted-Offer-Implementation-Plan.md`. Backend and mobile branch `feature/US-019-cart-from-accepted-offer`. Product decision: Add to Cart needs an accepted price, so it is offered where the price is accepted and not on the listing page for every case.
+
+**Mobile**
+
+- The listing page no longer has Add to Cart (`ListingActions` is Chat, Call, Video, Make an Offer, Buy Now). The `cart` capability and `NEGOTIATION_REQUIRED` stay in the API, unused by the app.
+- The accepted-offer card in the chat has an "Add to cart" button below it for the **buyer**, on the **newest** accepted card only. The negotiation screen has the same button for the buyer in the accepted state (not for Real Estate). Both call `addAcceptedToCart` (`features/cart/presentation/add_accepted_to_cart.dart`): success shows "Added to your cart" with View cart; a refusal shows its text (`cartErrorMessage`).
+- Saved items: the card button reads "View details" and opens the listing page (the same as tapping the card). It no longer adds to the cart.
+- A new card kind `ADDED_TO_CART` in `SystemCard`: "{who} added this to the cart at {amount}" and "Price held until {time}". The buyer reads "You added…", the seller "The buyer added…" (one card, wording by viewer).
+
+**Backend**
+
+- `CartService.add` publishes `CartItemAddedEvent` only when it creates a line. A repeat tap on a line already in the cart publishes nothing; a line replaced after it expired counts as new, and the Redis claim below keeps it to one notice per agreement.
+- `CartAddedListener` (`AFTER_COMMIT`, `REQUIRES_NEW`) claims `cart:added:{agreementId}` in Redis (48 hours), then calls `CartChatPort`. Any failure is logged and swallowed: the cart add has already succeeded.
+- `CartChatAdapter` (communication module) makes sure the thread exists, posts an `OFFER_EVENT` card with `payload.kind = ADDED_TO_CART` (`listingId`, `amount`, `heldUntil`, `by = BUYER`), skips a read-only or blocked thread, and sends an **in-app** notification of type `CART_ITEM_ADDED` (dedupe key `cart-added:{agreementId}`, deep link `/chats/{threadId}`). `PushPolicy` has no entry for it, so there is **no push**.
+- `CartMetrics.sellerNotified(outcome)` counts the outcomes.
+
+**Deviation from the plan (AC9):** with `valuex.checkout.enabled` off the new button stays visible and a tap shows the existing "not available yet" message (`ERROR_CHECKOUT_UNAVAILABLE`), instead of hiding the button. No card or notification is created then, because the add is refused first.
 ---
 
 # Part B - US-020 Choose Delivery or Self-Pickup

@@ -11,7 +11,7 @@ checked with `curl` and SQL; the app is checked on Home, Search, the listing pag
 > leaves the market; a daily cleanup of old unavailable entries; migration `V31`; Admin settings `SAVED_LISTING_MAX` and
 > `SAVED_LISTING_RETENTION_DAYS` (backend). In the app: the heart on Home cards, search results and the listing page,
 > the Saved Items page opened from Profile, and the notification link to it (mobile).
-> **Not in this story:** Add to Cart or Buy from Saved Items (since US-019 the button adds the item to the cart when you hold an accepted price), price-drop alerts, the
+> **Not in this story:** Add to Cart or Buy from Saved Items (the button now reads "View details" and opens the listing page; Add to Cart is on the accepted offer, US-019 follow-up), price-drop alerts, the
 > count badge on the Profile hub's Saved Items row, an Admin screen for the two settings (US-116).
 
 | Setting | Value |
@@ -74,7 +74,7 @@ HB2="Authorization: Bearer $BUYER2"
 |---|---|---|
 | C1 | Profile > Saved Items | The page lists saved items newest first, each with photo, title, price and condition. |
 | C2 | Tap an available item | Its listing page opens. |
-| C3 | Look at "Add to Cart" | Shown enabled (US-019). Tapping it adds the item when you hold an accepted price; otherwise it says why (for example "Your price hasn't been accepted yet. Make an offer or use Buy Now first"). |
+| C3 | Look at the item's buttons | "View details" (US-019 follow-up; it was "Add to Cart"). Tapping it opens the listing page; nothing is added to the cart. |
 | C4 | Tap "Remove from saved" on an item | It leaves the list at once; the heart on that listing elsewhere is empty. |
 | C5 | Remove while offline | The item comes back and a message says it could not be removed. |
 | C6 | Remove every item | The empty state explains how to save one. |

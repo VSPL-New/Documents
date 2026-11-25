@@ -52,7 +52,7 @@ HT="Authorization: Bearer $THIRD"
 | A4 | A Real Estate listing | `cart` and `buyNow` `NOT_APPLICABLE`; `chat` available. |
 | A5 | Block the buyer (`PUT /users/$BUYER_ID/block` as the seller) and read the listing as the buyer | Every option `UNAVAILABLE` (the same reason as a suspended seller); no sign of a block. Then unblock. |
 | A6 | `UPDATE users SET status='SUSPENDED' WHERE id='<SELLER_ID>'` | Reading the listing answers 403 `ERROR_SELLER_SUSPENDED` (existing). Restore the status. |
-| A7 | In the app: open the listing as the buyer | Chat is enabled; Call, Video and Make an Offer are dimmed; Add to Cart and Buy Now as before. A screen reader says "Call, Coming soon". |
+| A7 | In the app: open the listing as the buyer | Chat is enabled; Call, Video and Make an Offer are dimmed; Buy Now as before (Add to Cart is no longer on this page, US-019 follow-up). A screen reader says "Call, Coming soon". |
 | A8 | The same at 320 px width and 200 percent text | No overflow; buttons stay tappable. |
 | A9 | Set `CALLS_ENABLED=true`, restart, read the listing | `call` and `video` `available:true` (nothing opens them yet). Set it back to false. |
 
