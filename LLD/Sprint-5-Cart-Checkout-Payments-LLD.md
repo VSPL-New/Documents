@@ -3,7 +3,7 @@
 **Document Version:** 0.4 (2026-11-21). **US-019 and US-020 are built** (as-built notes in A.8 and B.6); all other stories are design only. Decisions marked "Proposed" still need product-owner confirmation unless an as-built section or a story plan records them as agreed.
 **Product:** ValueX
 **Sprint:** Sprint 5 - Cart, Checkout & Payments
-**Stories Covered:** US-019, US-020, US-090, US-091, US-021, US-022, US-075, US-023, US-070, US-025, US-072, US-071, US-113 (placeholder only)
+**Stories Covered:** US-019, US-020, US-090, US-091, US-021, US-022, US-075, US-023, US-070, US-025, US-072, US-071, US-113
 **Repos:** valuex-backend, valuex-mobile
 **Sprint Goal:** Enable secure transactions and escrow: a buyer turns accepted prices into a cart, pays once, and the platform creates one order and one escrow per item.
 
@@ -16,6 +16,7 @@
 | 0.3 | 2026-11-20 | Product-owner answers to the Sprint 5 gaps G1 to G19 recorded in N.4: no distance rule for pickup or delivery (G6), address provider moves to MapmyIndia later (G7), escrow at a third-party provider behind `EscrowProviderPort` (G9, new D.2a), payout verification becomes story US-133 (G16). G17 decided: OpenPDF on the server, PDF and CSV both built in US-071. |
 | 0.4 | 2026-11-21 | US-020 (Choose Delivery or Self-Pickup) built, backend and mobile: as-built notes in B.6 (`V42__cart_delivery.sql`; two cart endpoints; a new `POST /users/me/addresses` because no endpoint saved an address; the `shipping` ports with a stand-in quote adapter; pickup falls back from the listing's address to the seller's default address to the place typed on the listing; no `quoteId` from the app, the server re-quotes and compares `expectedShippingCost`; terms stored as a time and a version on the line). B.2 and Part M corrected where the build differs. G1 to G13 of the US-020 plan were confirmed by the product owner. |
 | 0.5 | 2026-11-24 | US-019 follow-up: Add to Cart moves from the listing page and the Saved items card into the accepted offer (the chat card and the negotiation screen); the seller sees a neutral card and an in-app notification once per agreement. Details in A.9. |
+| 0.6 | 2026-11-23 | US-113 (My Addresses) built, backend and mobile: Part M rewritten as built (edit, set default and delete endpoints, `AddressUsagePort`, the `offline` provider with outcome `ACCEPTED_UNVERIFIED`, the optional Google place check, mobile screen); the Google Address Validation API and geocoding are not used; G18 done. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 section
@@ -48,7 +49,7 @@ graph LR
     US021 --> US071[US-071 Transactions]
     US025 --> US072[US-072 Payout methods]
     US023 --> US070[US-070 Order history]
-    US020 --> US113[US-113 My Addresses<br/>placeholder]
+    US020 --> US113[US-113 My Addresses<br/>built]
 ```
 
 Suggested build order (each is one branch and one pull request): US-019, US-020, US-090 with US-091 (one state-machine and schema change), US-021 with US-025 (the fee is first needed when escrow is created), US-022, US-075, US-023, US-070, US-071, US-072. US-113 waits for the product owner.
@@ -68,7 +69,7 @@ Suggested build order (each is one branch and one pull request): US-019, US-020,
 - [Part J - US-025 Platform Fee Deduction](#part-j---us-025-platform-fee-deduction)
 - [Part K - US-072 Seller Payout Methods](#part-k---us-072-seller-payout-methods)
 - [Part L - US-071 Payment and Transaction History](#part-l---us-071-payment-and-transaction-history)
-- [Part M - US-113 My Addresses (placeholder)](#part-m---us-113-my-addresses-placeholder)
+- [Part M - US-113 My Addresses](#part-m---us-113-my-addresses)
 - [Part N - End-to-end flow, NFR, testing, decisions and open items](#part-n---end-to-end-flow-nfr-testing-decisions-and-open-items)
 
 ---
@@ -83,7 +84,7 @@ Suggested build order (each is one branch and one pull request): US-019, US-020,
 | Payment | `PaymentGatewayPort`, `PaymentService.createOrReuse(CreatePaymentCommand)`, `payments`, `payment_attempts`, `payment_refunds`, callback and reconciliation, `PaymentSucceededEvent` (with `late`) and `PaymentFailedEvent` (US-117, V19) | New reference type `CHECKOUT`; a listener that creates orders; the buyer checkout screen |
 | Capabilities | `buyNow` and `cart` capability with `COMING_SOON` while `valuex.checkout.enabled` is false (D10) | Turns `cart` on, and `buyNow` hands over to the cart (D3); the flag is set to true when US-021 ships |
 | State machines | `CartStateMachine`, `OrderStateMachine`, `PaymentStateMachine`, `EscrowStateMachine` skeletons (Sprint 0) | Wired to real transitions; order machine extended in Part C |
-| Addresses | `addresses` (US-108), `AddressController`, address component in the app | Delivery and pickup address use (Part B); My Addresses screen waits for US-113 |
+| Addresses | `addresses` (US-108), `AddressController`, address component in the app | Delivery and pickup address use (Part B); My Addresses screen built by US-113 (Part M) |
 | Fee and tax | `TaxSettingsService` (`GstMode`, rate) | Platform fee settings and calculator (Part J) |
 
 ## 0.2 Module ownership
@@ -408,7 +409,7 @@ Plan: `Documents/US-Implementation-Plans/US-020-Implementation-Plan.md`. Backend
 | 9 | A mix of delivery and pickup lines is allowed. | Each line holds its own choice; adding the same listing again keeps the choice; replacing an expired line starts without one. | |
 | 10 | Mobile: checkout step 1 per line with the address component of US-108. | `DeliveryScreen` at `/cart/items/:itemId/delivery`, opened by "Choose delivery" or "Change" on each cart line that can be bought; two option cards, saved addresses with the default preselected, "Add a new address", the cost and date, the shipping-above-price notice, pickup place, Pay Now or Pay at Pickup with the escrow banner, the terms checkbox, Save. The form of a new address (`AddressFormSheet`) is new: US-108 built the search field, the verification status and the state picker, but no screen used them. The line shows "Delivery, ₹60, by Nov 25" or "Self-pickup, pay now" instead of "Choose at checkout". | |
 
-**Not built:** checkout and its screen (US-021 reuses `DeliveryScreen`), the Pay at Pickup seller switch and its rules (US-022), My Addresses (US-113), real couriers and weight (US-122), a map (address text only; MapmyIndia later behind the address provider). **Open:** the Hindi texts, including the terms, need native review and the English terms need sign-off by whoever owns the terms of service.
+**Not built:** checkout and its screen (US-021 reuses `DeliveryScreen`), the Pay at Pickup seller switch and its rules (US-022), My Addresses (built by US-113, Part M), real couriers and weight (US-122), a map (address text only; MapmyIndia later behind the address provider). **Open:** the Hindi texts, including the terms, need native review and the English terms need sign-off by whoever owns the terms of service.
 
 ---
 
@@ -893,15 +894,43 @@ Export: the CSV is streamed; the PDF is built on the server with OpenPDF and an 
 
 ---
 
-# Part M - US-113 My Addresses (placeholder)
+# Part M - US-113 My Addresses
 
-The story is a placeholder and its acceptance criteria are not final. Sprint 5 designs **only what US-020 needs**:
+**Built 2026-11-23** (5 SP, backend and mobile, no database migration). Plan: [US-113-Implementation-Plan.md](../US-Implementation-Plans/US-113-Implementation-Plan.md). Address search stays on Google Places in the app (Places API New, restricted key). The Google Address Validation API and geocoding are **not** used (decisions of 2026-11-23, after MapmyIndia pricing was too high).
 
-- Saving the first delivery address as default and naming addresses is Part B (`POST /users/me/addresses` added by US-020, `label`, `is_default`; see B.6 row 2).
-- Not designed: the My Addresses screen, edit, rename, delete, change default, and the rule "deleting an address used by an open order". Until then an address used by a cart line or checkout cannot be deleted by the existing endpoint (add a guard `ERROR_ADDRESS_IN_USE`, a one-line check in `AddressService`; G18) and orders keep their own JSON snapshot, so editing later never changes an order.
-- The Profile row keeps its "Coming soon" text.
+## M.1 Endpoints (new, `AddressController`)
 
-Status: **waiting for the product owner**; this LLD gets a Part M2 when the story is detailed.
+| Action | Endpoint | Rule |
+|---|---|---|
+| Edit or rename | `PUT /users/me/addresses/{id}` | Body as create (`address`, `landmark`, `city`, `state`, `pincode`, `placeId`, `label`). Only the name changed: saved without a check. Any address field changed: checked again (outside the transaction), saved with the check's `verified`; a cart line that delivers to it loses its delivery choice. Not the caller's address: 404 `ERROR_ADDRESS_NOT_FOUND` |
+| Set default | `PUT /users/me/addresses/{id}/default` | Under the per-user advisory lock (`AddressLock`, shared with create); clears the old default first; an address that already is the default is returned unchanged |
+| Delete | `DELETE /users/me/addresses/{id}` -> 204 | 409 `ERROR_ADDRESS_IN_USE` while a cart line (`cart_items.delivery_address_id`) or a listing (`listings.pickup_address_id`) points at it (a foreign-key violation caught after the check gives the same answer). Deleting the default makes the oldest remaining address the default; the last address can be deleted. Open orders keep their own JSON snapshot, so they do not block |
+| Create (changed) | `POST /users/me/addresses` | At most 10 addresses per user: the eleventh is 400 `ERROR_ADDRESS_LIMIT_REACHED` |
+
+Modules: `AddressManagementService` (user module). `AddressUsagePort` (user module) is implemented by `CartAddressUsageAdapter` (cart: in-use check and clearing the delivery choice with the all-null state that the V42 check constraint allows) and `ListingAddressUsageAdapter` (listing: in-use check), so the user module never reads those tables. Metric `address.managed{action=rename|edit|default|delete}`. Full addresses are never logged.
+
+## M.2 Verification modes (`valuex.address.provider`, env `ADDRESS_PROVIDER`)
+
+| Value | Behaviour | Use |
+|---|---|---|
+| `sandbox` | Confirms any address whose pincode zone fits its state (markers for tests); `verified=true` | Local work and tests (default) |
+| `offline` (new) | No network call. After the request checks (line length, 6-digit pincode, supported state) it checks that the pincode zone fits the state (`PincodeZones`). Pass = new outcome `ACCEPTED_UNVERIFIED`, saved `verified=false`, `verified_at` null; fail = `ERROR_PINCODE_MISMATCH` | Staging and production |
+| `google` | Google Address Validation API (existing adapter, unchanged) | Not used |
+
+`AddressVerificationResult.Outcome` gains `ACCEPTED_UNVERIFIED`; `verified` and `verified_at` of `POST /addresses/verify`, create and update now follow the outcome instead of always being true.
+
+**Place check (option B), off by default.** `valuex.address.place-check.enabled` (env `ADDRESS_PLACE_CHECK_ENABLED`, default false; `GOOGLE_PLACES_SERVER_API_KEY`, `timeout-seconds`, `cache-minutes`). Only in `offline` mode, only when the request carries a `placeId` and the pincode check passed: `GooglePlaceDetailsAdapter` reads Place Details (New) with the field mask `addressComponents` only; if state (through `IndianStates.canonical`), city (case and spacing ignored) and pincode all equal the submitted ones the outcome is `VERIFIED`, otherwise `ACCEPTED_UNVERIFIED`. It never refuses a save and never raises the provider error: a missing field, unknown place, 4xx, 5xx or timeout all give unverified. The place (not the address) is cached in Redis for 10 minutes under `address:place:<placeId>`, so verify then create is one lookup. Metric `address.placecheck{result=match|mismatch|not_found|error|skipped}`. Startup fails only when the switch is on and the key is blank.
+
+## M.3 Mobile
+
+`MyAddressesScreen` at `/profile/addresses` (Profile > Account > My Addresses): a card per address (`AddressCard`: name or "Address", Default chip, Verified chip only for `verified: true`, full address, menu Edit / Set as default / Delete), delete confirmation, the in-use and limit messages, empty state with Add address, pull to refresh. `AddressFormSheet` has an edit mode (filled in, name chip selected, no default switch; unchanged address fields are not checked again). `AddressRepository.verify` returns the `verified` flag; the form's status line shows "Address verified" only for true and nothing for an accepted, unverified address. `GooglePlacesService.details` now asks for `id,formattedAddress,addressComponents` only (the unused `displayName` is dropped: any other field moves the call to a dearer price band). English and Hindi texts (Hindi flagged for native review).
+
+## M.4 Deviations from the plan
+
+- The plan named a `PlaceDetailsPort` fetching `placeId` only; the app's mask keeps `id` because the form reads the place id from the answer (a free field). The server-side call asks for `addressComponents` only, as planned.
+- `Outcome.ACCEPTED_UNVERIFIED` is also accepted by `POST /addresses/verify`, which the app uses while typing; it answers 200 with `verified:false`.
+
+Not built: the seller's pickup address on a listing (no screen until US-004 and US-027); geocoding; a verification API.
 
 ---
 
@@ -973,7 +1002,7 @@ Coverage target above 90% for new and changed code in each story (CLAUDE.md rule
 | G15 (Confirmed 2026-11-20) | Should a seller without a payout method be blocked earlier than release? | Do not block; warn and wait in escrow. Confirm. |
 | G16 (Agreed 2026-11-20) | Payout verification provider (test deposit, UPI check) is not chosen. | `mock` adapter behind `PayoutVerificationPort` for now; the real verification is the new story **US-133** (user-stories.md, Sprint 5). |
 | G17 (Decided) | PDF library for the statement. | OpenPDF on the server (free licence) with an embedded Noto Sans font so the rupee sign prints; English statement; generated on request and streamed, not stored. CSV (UTF-8 with BOM) and PDF are both built in US-071. |
-| G18 (Agreed 2026-11-20) | Address delete while in use (US-113). | Guard now, full rules with US-113. |
+| G18 (Agreed 2026-11-20, done 2026-11-23) | Address delete while in use (US-113). | Delete and the guard `ERROR_ADDRESS_IN_USE` were built together in US-113 (Part M.1). |
 | G19 (Agreed 2026-11-20) | New columns on listings: `pay_at_pickup_enabled`, `pickup_address_id`; new `categories` data for delivery eligibility (US-122). | As above, each in its story's migration. |
 
 ## N.5 Documents to update when each story is built

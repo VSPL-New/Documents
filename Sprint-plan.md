@@ -229,7 +229,7 @@ Enable secure transactions and escrow.
 | US-072 | Seller Payout Bank/UPI Management  | backend, mobile | 5  | US-025     |
 | US-133 | Seller Payout Account Verification (proposed 2026-11-20, 5 SP not yet agreed; real provider behind the US-072 mock verifier) | backend, mobile | 5  | US-072     |
 | US-071 | View Payment and Transaction       | backend, mobile | 5  | US-021     |
-| US-113 | My Addresses (placeholder, to be detailed; points not estimated yet) | backend, mobile | TBD | US-020, US-108 |
+| US-113 | My Addresses ([plan](US-Implementation-Plans/US-113-Implementation-Plan.md), built 2026-11-23: list, edit, rename, set default and delete saved addresses; Google Places search stays in the app; own offline address checks, no verification API; optional place check switched off by default) | backend, mobile | 5 | US-020, US-108 |
 
 ## Exit Criteria
 
@@ -238,7 +238,7 @@ Enable secure transactions and escrow.
 * Escrow system operational
 * Order tracking working
 * Fee calculation accurate
-* Delivery address saved at checkout as the buyer's default address (US-020); My Addresses page built from the placeholder story (US-113)
+* Delivery address saved at checkout as the buyer's default address (US-020); My Addresses page (US-113)
 
 ---
 
@@ -551,7 +551,7 @@ Add advanced features and optimize platform.
 
 \* Category taxonomy (2026-10-25): US-006 is rewritten and raised from 3 to 13 SP (Sprint 2 and total points +10). Added US-118 (5) and US-120 (8) in Sprint 3, US-122 (13) in Sprint 6, and US-119 (5) and US-121 (8) in Sprint 10. Story points for these are proposals.
 
-\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 3 and total points also add US-128 (Listing Photo Variants, 5, proposed, 2026-11-09) and US-129 (Voice Search, 5, proposed, 2026-11-11). Sprint 5 adds US-113 (My Addresses, a placeholder story with no estimate yet, so its points are not included in the 62 or the total). Sprint 2 adds US-123 (Preview Listing, implementation plan approved on 2026-11-08; built locally and not yet committed, no estimate yet, so its points are not included in the 78 or the total). US-010 is raised from 5 to 8 (2026-11-02): the My Listings screen is now part of it. US-124 (Pause and Resume Listing) and US-125 (Relist Listing) are placeholders with no estimate and no sprint yet, so they are not counted. US-126 (Sold Listing Details) is a placeholder with no estimate and no sprint yet (it needs order, payout and shipping data), so it is not counted. US-127 (Listing Archival and Retention) is also a placeholder with no estimate (proposed Sprint 10, with the audit trail), so it is not counted.
+\* Sprint 1 points are the sum of its listed stories (including US-108). Sprint 2 and total points add US-114 (5, proposed), US-115 (3, proposed) and US-117 (5, proposed). Sprint 10 adds US-116 (5, proposed). Sprint 9 and total points add US-109 (5, proposed) and US-110 (8, proposed). Sprint 6 and total points add US-112 (5). Sprint 3 and total points add US-111 (8, proposed: the mobile UI is already built, the points cover the backend endpoints and switching the app from the mock repository to them). Sprint 3 and total points also add US-128 (Listing Photo Variants, 5, proposed, 2026-11-09) and US-129 (Voice Search, 5, proposed, 2026-11-11). Sprint 5 adds US-113 (My Addresses, 5 SP agreed 2026-11-23; not yet added to the 62 or the total). Sprint 2 adds US-123 (Preview Listing, implementation plan approved on 2026-11-08; built locally and not yet committed, no estimate yet, so its points are not included in the 78 or the total). US-010 is raised from 5 to 8 (2026-11-02): the My Listings screen is now part of it. US-124 (Pause and Resume Listing) and US-125 (Relist Listing) are placeholders with no estimate and no sprint yet, so they are not counted. US-126 (Sold Listing Details) is a placeholder with no estimate and no sprint yet (it needs order, payout and shipping data), so it is not counted. US-127 (Listing Archival and Retention) is also a placeholder with no estimate (proposed Sprint 10, with the audit trail), so it is not counted.
 
 ## Coverage
 
