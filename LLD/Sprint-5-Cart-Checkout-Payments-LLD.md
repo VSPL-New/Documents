@@ -419,6 +419,8 @@ Plan: `Documents/US-Implementation-Plans/US-020-Implementation-Plan.md`. Backend
 
 Extend and wire `OrderState` / `OrderStateMachine`, add the `orders`, `order_items`, `order_status_history` tables, and define who may move an order. Sprint 5 drives the states up to `SHIPPING_MODE_SELECTED`; Sprint 6 and 7 drive the rest. The 24 states of the story already exist in `OrderState`.
 
+Plan: `Documents/US-Implementation-Plans/US-090-Implementation-Plan.md`. Backend branch `feature/US-090-order-lifecycle`, migration `V45__orders.sql`. Built separately from US-091 (decision 2026-11-26). No API, no order is created here (D2): US-021 inserts orders, US-023 and US-070 read them. **As built** differences from the text below are marked "(as built)".
+
 ## C.2 Data Model
 
 ```sql
@@ -474,6 +476,14 @@ CREATE INDEX idx_osh_order ON order_status_history (order_id, changed_at);
 
 `order_status_history` is insert-only (no update or delete), like the escrow ledger.
 
+**(as built, V45)** Differences from the SQL above:
+- `orders.checkout_id` is `UUID NOT NULL` **without** the foreign key, because `checkouts` does not exist yet. US-021's checkouts migration adds `fk_orders_checkout` (plan gap G2). It fails if orphan orders exist, so dev seed orders must be cleared first. An index `idx_orders_checkout` is created now.
+- `order_status_history.action VARCHAR(50)` is added. It holds the trigger, as `listing_status_history.action` does.
+- CHECK constraints are added: `chk_orders_amounts` (`item_amount > 0`, `shipping_amount >= 0`), `chk_orders_delivery_mode`, `chk_orders_payment_option`, `chk_orders_status` (the 24 `OrderState` names), `chk_osh_actor_type` and `chk_order_items_price` (`price > 0`). Indexes `idx_order_items_listing` and `idx_order_items_seller` cover the foreign keys.
+- Ids use `gen_random_uuid()`, as the other migrations do.
+- Entities: `Order` (no status setter; status changes only through `applyTrigger`), `OrderItem` and `OrderStatusHistory` (both `@Immutable`). The address columns map to the `AddressSnapshot` record. `DeliveryMode` and `PaymentOption` reuse the cart enums.
+- `OrderNumberGenerator.next()` gives `VX-yyMMdd-NNNNNN`. The date is in India time (Asia/Kolkata) and the sequence is zero-padded to 6 digits, growing beyond that (plan gap G7).
+
 ## C.3 State Machine (Sprint 5 part)
 
 Pre-payment states are held by the checkout and replayed into the history when the order is created (so the timeline starts at "Order initiated" with the checkout's real times):
@@ -489,6 +499,27 @@ Pre-payment states are held by the checkout and replayed into the history when t
 For **Pay at Pickup** the order skips payment: `... CHECKOUT_STARTED -> SHIPPING_MODE_SELECTED` with `payment_option = PAY_AT_PICKUP` (shown to the buyer as "Pending Pickup Payment"; the label is a presentation of that payment option, no new enum value, G8).
 
 Allowed Sprint 5 transitions are added to `OrderStateMachine` with trigger names `START_CHECKOUT`, `PAYMENT_INITIATED`, `PAYMENT_FAILED`, `PAYMENT_CONFIRMED`, `ESCROW_HELD`, `MODE_SELECTED`, `CANCEL`. Cannot skip states except `CANCELLED`. Every transition goes through `OrderTransitionService.move(orderId, trigger, actor, note)`, which locks the order row (`SELECT ... FOR UPDATE`), checks the machine, writes the history row and publishes `OrderStatusChangedEvent`. `version` guards concurrent updates.
+
+**(as built)** The Sprint 5 transitions, which replace the Sprint 0 skeleton's first section:
+
+| From | To | Trigger |
+|---|---|---|
+| `SELLER_PRICE_ACCEPTED` | `ORDER_INITIATED` | `START_CHECKOUT` |
+| `ORDER_INITIATED` | `CHECKOUT_STARTED` | `START_CHECKOUT` |
+| `CHECKOUT_STARTED` | `PAYMENT_PENDING` | `PAYMENT_INITIATED` |
+| `PAYMENT_PENDING` | `PAYMENT_SUCCESS` / `PAYMENT_FAILED` | `PAYMENT_CONFIRMED` / `PAYMENT_FAILED` |
+| `PAYMENT_FAILED` | `PAYMENT_PENDING` | `PAYMENT_INITIATED` (a retry is a new attempt, US-075) |
+| `PAYMENT_SUCCESS` | `ESCROW_HELD` | `ESCROW_HELD` |
+| `ESCROW_HELD` | `SHIPPING_MODE_SELECTED` | `MODE_SELECTED` |
+| `CHECKOUT_STARTED` | `SHIPPING_MODE_SELECTED` | `MODE_SELECTED` (Pay at Pickup) |
+| `ORDER_INITIATED`, `PAYMENT_PENDING`, `PAYMENT_FAILED` | `CANCELLED` | `CANCEL` (cancelling a paid order comes with Sprint 7) |
+
+- **State order (decision 2026-11-26, plan G1):** `SELLER_PRICE_ACCEPTED` comes before `ORDER_INITIATED`, as the replay table above records it. The story text lists them the other way round. The skeleton's `ORDER_INITIATED → SELLER_PRICE_ACCEPTED` (`ACCEPT_PRICE`) and the old names `PROCEED_PAYMENT`, `PAYMENT_SUCCESS`, `PAYMENT_FAIL`, `RETRY_PAYMENT`, `HOLD_ESCROW` and `SELECT_SHIPPING` are removed. Transitions from `SHIPPING_MODE_SELECTED` onwards are unchanged.
+- The trigger constants are on `OrderStateMachine`. `move` resolves the target through the new generic `StateMachine.resolveTarget(from, action)`; every (state, trigger) pair has one target.
+- **Timeline order:** `changed_at` comes from the application `Clock` at microsecond precision, kept strictly after the order's previous `updated_at`. So two moves in one transaction (`ESCROW_HELD` then `MODE_SELECTED`) never share a timestamp. Database `NOW()` would give both the transaction start time.
+- `OrderStatusChangedEvent` (`ORDER_STATUS_CHANGED`) carries the order number, buyer and seller ids, from and to states, trigger, actor and change time. US-090 adds no listener: buyer notifications and `order.updated` are US-023, and which states also notify the seller is decided there or in US-112 (plan G3).
+- `ERROR_ORDER_NOT_FOUND` (404) is `OrderErrors.ORDER_NOT_FOUND`. The backend has no message bundles: the English and Hindi text comes with the app screens of US-023.
+- **Replay (hand-off to US-021, plan G8):** `OrderCreationService` must check each replayed step with `OrderStateMachine` before inserting its history row, so replayed rows also never skip states.
 
 ## C.4 Rules from the story
 
@@ -629,6 +660,9 @@ CREATE TABLE checkout_lines (
     CONSTRAINT uq_checkout_line UNIQUE (checkout_id, listing_id)
 );
 CREATE INDEX idx_checkout_lines_order ON checkout_lines (order_id);
+
+-- Added by US-021 because V45 (US-090) created orders.checkout_id before checkouts existed (Part C, plan gap G2)
+ALTER TABLE orders ADD CONSTRAINT fk_orders_checkout FOREIGN KEY (checkout_id) REFERENCES checkouts (id);
 ```
 
 ## E.3 API Contracts
