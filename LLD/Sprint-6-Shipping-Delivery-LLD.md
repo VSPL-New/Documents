@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 6: Shipping & Delivery
 
-**Document Version:** 0.4 (2026-11-27). Design only, nothing in this document is built. Decisions marked **Proposed** need product-owner confirmation; they are collected in Part M.4.
+**Document Version:** 0.5 (2026-11-27). Design; only Part B (US-092) is built (see B.7). Decisions marked **Proposed** need product-owner confirmation; they are collected in Part M.4.
 **Product:** ValueX
 **Sprint:** Sprint 6 - Shipping & Delivery
 **Stories Covered:** US-092, US-122, US-112, US-026, US-027, US-028, US-029, US-032, US-030, US-031, US-024, US-085 (all twelve Sprint 6 stories)
@@ -15,6 +15,7 @@
 | 0.2 | Oct 2026 | Address design change: the seller's pickup address is a saved address chosen when posting the item (US-004), preselected as the default and replaceable by a new named address; the profile and Sign Up hold no address. |
 | 0.3 | Oct 2026 | **Shiprocket (US-122, new):** the shipping partner is Shiprocket. US-026 to US-032, US-034 and US-060 are re-scoped inside US-122. The category taxonomy adds per-L3 delivery eligibility in the database, a packed weight and size captured on Item Details for delivery-eligible categories, Shiprocket serviceability and shipment calls behind a partner-neutral interface, pickup-location bindings per seller address, a quote cache, shipment persistence, and webhooks with polling as fallback. Whole vehicles and Real Estate are never delivery-eligible. The open items (launch eligibility states, prepaid only, who pays shipping, courier choice, pickup address and consent, account and limits, impact on the other Sprint 6 stories) are listed in US-122. Design only. |
 | 0.4 | 2026-11-27 | **All Sprint 6 stories designed.** New: section 0 (cross-cutting: module ownership, order and shipment states side by side, settings, error codes, events), Part B US-092 (shipment lifecycle), Part C US-122 (Shiprocket adapter, eligibility, quotes, booking, webhooks, polling), Parts D to L (packing proof, pickup scheduling, pickup by the courier, tracking, failed delivery, buyer proof, confirmation, payment release, payout notification) and Part M (end-to-end flow, NFR, testing, decisions and gaps). **Part A revised** to the as-built Sprint 5 code (US-090 `V45__orders.sql` already has the columns and index; transitions go through `OrderTransitionService.move`; the new-order push uses `NEW_ORDER` of US-021) and to the shipment states (booking in progress, pickup failed, self-pickup hand-over). US-122 open items 1 to 7 answered as **Proposed** (M.4). Shiprocket facts are marked verified or to-verify (C.2). |
+| 0.5 | 2026-11-27 | **US-092 built.** B.7 records the as-built differences: `forbid_ledger_change()` created in V46, `RESUME` and `RETRY_DELIVERY` added to the forward triggers, inferred-step timestamps, port placement, the fields mapped on `Shipment`, and the hand-offs to US-032, US-112 and US-122. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 and Sprint 6 sections
@@ -879,6 +880,20 @@ This is a hand-off to US-021, which is not built yet; until then the US-092 test
 - `ShipmentStateMachineTest`: every row of B.3 is allowed; every other (state, trigger) pair is refused; `resolveTarget` is unique.
 - `ShipmentTransitionServiceTest`: history row and event per move; order trigger per the mapping table; `advanceTo` fills missing steps with `inferred` and ignores older targets; the attempt counter moves to `RETURN` at the third failure; the reschedule limit refuses the third reschedule; lost publishes the refund event and opens the investigation.
 - Integration (Testcontainers): the history trigger refuses update and delete; shipment then order row lock order; two concurrent events for one shipment end in a valid sequence; migration back-fills shipments for existing orders.
+
+## B.7 As built (US-092, 2026-11-27)
+
+Built on `feature/US-092-shipping-lifecycle` ([plan](../US-Implementation-Plans/US-092-Implementation-Plan.md)). Differences from B.2 to B.5:
+
+- **Migration `V46__shipments.sql`** creates `forbid_ledger_change()` with `CREATE OR REPLACE` (US-091 is not built; its ledger migration must also use `CREATE OR REPLACE`). The function raises `<table> is insert-only`.
+- **`advanceTo` forward triggers** are `ASSIGN`, `CONFIRM_PICKUP`, `IN_TRANSIT`, `RESUME`, `OUT_FOR_DELIVERY`, `RETRY_DELIVERY`, `DELIVER`. `RESUME` and `RETRY_DELIVERY` are added (decision 2026-11-27), so a "delivered" scan after a failed attempt, or a transit scan after a delay, is not ignored.
+- **Timestamps of inferred steps:** each step is kept 1 microsecond after the previous one (the first step takes the partner's time), so the timeline order never depends on row ids. A courier event older than the shipment's last change is placed 1 microsecond after it.
+- **`OrderFulfilmentPort`** (in `shipping.application.port`) has `move` and `parties(orderId)`; the buyer and seller ids are read once per call for the events. Implemented by `order.infrastructure.shipping.OrderFulfilmentAdapter`.
+- **`ShipmentCreationPort`** lives in `order.application.port` (caller's module, like `DeliveryEligibilityPort`) with `ShipmentCreationRequest(orderId, deliveryMode, quotedCost, declaredValue, eta)`; implemented by `shipping.infrastructure.order.ShipmentCreationAdapter`. The package size and `partner` are not set yet: the listing's packed weight and size and `valuex.shipping.provider` arrive with US-122. A second shipment for an order is refused (`IllegalStateException`, plus the unique key).
+- **`Shipment` entity** maps only the columns US-092 uses (status, quoted cost, declared value, the two counters, `eta`, `last_event_at`, `picked_up_at`, `delivered_at`, `rto_initiated_at`); the pickup, booking and package columns are mapped by US-026, US-027 and US-122. `rto_initiated_at` is also set when a found item goes back to the seller (`FOUND`).
+- **Settings:** `FulfilmentSetting` holds only `PICKUP_MAX_RESCHEDULES` and `DELIVERY_MAX_ATTEMPTS`; `PlatformSettingsService.fulfilment()` reads them. Later stories add their keys.
+- **Not built here:** the `HANDED_OVER` order trigger (S10, with US-112's mark-handed-over); a listener for `ShipmentRefundRequestedEvent` (US-032); notification listeners for `ShipmentStatusChangedEvent` (Parts E to J). `SHIPMENT_NOT_FOUND` is an internal code (no API yet).
+- **Closes US-090 plan gap G5:** a lost shipment now opens an investigation (`INVESTIGATION_OPENED`) and asks for the refund.
 
 ---
 
