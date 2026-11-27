@@ -252,7 +252,7 @@ Enable fulfillment workflow.
 
 | ID     | Story                                     | Repo            | SP | Dependency |
 | ------ | ----------------------------------------- | --------------- | -- | ---------- |
-| US-092 | Lifecycle State - Shipping                | backend         | 3  | US-023     |
+| US-092 | Lifecycle State - Shipping ([plan](US-Implementation-Plans/US-092-Implementation-Plan.md), built 2026-11-27: shipment tables, state machine and transition service driving the order, history and events; no API, shipments are created by US-021 through `ShipmentCreationPort`) | backend         | 3  | US-023     |
 | US-122 | Shiprocket Delivery Integration           | backend, mobile | 13 | US-006, US-021, US-023 |
 | US-112 | Seller Incoming Orders                    | backend, mobile | 5  | US-023, US-103 |
 | US-026 | Seller Prepares Package and Uploads Proof | backend, mobile | 5  | US-023     |
