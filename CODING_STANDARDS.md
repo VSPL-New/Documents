@@ -208,7 +208,7 @@ Before approving any PR, verify:
 
 # 2. valuex-backend — Java Spring Boot
 
-**Stack:** Java 21, Spring Boot 3.2.x, Maven, Lombok, JPA, Flyway, PostgreSQL 16, Redis 7, JWT  
+**Stack:** Java 21, Spring Boot 4.1.x, Maven, Lombok, JPA, Flyway, PostgreSQL 16, Redis 7, JWT  
 **Architecture:** Modular Monolith — clean package boundaries per business domain
 
 ---

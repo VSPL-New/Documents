@@ -6,7 +6,7 @@
 
 **Document Version:** 1.0
 **Product:** ValueX
-**Backend Stack:** Java 21 + Spring Boot 3.x
+**Backend Stack:** Java 21 + Spring Boot 4.x
 **Architecture Style:** Modular Monolith for MVP, Microservice-Ready Boundaries
 
 ---
