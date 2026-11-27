@@ -56,57 +56,57 @@ Primary source: [Sprint-6-Shipping-Delivery-LLD.md — Part B](../LLD/Sprint-6-S
 ## 4. Implementation Steps
 
 ### 0. Workflow (CLAUDE.md §5)
-- [ ] `valuex-backend` main checkout is on a Dependabot branch and `wt/US-016-backend` holds US-016 (PR #82). Leave both alone: create a new worktree `wt/US-092-backend` from an up-to-date `origin/main` on branch `feature/US-092-shipping-lifecycle`.
+- [x] `valuex-backend` main checkout is on a Dependabot branch and `wt/US-016-backend` holds US-016 (PR #82). Leave both alone: create a new worktree `wt/US-092-backend` from an up-to-date `origin/main` on branch `feature/US-092-shipping-lifecycle`.
 
 ### 1. Database Migration — `V46__shipments.sql`
-- [ ] `CREATE OR REPLACE FUNCTION forbid_ledger_change()` (raises an exception on UPDATE/DELETE) — G1.
-- [ ] `shipments` exactly as LLD B.2 (all columns, `chk_shipments_status` with the 18 names, `chk_shipments_counters`, `awb UNIQUE`, `idx_shipments_booking_due`, `idx_shipments_active`). `pickup_location_id` without FK (Part C adds it).
-- [ ] `shipment_status_history` with `chk_ssh_actor_type`, `idx_ssh_shipment`, and `trg_ssh_immutable`.
-- [ ] Replace `chk_osh_actor_type` on `order_status_history` to add `LOGISTICS`.
-- [ ] Back-fill: `INSERT INTO shipments (order_id, status) SELECT id, CASE delivery_mode WHEN 'DELIVERY' THEN 'SHIPPING_REQUIRED' ELSE 'SHIPPING_NOT_REQUIRED' END FROM orders WHERE NOT EXISTS (...)`.
+- [x] `CREATE OR REPLACE FUNCTION forbid_ledger_change()` (raises an exception on UPDATE/DELETE) — G1.
+- [x] `shipments` exactly as LLD B.2 (all columns, `chk_shipments_status` with the 18 names, `chk_shipments_counters`, `awb UNIQUE`, `idx_shipments_booking_due`, `idx_shipments_active`). `pickup_location_id` without FK (Part C adds it).
+- [x] `shipment_status_history` with `chk_ssh_actor_type`, `idx_ssh_shipment`, and `trg_ssh_immutable`.
+- [x] Replace `chk_osh_actor_type` on `order_status_history` to add `LOGISTICS`.
+- [x] Back-fill: `INSERT INTO shipments (order_id, status) SELECT id, CASE delivery_mode WHEN 'DELIVERY' THEN 'SHIPPING_REQUIRED' ELSE 'SHIPPING_NOT_REQUIRED' END FROM orders WHERE NOT EXISTS (...)`.
 
 ### 2. Domain — `com.valuex.shipping.domain`
-- [ ] Delete `ShippingStateMachine`; add `ShipmentStateMachine extends StateMachine<ShippingState>` (`@Component`) with the B.3 table and public trigger constants (`SELECT_SLOT`, `START_BOOKING`, `BOOKED`, `BOOKING_FAILED`, `ASSIGN`, `CONFIRM_PICKUP`, `FAIL_PICKUP`, `RESCHEDULE_PICKUP`, `IN_TRANSIT`, `DELAY`, `RESUME`, `OUT_FOR_DELIVERY`, `DELIVER`, `FAIL_DELIVERY`, `RESCHEDULE_DELIVERY`, `RETRY_DELIVERY`, `RETURN`, `REPORT_LOST`, `OPEN_INVESTIGATION`, `FOUND`), plus the forward-trigger set used by `advanceTo`.
-- [ ] `Shipment` entity: `@Version`, `status` as `@Enumerated(STRING) ShippingState`, no status setter; `applyTrigger(machine, trigger, changedAt)` updates status and the timestamps/counters (`picked_up_at`, `delivered_at`, `rto_initiated_at`, `last_event_at`, `pickup_reschedules`, `delivery_attempts`); `pickup_address` JSONB via the existing `AddressSnapshot` mapping. Factory methods `forDelivery(...)` and `notRequired(orderId)`.
-- [ ] `ShipmentStatusHistory` (`@Immutable`, builder, no setters).
-- [ ] `ShipmentActorType` (`BUYER, SELLER, SYSTEM, ADMIN, LOGISTICS`) and `ShipmentActor` record with `system()` / `logistics()` helpers (G5).
-- [ ] `ShipmentEventContext` record (`note`, `location`, `occurredAt`, `eta`) — G5.
-- [ ] `ShipmentStatusChangedEvent` (fields per B.4) and `ShipmentRefundRequestedEvent(shipmentId, orderId, reason)` with `RefundReason.LOST` (`RTO` added by US-032).
-- [ ] `ShipmentErrors`: `SHIPMENT_NOT_FOUND` (internal, G7), `MAX_PICKUP_RESCHEDULES = "ERROR_MAX_PICKUP_RESCHEDULES"`.
+- [x] Delete `ShippingStateMachine`; add `ShipmentStateMachine extends StateMachine<ShippingState>` (`@Component`) with the B.3 table and public trigger constants (`SELECT_SLOT`, `START_BOOKING`, `BOOKED`, `BOOKING_FAILED`, `ASSIGN`, `CONFIRM_PICKUP`, `FAIL_PICKUP`, `RESCHEDULE_PICKUP`, `IN_TRANSIT`, `DELAY`, `RESUME`, `OUT_FOR_DELIVERY`, `DELIVER`, `FAIL_DELIVERY`, `RESCHEDULE_DELIVERY`, `RETRY_DELIVERY`, `RETURN`, `REPORT_LOST`, `OPEN_INVESTIGATION`, `FOUND`), plus the forward-trigger set used by `advanceTo`.
+- [x] `Shipment` entity: `@Version`, `status` as `@Enumerated(STRING) ShippingState`, no status setter; `applyTrigger(machine, trigger, changedAt)` updates status and the timestamps/counters (`picked_up_at`, `delivered_at`, `rto_initiated_at`, `last_event_at`, `pickup_reschedules`, `delivery_attempts`); `pickup_address` JSONB via the existing `AddressSnapshot` mapping. Factory methods `forDelivery(...)` and `notRequired(orderId)`.
+- [x] `ShipmentStatusHistory` (`@Immutable`, builder, no setters).
+- [x] `ShipmentActorType` (`BUYER, SELLER, SYSTEM, ADMIN, LOGISTICS`) and `ShipmentActor` record with `system()` / `logistics()` helpers (G5).
+- [x] `ShipmentEventContext` record (`note`, `location`, `occurredAt`, `eta`) — G5.
+- [x] `ShipmentStatusChangedEvent` (fields per B.4) and `ShipmentRefundRequestedEvent(shipmentId, orderId, reason)` with `RefundReason.LOST` (`RTO` added by US-032).
+- [x] `ShipmentErrors`: `SHIPMENT_NOT_FOUND` (internal, G7), `MAX_PICKUP_RESCHEDULES = "ERROR_MAX_PICKUP_RESCHEDULES"`.
 
 ### 3. Domain — `com.valuex.order.domain` (small changes)
-- [ ] `OrderActorType`: add `LOGISTICS`.
-- [ ] `OrderStateMachine`: add `REPORT_LOST` from `PICKED_UP`, `OUT_FOR_DELIVERY`, `DELIVERY_FAILED` (B.4). Nothing else.
+- [x] `OrderActorType`: add `LOGISTICS`.
+- [x] `OrderStateMachine`: add `REPORT_LOST` from `PICKED_UP`, `OUT_FOR_DELIVERY`, `DELIVERY_FAILED` (B.4). Nothing else.
 
 ### 4. Settings — `com.valuex.plans.domain`
-- [ ] `FulfilmentSetting` / `FulfilmentSettings` following `CheckoutSetting`, with only the two keys US-092 reads: `PICKUP_MAX_RESCHEDULES` (2, 0–5) and `DELIVERY_MAX_ATTEMPTS` (3, 1–5). Later stories add their keys (G2).
+- [x] `FulfilmentSetting` / `FulfilmentSettings` following `CheckoutSetting`, with only the two keys US-092 reads: `PICKUP_MAX_RESCHEDULES` (2, 0–5) and `DELIVERY_MAX_ATTEMPTS` (3, 1–5). Later stories add their keys (G2).
 
 ### 5. Persistence — `com.valuex.shipping.infrastructure.persistence`
-- [ ] `ShipmentRepository`: `findByIdForUpdate`, `findByOrderId`.
-- [ ] `ShipmentStatusHistoryRepository`: `findByShipmentIdOrderByChangedAtAscIdAsc`.
+- [x] `ShipmentRepository`: `findByIdForUpdate`, `findByOrderId`.
+- [x] `ShipmentStatusHistoryRepository`: `findByShipmentIdOrderByChangedAtAscIdAsc`.
 
 ### 6. Ports and adapters
-- [ ] `shipping.application.port.OrderFulfilmentPort.move(orderId, trigger, ShipmentActor, note)` ← `order.infrastructure.shipping.OrderFulfilmentAdapter` mapping `ShipmentActor` to `OrderActor` and calling `OrderTransitionService.move`.
-- [ ] `order.application.port.ShipmentCreationPort.createFor(ShipmentCreationRequest)` (order id, delivery mode, quoted cost, eta, declared value, package) ← `shipping.infrastructure.order.ShipmentCreationAdapter`. No caller until US-021 (B.5); unit and integration tests call it directly.
+- [x] `shipping.application.port.OrderFulfilmentPort.move(orderId, trigger, ShipmentActor, note)` ← `order.infrastructure.shipping.OrderFulfilmentAdapter` mapping `ShipmentActor` to `OrderActor` and calling `OrderTransitionService.move`.
+- [x] `order.application.port.ShipmentCreationPort.createFor(ShipmentCreationRequest)` (order id, delivery mode, quoted cost, eta, declared value, package) ← `shipping.infrastructure.order.ShipmentCreationAdapter`. No caller until US-021 (B.5); unit and integration tests call it directly.
 
 ### 7. Application — `com.valuex.shipping.application.service.ShipmentTransitionService`
-- [ ] `move(shipmentId, trigger, actor, ctx)`, `@Transactional(propagation = MANDATORY)`:
+- [x] `move(shipmentId, trigger, actor, ctx)`, `@Transactional(propagation = MANDATORY)`:
   1. Lock the shipment (`findByIdForUpdate`) or throw `NotFoundException`.
   2. For `RESCHEDULE_PICKUP`: refuse with `ConflictException(ERROR_MAX_PICKUP_RESCHEDULES)` when `pickup_reschedules >= PICKUP_MAX_RESCHEDULES`.
   3. `applyTrigger` (machine refuses invalid pairs with `INVALID_STATE_TRANSITION`); `changed_at` = `ctx.occurredAt` for `LOGISTICS`, else the clock kept strictly after the previous change (same rule as `OrderTransitionService.nextChangeTime`).
   4. Insert the history row; fire the mapped order trigger(s) through `OrderFulfilmentPort` (B.4 table, incl. `CONFIRM_DELIVERY` then `REQUEST_BUYER_PROOF`, and `REDELIVER` vs `OUT_FOR_DELIVERY` by previous state); publish `ShipmentStatusChangedEvent`.
   5. Follow-ups in the same call: `FAIL_DELIVERY` reaching `DELIVERY_MAX_ATTEMPTS` → `RETURN`; `REPORT_LOST` → publish `ShipmentRefundRequestedEvent(LOST)`, then `OPEN_INVESTIGATION`.
-- [ ] `advanceTo(shipmentId, target, actor, ctx)`: BFS over forward triggers only; returns `false` (no writes) when the target is unreachable forward (older/repeated event); otherwise applies each step through the same internal path, inferred steps with note `inferred` and the same event time.
-- [ ] Keep the B.4 mapping as one table-like private structure (e.g. `ShipmentOrderMapping`), not scattered `if`s.
+- [x] `advanceTo(shipmentId, target, actor, ctx)`: BFS over forward triggers only; returns `false` (no writes) when the target is unreachable forward (older/repeated event); otherwise applies each step through the same internal path, inferred steps with note `inferred` and the same event time.
+- [x] Keep the B.4 mapping as one table-like private structure (e.g. `ShipmentOrderMapping`), not scattered `if`s.
 
 ### 8. Error catalogue
-- [ ] `ERROR_MAX_PICKUP_RESCHEDULES` in the error-code catalogue and message bundles (English and Hindi), like `ERROR_ORDER_NOT_FOUND` in US-090.
+- [x] `ERROR_MAX_PICKUP_RESCHEDULES` in the error-code catalogue and message bundles (English and Hindi), like `ERROR_ORDER_NOT_FOUND` in US-090.
 
 ### 9. Documentation (CLAUDE.md §5.10)
-- [ ] LLD Part B: record any deviation (G1, G2, G5, G6, port placement) as built.
-- [ ] Sprint-5 LLD E.5 / US-021 plan: hand-off — `OrderCreationService.createForLine` must call `ShipmentCreationPort.createFor`.
-- [ ] `Sprint-plan.md`: link this plan from the US-092 row; mark built when done.
-- [ ] `Manual Testing Guides/US-092-Testing-Guide.md`: SQL-level checks (migration, back-fill, constraints, immutability) and how to run the test subset.
+- [x] LLD Part B: record any deviation (G1, G2, G5, G6, port placement) as built.
+- [x] Sprint-5 LLD E.5 / US-021 plan: hand-off — `OrderCreationService.createForLine` must call `ShipmentCreationPort.createFor`.
+- [x] `Sprint-plan.md`: link this plan from the US-092 row; mark built when done.
+- [x] `Manual Testing Guides/US-092-Testing-Guide.md`: SQL-level checks (migration, back-fill, constraints, immutability) and how to run the test subset.
 
 ### 10. Quality gates (CLAUDE.md §5.7, §5.8)
 - [ ] `mvn clean verify`, checkstyle, JaCoCo, then the SonarQube scan; fix every issue before pushing.
@@ -191,6 +191,26 @@ All gaps were resolved by the user on 2026-11-27: G1 to G9 agreed as proposed.
 | G7 | **Shipment not found** has no user-facing error code (no API in this story). | Internal `NotFoundException("SHIPMENT_NOT_FOUND")`; Part C/E add user codes if needed. |
 | G8 | **Port placement:** LLD B.5 names `ShipmentCreationPort` without a module. | Follow the existing pattern: port in the caller (`order.application.port`), adapter in `shipping.infrastructure.order`. |
 | G9 | **Story's "PICKUP_FAILED allows 2 reschedules" vs LLD** counting seller reschedules and failed-pickup reschedules together. | Follow LLD 0.3/B.3.1 (combined counter). **Agreed.** |
+
+## 8. Implementation Notes (as built, 2026-11-27)
+
+Branch `feature/US-092-shipping-lifecycle` in `valuex-backend`. All steps of §4 are done; the LLD records the differences in [Part B.7](../LLD/Sprint-6-Shipping-Delivery-LLD.md#b7-as-built-us-092-2026-11-27).
+
+**Deviations from this plan:**
+- **`advanceTo` forward triggers** include `RESUME` and `RETRY_DELIVERY` besides the LLD's five (user decision 2026-11-27). Without them a "delivered" scan after a failed attempt, or a transit scan after a delay, would be ignored as old and the order would never reach `DELIVERED`.
+- **Inferred-step times** are 1 microsecond apart instead of identical, so the timeline order does not depend on row ids. A late courier event is placed 1 microsecond after the last change.
+- **`ShipmentCreationRequest`** has no package size, and `partner` is left empty: the listing has no packed weight or size and there is no provider property until US-122.
+- **`OrderFulfilmentPort.parties(orderId)`** was added so the shipment events carry the buyer and seller ids (LLD B.4 event fields).
+- **`PlatformSettingsService`:** the repeated invalid-setting log text and metric name became constants, because adding a fifth registry made Sonar flag the duplicates.
+
+**Hand-offs (open, owned by other stories):**
+- US-021: `OrderCreationService.createForLine` must call `ShipmentCreationPort.createFor` (Sprint 5 LLD E.5 note).
+- US-032: listener for `ShipmentRefundRequestedEvent` (`EscrowRefundService`); until then the "lost triggers refund" rule stops at the event (G3).
+- US-112 revision: `HANDED_OVER` order trigger (G6).
+- US-023 and Parts E to J: notification listeners for `ShipmentStatusChangedEvent`.
+- US-091: its ledger migration must use `CREATE OR REPLACE FUNCTION forbid_ledger_change()` (G1).
+
+**Closed:** US-090 plan gap G5 (lost shipment opens an investigation).
 
 ---
 
