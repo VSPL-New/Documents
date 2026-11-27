@@ -17,6 +17,7 @@
 | 0.4 | 2026-11-21 | US-020 (Choose Delivery or Self-Pickup) built, backend and mobile: as-built notes in B.6 (`V42__cart_delivery.sql`; two cart endpoints; a new `POST /users/me/addresses` because no endpoint saved an address; the `shipping` ports with a stand-in quote adapter; pickup falls back from the listing's address to the seller's default address to the place typed on the listing; no `quoteId` from the app, the server re-quotes and compares `expectedShippingCost`; terms stored as a time and a version on the line). B.2 and Part M corrected where the build differs. G1 to G13 of the US-020 plan were confirmed by the product owner. |
 | 0.5 | 2026-11-24 | US-019 follow-up: Add to Cart moves from the listing page and the Saved items card into the accepted offer (the chat card and the negotiation screen); the seller sees a neutral card and an in-app notification once per agreement. Details in A.9. |
 | 0.6 | 2026-11-23 | US-113 (My Addresses) built, backend and mobile: Part M rewritten as built (edit, set default and delete endpoints, `AddressUsagePort`, the `offline` provider with outcome `ACCEPTED_UNVERIFIED`, the optional Google place check, mobile screen); the Google Address Validation API and geocoding are not used; G18 done. |
+| 0.7 | 2026-11-27 | Pointers to the Sprint 6 LLD v0.4: the stand-in quote (B.3) is replaced by the partner quote adapter of US-122 ([Sprint 6 C.5](Sprint-6-Shipping-Delivery-LLD.md#c5-quotes-replaces-the-stand-in)); order creation (E.5) must also create the order's shipment ([Sprint 6 B.5](Sprint-6-Shipping-Delivery-LLD.md#b5-creating-the-shipment-s1)). No Sprint 5 design change otherwise. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 section
@@ -383,6 +384,8 @@ public interface DeliveryEligibilityPort { boolean deliveryEligible(UUID listing
 ```
 
 `StubShippingQuoteAdapter` (Sprint 5, profile-selected by `valuex.shipping.provider=stub`): flat `SHIPPING_STUB_FLAT_RATE`, eta now plus `SHIPPING_STUB_ETA_DAYS`, `deliveryEligible` true for goods that are not Real Estate or whole vehicles (G3). The Shiprocket adapter of US-122 replaces both.
+
+> **Sprint 6 (LLD v0.4, design):** `PartnerShippingQuoteAdapter` (Shiprocket serviceability, quote cache, courier choice) replaces the stand-in when `valuex.shipping.provider` is `mock` or `shiprocket`; `ShippingQuoteRequest` gains the package size; the delivery option's reason becomes `ERROR_DELIVERY_NOT_AVAILABLE` or `ERROR_PIN_NOT_SERVICEABLE`. See [Sprint 6 Part C](Sprint-6-Shipping-Delivery-LLD.md#part-c---us-122-shiprocket-delivery-integration). `OrderCreationService.createForLine` (E.5) must also create the shipment row ([Sprint 6 B.5](Sprint-6-Shipping-Delivery-LLD.md#b5-creating-the-shipment-s1)).
 
 ## B.4 Mobile
 
