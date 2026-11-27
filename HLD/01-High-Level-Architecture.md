@@ -490,7 +490,7 @@ Responsible for:
 
 | Layer             | Technology      |
 | ----------------- | --------------- |
-| Backend Framework | Spring Boot 3.x |
+| Backend Framework | Spring Boot 4.x |
 | Language          | Java 21         |
 | API Style         | REST            |
 | Authentication    | JWT             |

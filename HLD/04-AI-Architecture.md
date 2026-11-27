@@ -7,7 +7,7 @@
 **Document Version:** 1.0  
 **Product:** ValueX  
 **AI Stack:** Python 3.11+, FastAPI  
-**Backend Integration:** Java Spring Boot 3.x  
+**Backend Integration:** Java Spring Boot 4.x  
 **Vector Search:** pgvector for MVP, Vector DB optional for scale  
 **Reference Scope:** PRD v1.3, User Stories v2.0, Sprint Plan v2.0, User Flow v0.2
 
