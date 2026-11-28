@@ -129,7 +129,7 @@ Create New delivery orders placed 23, 24 and 30 hours ago, and a self-pickup ord
 1. Tap **Start Packing** on a New delivery order.
 
 **Expect:**
-- "This is coming soon" (packing is US-026).
+- Pack & Upload Proof opens for the order (US-026; see the US-026 testing guide). Go back to continue here.
 - The card moves to Packing with **Continue Packing**, and the New tile and the badge go down by one.
 - `order_status_history` gets one row, `CONFIRM_SHIPPING`, actor `SELLER`.
 
@@ -234,7 +234,7 @@ ran rather than being skipped (it is skipped when Docker is not running).
 |---|---|
 | Real orders created by payment, and the `NEW_ORDER` push sent | US-021 |
 | Order details from the card's details button; live refresh (`order.updated`) | US-023 |
-| Pack & Upload Proof (after Start Packing, Continue Packing) | US-026 |
+| Pack & Upload Proof (after Start Packing, Continue Packing) | Built: see `US-026-Testing-Guide.md` |
 | Schedule Pickup, View Schedule, Reschedule Pickup | US-027 |
 | Reject with the cancellation penalty | US-059 (Sprint 7) |
 | Buyer confirmation and auto-confirmation after a self-pickup hand-over | US-031 (Part J) |

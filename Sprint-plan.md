@@ -255,7 +255,7 @@ Enable fulfillment workflow.
 | US-092 | Lifecycle State - Shipping ([plan](US-Implementation-Plans/US-092-Implementation-Plan.md), built 2026-11-27: shipment tables, state machine and transition service driving the order, history and events; no API, shipments are created by US-021 through `ShipmentCreationPort`) | backend         | 3  | US-023     |
 | US-122 | Shiprocket Delivery Integration           | backend, mobile | 13 | US-006, US-021, US-023 |
 | US-112 | Seller Incoming Orders ([plan](US-Implementation-Plans/US-112-Implementation-Plan.md), built 2026-11-28: list, counts, Start Packing and self-pickup hand-over API, Profile badge, NEW_ORDER push row; mobile page with sample-data mode; buttons to US-023, US-026, US-027 and US-059 show "coming soon" until those ship) | backend, mobile | 5  | US-023, US-103 |
-| US-026 | Seller Prepares Package and Uploads Proof | backend, mobile | 5  | US-023     |
+| US-026 | Seller Prepares Package and Uploads Proof ([plan](US-Implementation-Plans/US-026-Implementation-Plan.md), built 2026-11-28: packing photos per section (item 2 to 4, packaging 1 to 2) uploaded one by one as drafts, packed size stored on the shipment, order moves to waiting for pickup scheduling; Make screen opened from Start Packing and Continue Packing; buyer view with US-023, listing prefill with US-122) | backend, mobile | 5  | US-023     |
 | US-027 | Pickup Scheduling                         | backend, mobile | 5  | US-026     |
 | US-028 | Item Pickup by Logistics Partner          | backend         | 5  | US-027     |
 | US-029 | Shipment Tracking                         | backend, mobile | 5  | US-028     |
