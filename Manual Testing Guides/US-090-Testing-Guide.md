@@ -134,4 +134,4 @@ does not touch the cart, the listing flow or any API.
 | Auto-complete after 7 days | US-024 (Sprint 6) |
 | Refund on cancellation; cancelling a paid order | Sprint 7 (US-058, US-059) |
 | `SHIPMENT_LOST` investigation | Not designed yet (Sprint 6 LLD) |
-| Seller Start Packing (`SHIPPING_MODE_SELECTED → SELLER_PACKING_PENDING`) | US-112 |
+| Seller Start Packing (`SHIPPING_MODE_SELECTED → SELLER_PACKING_PENDING`) | Built with US-112 (2026-11-28): see the US-112 testing guide |
