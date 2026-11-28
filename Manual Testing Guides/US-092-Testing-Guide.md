@@ -159,4 +159,4 @@ now also allowing `REPORT_LOST` from `PICKED_UP`, `OUT_FOR_DELIVERY` and `DELIVE
 | The refund after a lost shipment or a return to the seller | US-032 (needs escrow, US-091) |
 | Delivery proof (photo or signature) | US-030 (buyer photos); partner proof to be checked with US-122 |
 | GPS tracking in transit | Future (story) |
-| Self-pickup "Mark as handed over" | US-112 revision |
+| Self-pickup "Mark as handed over" | Built with US-112 (2026-11-28): see the US-112 testing guide |

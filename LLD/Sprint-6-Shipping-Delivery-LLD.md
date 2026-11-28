@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 6: Shipping & Delivery
 
-**Document Version:** 0.5 (2026-11-27). Design; only Part B (US-092) is built (see B.7). Decisions marked **Proposed** need product-owner confirmation; they are collected in Part M.4.
+**Document Version:** 0.6 (2026-11-28). Design; Part B (US-092, see B.7) and Part A (US-112, see A.12) are built. Decisions marked **Proposed** need product-owner confirmation; they are collected in Part M.4.
 **Product:** ValueX
 **Sprint:** Sprint 6 - Shipping & Delivery
 **Stories Covered:** US-092, US-122, US-112, US-026, US-027, US-028, US-029, US-032, US-030, US-031, US-024, US-085 (all twelve Sprint 6 stories)
@@ -16,6 +16,7 @@
 | 0.3 | Oct 2026 | **Shiprocket (US-122, new):** the shipping partner is Shiprocket. US-026 to US-032, US-034 and US-060 are re-scoped inside US-122. The category taxonomy adds per-L3 delivery eligibility in the database, a packed weight and size captured on Item Details for delivery-eligible categories, Shiprocket serviceability and shipment calls behind a partner-neutral interface, pickup-location bindings per seller address, a quote cache, shipment persistence, and webhooks with polling as fallback. Whole vehicles and Real Estate are never delivery-eligible. The open items (launch eligibility states, prepaid only, who pays shipping, courier choice, pickup address and consent, account and limits, impact on the other Sprint 6 stories) are listed in US-122. Design only. |
 | 0.4 | 2026-11-27 | **All Sprint 6 stories designed.** New: section 0 (cross-cutting: module ownership, order and shipment states side by side, settings, error codes, events), Part B US-092 (shipment lifecycle), Part C US-122 (Shiprocket adapter, eligibility, quotes, booking, webhooks, polling), Parts D to L (packing proof, pickup scheduling, pickup by the courier, tracking, failed delivery, buyer proof, confirmation, payment release, payout notification) and Part M (end-to-end flow, NFR, testing, decisions and gaps). **Part A revised** to the as-built Sprint 5 code (US-090 `V45__orders.sql` already has the columns and index; transitions go through `OrderTransitionService.move`; the new-order push uses `NEW_ORDER` of US-021) and to the shipment states (booking in progress, pickup failed, self-pickup hand-over). US-122 open items 1 to 7 answered as **Proposed** (M.4). Shiprocket facts are marked verified or to-verify (C.2). |
 | 0.5 | 2026-11-27 | **US-092 built.** B.7 records the as-built differences: `forbid_ledger_change()` created in V46, `RESUME` and `RETRY_DELIVERY` added to the forward triggers, inferred-step timestamps, port placement, the fields mapped on `Shipment`, and the hand-offs to US-032, US-112 and US-122. |
+| 0.6 | 2026-11-28 | **US-112 built.** A.12 records the as-built differences: one read query joins the shipment (no `ShipmentQueryPort`; A.5.2 count corrected for returned items), names, photos and account state through ports, `bookingError` and `pickupAddress` added to the card, row lock for Start Packing and hand-over, `ERROR_ORDER_ACTION_NOT_ALLOWED` and `PICKUP_SLA_HOURS` added, `NEW_ORDER` push text, the `/seller/orders` route before `/seller/:sellerId`, and the hand-offs to US-021, US-023, US-026, US-027, US-059 and US-031. Open item 2 (S10, hand-over) decided and built. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 and Sprint 6 sections
@@ -665,7 +666,42 @@ Title, count line (`{n} orders · {x} new` with plurals), `{x} New`, tile labels
 
 **Open:**
 1. **Reject wiring.** The button is shown from Sprint 6 and opens US-059 once Sprint 7 ships; until then it shows the coming-soon message.
-2. ~~Self-pickup hand-over states~~ **Proposed in 0.4 (S10):** "Mark as handed over" moves the order to `DELIVERED` with the new trigger `HANDED_OVER`; the buyer then confirms (Part J) or the order auto-confirms after `SELF_PICKUP_CONFIRM_DAYS`. Needs product-owner confirmation (M.4 G21).
+2. ~~Self-pickup hand-over states~~ **Proposed in 0.4 (S10):** "Mark as handed over" moves the order to `DELIVERED` with the new trigger `HANDED_OVER`; the buyer then confirms (Part J) or the order auto-confirms after `SELF_PICKUP_CONFIRM_DAYS`. **Built with US-112 (decision 2026-11-28, plan G4).**
+
+## A.12 As built (US-112, 2026-11-28)
+
+What differs from A.1 to A.10, and why. Plan: [US-112-Implementation-Plan.md](../US-Implementation-Plans/US-112-Implementation-Plan.md) section 8.
+
+**Backend (`valuex-backend`, branch `feature/US-112-seller-incoming-orders`)**
+
+- **One read query, no `ShipmentQueryPort`.** `SellerOrderQueryRepository` (`NamedParameterJdbcTemplate`) reads the order, its single `order_items` row and its `shipments` row in one statement. The group of each order is computed in SQL (`CASE` over status, delivery mode and `rto_delivered_at`), and the list, the counts and the single-card read share that `WHERE`. A.5.2 said the counts need no join; that is wrong for `RETURN_TO_SELLER` once delivered back, which must leave both list and counts (plan G7).
+- **Group from the query, card from the resolver.** `FulfilmentBucketResolver` no longer decides the group; it turns the row into tags and actions. A self-pickup order carries `SELF_PICKUP` in every group, and `HANDED_OVER` as well once handed over.
+- **Names, photos and account state through ports** (plan G6, G9): `OrderPartyDirectoryPort` (`displayNames`, `isActive`; adapter `auth.infrastructure.order.OrderPartyDirectoryAdapter`) and `OrderItemPhotoPort` (adapter `listing.infrastructure.order.OrderItemPhotoAdapter` over `ListingPhotoLinkPort`). There is no SQL join on `users` and no `MediaUrlResolver`. A photo link that cannot be made leaves `imageUrl` null.
+- **Response additions to A.4.1:** `bookingError` (the courier booking error code, so the card can show `ERROR_SHIPMENT_CREATION_FAILED` or `ERROR_NO_LOGISTICS_AVAILABLE`, A.1.1) and `pickupAddress` (self-pickup orders only, from `orders.pickup_address`, for "View Pickup Details", plan G10). `amount` is the order's item amount as a string with two decimals; it excludes the buyer's shipping charge.
+- **Start Packing and Mark as handed over** read the order with `findByIdAndSellerIdForUpdate` (row lock). Two calls at once run one after the other, so the second sees the new state and gets the same 200 (plan G11). The moves commit in their own transaction before the card is read, so a failed photo link cannot roll them back.
+- **Errors:** `ERROR_ORDER_ACTION_NOT_ALLOWED` is new (it was listed in 0.4 as existing), 409 via `ConflictException`. An unknown `bucket` is `ERROR_VALIDATION` (400). A non-active account is `ERROR_ACCOUNT_NOT_ACTIVE` (403, "Your account is not active"). There is no `INVALID_STATE_TRANSITION` mapping, because the lock makes it unreachable.
+- **Settings:** `PICKUP_SLA_HOURS` (48, 12 to 120) is added to `FulfilmentSetting`; `valuex.seller-orders.urgent-window` (PT24H) and `max-page-size` (50) are properties. URGENT starts exactly 24 hours before the deadline and stays on an overdue order.
+- **Push:** besides the `PushPolicy` row (`NEW_ORDER` → `orders`, high priority, not skipped when online), `PushCopy` gains the text "You have a new order" / "आपको एक नया ऑर्डर मिला है"; without text a push is not sent.
+- **Metrics:** `seller.orders.start_packing` and `seller.orders.handed_over`, tag `result` = `moved`, `repeat` or `refused`.
+- **Not built:** the A.9 rate limit (no shared rate limiter exists; plan G13).
+
+**Mobile (`valuex-mobile`, branch `feature/US-112-seller-incoming-orders`)**
+
+- **Route:** `/seller/orders` is declared before the seller profile pattern `/seller/:sellerId`, which would otherwise match it. Seller ids are UUIDs, so no profile is hidden. The route guard treats it as its own page: `ACTIVE` accounts only, signed in only.
+- **Sample data:** `SELLER_ORDERS=mock` (dev only) serves the four Make orders, without photos; the default is the backend (plan G12).
+- **Buttons that open screens not built yet** answer "This is coming soon": Reject (US-059), Continue Packing, Schedule Pickup, View Schedule, Reschedule Pickup (US-026, US-027), and the order details button (US-023). Start Packing calls the endpoint first.
+- **Refresh:** the page reloads on open, on pull down, after an action and on Retry. A tapped `NEW_ORDER` push opens the page fresh. There is no `order.updated` listener (that event comes with US-023), and no refresh on a push that arrives while the app is open, because the app has no foreground push stream yet. The Profile badge reloads when the seller comes back from the page.
+- **Android:** new `orders` notification channel (high importance), named in English and Hindi.
+
+**Hand-offs**
+
+| To | What |
+|---|---|
+| US-021 | Create the `NEW_ORDER` notification for the seller with the deep link `/seller/orders` (Sprint 5 E.5 step 7); create the shipment through `ShipmentCreationPort`, since the queue reads one shipment per order |
+| US-023 | Order details page (the card's details button) and the `order.updated` realtime refresh of this page |
+| US-026, US-027 | Pack & Upload Proof, pickup scheduling and the schedule view, opened from Continue Packing, Schedule Pickup, View Schedule and Reschedule Pickup; Start Packing then opens packing instead of the message |
+| US-059 | The seller cancellation opened by Reject |
+| US-031 (Part J) | The buyer's confirmation, and the auto-confirmation after `SELF_PICKUP_CONFIRM_DAYS`, of a handed-over self-pickup order; until then it stays in Shipped with "Handed over" |
 
 ---
 

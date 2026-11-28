@@ -5108,6 +5108,7 @@
 ## Seller Order Management
 
 ### US-112: Seller Incoming Orders
+> **Built (2026-11-28, Sprint 6 LLD Part A, A.12):** the seller sees every order on their items grouped New, Packing, Scheduled and Shipped, with the counts, the URGENT tag, Start Packing and, for self-pickup, View Pickup Details and Mark as handed over; the Profile badge counts New orders and a new-order push opens the page. Reject, Continue Packing, Schedule Pickup, View Schedule, Reschedule Pickup and the order details button show "coming soon" until US-059, US-026, US-027 and US-023 ship. Real orders appear once checkout (US-021) creates them; until then the dev build can show the Make sample orders. Plan: `Documents/US-Implementation-Plans/US-112-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-112-Testing-Guide.md`.
 **As a** seller  
 **I want** one list of every order buyers have placed on my items, grouped by what I need to do next  
 **So that** I can pack, schedule pickup and follow each order without searching through chats and notifications
@@ -5248,7 +5249,7 @@ Not listed: orders before `SHIPPING_MODE_SELECTED` (not yet paid), and `COMPLETE
 - Order reference: mock data shows the sample numbers from Make; real data shows the actual order number from the backend
 
 **Open:**
-- US-090 has no states for the self-pickup hand-over; the owner will update US-090 when needed. Until then a self-pickup order stays New until it completes or is cancelled
+- US-090 has no states for the self-pickup hand-over; the owner will update US-090 when needed. Until then a self-pickup order stays New until it completes or is cancelled (resolved 2026-11-28: built as Sprint 6 LLD S10, "Mark as handed over" moves the order to `DELIVERED` and then waits for the buyer)
 
 ---
 
