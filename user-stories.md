@@ -1290,6 +1290,7 @@
 
 ### US-026: Seller Prepares Package and Uploads Proof
 > **Update (2026-10-25, Shiprocket):** The shipping partner is Shiprocket (US-122). Packed weight and size are captured on Item Details for delivery-eligible categories and confirmed here before the shipment is created.
+> **Built (2026-11-28, Sprint 6 LLD Part D, D.7):** Start Packing and Continue Packing on Incoming Orders open Pack & Upload Proof (Figma Make). The seller adds 2 to 4 photos of the item and 1 or 2 of the packed item, each uploaded and attached on its own with retry, confirms the packed weight and size, and taps Submit Proof & Schedule Pickup; the order then waits for pickup scheduling (US-027, still "coming soon"). Photos are stored privately with the server time and without location data, and a submitted photo can never change. The buyer sees the submitted photos once order details ship (US-023); the packed size is prefilled from the listing once US-122 ships. Plan: `Documents/US-Implementation-Plans/US-026-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-026-Testing-Guide.md`.
 **As a** seller  
 **I want to** upload package photos before pickup  
 **So that** there's proof of item condition at shipping
@@ -1313,8 +1314,7 @@
 - Seller packages wrong item
 
 **Validation Rules:**
-- Minimum 2 images required (item + package)
-- Max 5 images allowed
+- Item photos: at least 2, at most 4; packaging photos: at least 1, at most 2 (Admin settings; updated 2026-11-28 to the Figma Make design, which replaced "minimum 2 images (item + package), max 5")
 - Images must be clear (min resolution 480x480)
 - Image upload required before pickup scheduling
 - Images timestamped and stored
@@ -5108,7 +5108,7 @@
 ## Seller Order Management
 
 ### US-112: Seller Incoming Orders
-> **Built (2026-11-28, Sprint 6 LLD Part A, A.12):** the seller sees every order on their items grouped New, Packing, Scheduled and Shipped, with the counts, the URGENT tag, Start Packing and, for self-pickup, View Pickup Details and Mark as handed over; the Profile badge counts New orders and a new-order push opens the page. Reject, Continue Packing, Schedule Pickup, View Schedule, Reschedule Pickup and the order details button show "coming soon" until US-059, US-026, US-027 and US-023 ship. Real orders appear once checkout (US-021) creates them; until then the dev build can show the Make sample orders. Plan: `Documents/US-Implementation-Plans/US-112-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-112-Testing-Guide.md`.
+> **Built (2026-11-28, Sprint 6 LLD Part A, A.12):** the seller sees every order on their items grouped New, Packing, Scheduled and Shipped, with the counts, the URGENT tag, Start Packing and, for self-pickup, View Pickup Details and Mark as handed over; the Profile badge counts New orders and a new-order push opens the page. Start Packing and Continue Packing open Pack & Upload Proof (US-026, built 2026-11-28); Reject, Schedule Pickup, View Schedule, Reschedule Pickup and the order details button show "coming soon" until US-059, US-027 and US-023 ship. Real orders appear once checkout (US-021) creates them; until then the dev build can show the Make sample orders. Plan: `Documents/US-Implementation-Plans/US-112-Implementation-Plan.md`. Testing guide: `Documents/Manual Testing Guides/US-112-Testing-Guide.md`.
 **As a** seller  
 **I want** one list of every order buyers have placed on my items, grouped by what I need to do next  
 **So that** I can pack, schedule pickup and follow each order without searching through chats and notifications

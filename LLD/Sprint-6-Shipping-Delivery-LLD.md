@@ -1,6 +1,6 @@
 # Low Level Design - Sprint 6: Shipping & Delivery
 
-**Document Version:** 0.6 (2026-11-28). Design; Part B (US-092, see B.7) and Part A (US-112, see A.12) are built. Decisions marked **Proposed** need product-owner confirmation; they are collected in Part M.4.
+**Document Version:** 0.7 (2026-11-28). Design; Part B (US-092, see B.7), Part A (US-112, see A.12) and Part D (US-026, see D.7) are built. Decisions marked **Proposed** need product-owner confirmation; they are collected in Part M.4.
 **Product:** ValueX
 **Sprint:** Sprint 6 - Shipping & Delivery
 **Stories Covered:** US-092, US-122, US-112, US-026, US-027, US-028, US-029, US-032, US-030, US-031, US-024, US-085 (all twelve Sprint 6 stories)
@@ -17,6 +17,7 @@
 | 0.4 | 2026-11-27 | **All Sprint 6 stories designed.** New: section 0 (cross-cutting: module ownership, order and shipment states side by side, settings, error codes, events), Part B US-092 (shipment lifecycle), Part C US-122 (Shiprocket adapter, eligibility, quotes, booking, webhooks, polling), Parts D to L (packing proof, pickup scheduling, pickup by the courier, tracking, failed delivery, buyer proof, confirmation, payment release, payout notification) and Part M (end-to-end flow, NFR, testing, decisions and gaps). **Part A revised** to the as-built Sprint 5 code (US-090 `V45__orders.sql` already has the columns and index; transitions go through `OrderTransitionService.move`; the new-order push uses `NEW_ORDER` of US-021) and to the shipment states (booking in progress, pickup failed, self-pickup hand-over). US-122 open items 1 to 7 answered as **Proposed** (M.4). Shiprocket facts are marked verified or to-verify (C.2). |
 | 0.5 | 2026-11-27 | **US-092 built.** B.7 records the as-built differences: `forbid_ledger_change()` created in V46, `RESUME` and `RETRY_DELIVERY` added to the forward triggers, inferred-step timestamps, port placement, the fields mapped on `Shipment`, and the hand-offs to US-032, US-112 and US-122. |
 | 0.6 | 2026-11-28 | **US-112 built.** A.12 records the as-built differences: one read query joins the shipment (no `ShipmentQueryPort`; A.5.2 count corrected for returned items), names, photos and account state through ports, `bookingError` and `pickupAddress` added to the card, row lock for Start Packing and hand-over, `ERROR_ORDER_ACTION_NOT_ALLOWED` and `PICKUP_SLA_HOURS` added, `NEW_ORDER` push text, the `/seller/orders` route before `/seller/:sellerId`, and the hand-offs to US-021, US-023, US-026, US-027, US-059 and US-031. Open item 2 (S10, hand-over) decided and built. |
+| 0.7 | 2026-11-28 | **US-026 built.** D.7 records the as-built differences: photo counts per section (`PROOF_ITEM_MIN`/`MAX`, `PROOF_PACKAGE_MIN`/`MAX`, from the Make design), `V47__order_proofs.sql` with the submitted-proof trigger, the size check moved from media to the order module, `ImageCleaner` shared with chat, the package prefilled only from the shipment until US-122, `VALIDATION_ERROR` for the packed size, idempotent draft removal, `sellerProofs` for US-023, and the hand-offs to US-122, US-023, US-027, US-030 and US-031 / US-024. |
 
 **Reference Documents:**
 - [Sprint-plan.md](../Sprint-plan.md) - Sprint 5 and Sprint 6 sections
@@ -113,7 +114,7 @@ The full shipment machine, its exceptions and the mapping to order triggers are 
 
 | Key | Default | Range | Used by |
 |---|---|---|---|
-| `PROOF_MIN_IMAGES`, `PROOF_MAX_IMAGES` | 2, 5 | 1 to 5, 2 to 10 | US-026 |
+| `PROOF_ITEM_MIN`, `PROOF_ITEM_MAX`, `PROOF_PACKAGE_MIN`, `PROOF_PACKAGE_MAX` (as built, D.7; were `PROOF_MIN_IMAGES` 2 and `PROOF_MAX_IMAGES` 5) | 2, 4, 1, 2 | 1 to 4, 1 to 8, 1 to 2, 1 to 4 | US-026 |
 | `PROOF_MIN_PIXELS` | 480 | 240 to 1080 | US-026, US-030 (shorter side) |
 | `PICKUP_SLA_HOURS` | 48 | 12 to 120 | US-027, US-112 (urgent rule), F.3 escalation |
 | `PICKUP_DAYS_AHEAD` | 7 | 1 to 14 | US-027 date picker |
@@ -141,7 +142,7 @@ Environment and properties: `valuex.shipping.provider` (`stub` | `mock` | `shipr
 | `ERROR_IMAGE_REQUIRED` | 422 | Please upload package images before scheduling pickup | US-026 |
 | `ERROR_IMAGE_UPLOAD_FAILED` | client | Failed to upload images. Try again (US-030: "Failed to upload images. You can still confirm") | US-026, US-030 |
 | `WARNING_IMAGE_QUALITY_LOW` | 422 | Image quality low. Upload clearer photo | US-026, US-030 |
-| `ERROR_PROOF_LIMIT` (new) | 422 | You can add up to 5 photos | US-026 (max 5) |
+| `ERROR_PROOF_LIMIT` (new) | 422 | You can add up to 4 item photos (or 2 packaging photos) | US-026 (per section, D.7) |
 | `ERROR_NO_LOGISTICS_AVAILABLE` | 409 | No pickup service in your area. Contact support | US-027 |
 | `ERROR_INVALID_TIMESLOT` | 422 | Selected time slot unavailable | US-027 |
 | `ERROR_PICKUP_DELAYED` | notification | Pickup delayed. We'll notify you when rescheduled | US-027 |
@@ -1260,8 +1261,8 @@ Rules:
 | Rule (story) | Code | HTTP |
 |---|---|---|
 | Order in `SELLER_PACKING_PENDING` for attach, remove and complete (complete repeated after success answers 200 with the same order) | `ERROR_ORDER_ACTION_NOT_ALLOWED` | 409 |
-| At least `PROOF_MIN_IMAGES` (2) photos, with at least one `ITEM_CONDITION` and one `PACKAGE_SEALED` | `ERROR_IMAGE_REQUIRED` | 422 |
-| At most `PROOF_MAX_IMAGES` (5) photos per order | `ERROR_PROOF_LIMIT` | 422 |
+| At least `PROOF_ITEM_MIN` (2) `ITEM_CONDITION` and `PROOF_PACKAGE_MIN` (1) `PACKAGE_SEALED` photos (as built, D.7) | `ERROR_IMAGE_REQUIRED` | 422 |
+| At most `PROOF_ITEM_MAX` (4) item and `PROOF_PACKAGE_MAX` (2) packaging photos (as built, D.7) | `ERROR_PROOF_LIMIT` | 422 |
 | Shorter side at least `PROOF_MIN_PIXELS` (480) | `WARNING_IMAGE_QUALITY_LOW` | 422 |
 | Media not the seller's, not ready, wrong purpose | `ERROR_VALIDATION` | 400 |
 | Package within the US-122 limits (C.4.1) | `ERROR_VALIDATION` with field errors | 400 |
@@ -1285,6 +1286,86 @@ Rules:
 ## D.6 Tests
 
 Unit: rules table (each code at its edge: 1 and 2 photos, missing kind, 5 and 6 photos, 479 and 480 pixels); idempotent complete; draft removal refused after submit. Integration: attach, remove, complete move the order and store the package; the trigger refuses changing a submitted proof; the buyer detail shows only submitted photos. Mobile: section enabling, upload retry, refusal messages, navigation to Schedule Pickup, Continue Packing restores drafts.
+
+## D.7 As built (US-026, 2026-11-28)
+
+The design above stands, with these differences ([plan](../US-Implementation-Plans/US-026-Implementation-Plan.md), section 8):
+
+**Photo counts per section (plan G10, follows the Figma Make `SellerPackingScreen`):**
+- `PROOF_MIN_IMAGES` and `PROOF_MAX_IMAGES` (2 and 5 in total) are replaced by four settings:
+
+  | Setting | Default | Range |
+  |---|---|---|
+  | `PROOF_ITEM_MIN` | 2 | 1 to 4 |
+  | `PROOF_ITEM_MAX` | 4 | 1 to 8 |
+  | `PROOF_PACKAGE_MIN` | 1 | 1 to 2 |
+  | `PROOF_PACKAGE_MAX` | 2 | 1 to 4 |
+
+- A maximum set below its minimum counts as the minimum.
+- `ERROR_PROOF_LIMIT` names the section ("You can add up to 4 item photos"), with details `kind` and `max`.
+- `ERROR_IMAGE_REQUIRED` has details `itemMissing` and `packageMissing`.
+- `PROOF_MIN_PIXELS` is unchanged (480, from 240 to 1080).
+
+**Database:**
+- Migration `V47__order_proofs.sql`.
+- US-122, in progress, also has a `V47`; whichever story merges second renumbers (plan G8).
+- The trigger `forbid_submitted_proof_change()` refuses changing `media_id`, `kind` or `submitted_at` of a submitted row, and refuses deleting it. Drafts change freely.
+
+**Photo size check (plan G3):**
+- Media no longer rejects packing uploads under 480 px: `minSideFor` gives `SELLER_PRE_SHIPMENT_EVIDENCE` 1 px, like chat pictures.
+- The order module checks `PROOF_MIN_PIXELS` against the size as uploaded, and answers `WARNING_IMAGE_QUALITY_LOW`.
+- `BUYER_DELIVERY_EVIDENCE` keeps the media check until US-030.
+
+**Cleaning:**
+- `OrderEvidenceAdapter` (in `media.infrastructure.order`) replaces an attached photo with a clean JPEG, at most 1600 px on its longest side (`zoom-px`), without metadata.
+- The cleaning steps of `ChatImageService` were moved into a shared `ImageCleaner`, which chat now uses too.
+
+**Package prefill (plan G2):**
+- The packing view prefills only a package already confirmed on the shipment.
+- US-122 stores the listing's packed size in new `listings.package_*` columns, not as the `weight_kg` and `dimensions_cm` attributes, so prefilling from the listing is handed to US-122.
+- `PackageSize` checks C.4.1 with Bean Validation, so an out-of-range value answers `VALIDATION_ERROR` (the app-wide bean code), with field keys such as `packageSize.weightKg`.
+
+**API details:**
+- `DELETE …/proofs/{proofId}` answers 204 also when the draft is already gone.
+- Attaching the same photo again answers with the same draft.
+- A photo already used elsewhere answers `ERROR_VALIDATION`.
+
+**Buyer view:**
+- `PackingService.sellerProofs(orderId)` returns the submitted photos with signed links for 10 minutes. There is no buyer endpoint yet.
+- US-023 adds `sellerProofs` to the buyer's order details.
+
+**Retention (plan G4):**
+- `media_assets.retention_until` stays empty while the order is open.
+- Setting it to order completion + 2 years is handed to US-031 / US-024.
+
+**Mobile:**
+- The screen follows Make:
+  - header and subtitle
+  - order card
+  - "Steps to follow"
+  - Item Photos and Packaging Photos with their `count/max` chips and Add tiles
+  - escrow note with the item amount (G12)
+  - "Submit Proof & Schedule Pickup", with the red hint below it
+- Additions:
+  - a "Packed size and weight" card (G11)
+  - upload spinner, retry and remove on each photo
+- Differences from Make:
+  - the header scrolls with the content, so Hindi at 200% text fits
+  - the Add tiles have a solid tinted border, not a dashed one
+  - Make's "MAIN" label is left out
+  - Make's "Proof Uploaded!" page is replaced by returning to Incoming Orders with "Proof uploaded. Schedule the pickup next" (G6)
+- The app refuses a photo below `minPixels`, or one that would overfill a section, before uploading it.
+- The packing calls are part of `SellerOrderRepository`, so the `SELLER_ORDERS=mock` sample orders can be packed end to end.
+
+**Hand-offs:**
+
+| Story | Work |
+|---|---|
+| US-122 | Package prefill from the listing; renumber `V47` if US-026 merges first |
+| US-023 | `sellerProofs` on the buyer's order details |
+| US-027 | Schedule Pickup after packing |
+| US-030 | Buyer receipt photos (`order_proofs` rows with party `BUYER`; the minimum size of `BUYER_DELIVERY_EVIDENCE`) |
+| US-031 / US-024 | Retention date of the photos |
 
 ---
 
